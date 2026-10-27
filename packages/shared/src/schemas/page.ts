@@ -38,6 +38,7 @@ export const PageTypeSchema = Type.Union([
     Type.Literal('canvas'), // Widget canvas - AI-generated reactive widgets
     Type.Literal('devicedata'), // A table of one source of the owner's device data (Messages, Mail…)
     Type.Literal('aboutme'), // What bots know about each member, per notebook (one per notebook)
+    Type.Literal('graph'), // Links between the notebook's data page items (one per notebook)
 ]);
 
 export type PageType = Static<typeof PageTypeSchema>;

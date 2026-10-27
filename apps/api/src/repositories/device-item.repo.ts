@@ -318,6 +318,32 @@ export async function findContactsByName(userId: string, names: string[]): Promi
     return docs.map((doc) => doc.item);
 }
 
+/**
+ * Items for linking in the graph: one source in a time window (or uploaded since a
+ * moment), newest first, at most `limit`. Bodies are cut to `bodyChars` right away so a
+ * big backfill stays small in memory.
+ */
+export async function findDeviceItemsForGraph(
+    userId: string,
+    source: MacDataSource,
+    query: { from?: number; to?: number; updatedSince?: Date; limit: number; bodyChars: number },
+): Promise<MacDataItem[]> {
+    const filter: Record<string, unknown> = { userId, source };
+    if (query.from !== undefined || query.to !== undefined) {
+        filter.occurredAt = {
+            ...(query.from !== undefined ? { $gte: query.from } : {}),
+            ...(query.to !== undefined ? { $lte: query.to } : {}),
+        };
+    }
+    if (query.updatedSince) filter.updatedAt = { $gt: query.updatedSince };
+    const docs = await getCollection()
+        .find(filter, { projection: { item: 1 } })
+        .sort({ occurredAt: -1 })
+        .limit(Math.max(1, query.limit))
+        .toArray();
+    return docs.map((doc) => ({ ...doc.item, body: doc.item.body.slice(0, query.bodyChars) }));
+}
+
 const HEAD_PROJECTION = { 'item.body': 0, vectors: 0, searchText: 0 } as const;
 
 /**
@@ -355,19 +381,37 @@ export async function findThreadMessageHeads(
     return [...heads.values()].sort((a, b) => b.occurredAt - a.occurredAt);
 }
 
+/**
+ * Several items by id, in batches of 500; missing ones are left out. `bodyChars` cuts
+ * bodies short for big batches.
+ */
+export async function findDeviceItemsByIds(
+    userId: string,
+    ids: string[],
+    bodyChars?: number,
+): Promise<MacDataItem[]> {
+    const unique = [...new Set(ids)];
+    const items: MacDataItem[] = [];
+    for (let i = 0; i < unique.length; i += 500) {
+        const docs = await getCollection()
+            .find(
+                { _id: { $in: unique.slice(i, i + 500).map((id) => docId(userId, id)) } },
+                { projection: { item: 1 } },
+            )
+            .toArray();
+        for (const doc of docs)
+            items.push(
+                bodyChars === undefined
+                    ? doc.item
+                    : { ...doc.item, body: doc.item.body.slice(0, bodyChars) },
+            );
+    }
+    return items;
+}
+
 export async function findDeviceItem(userId: string, id: string): Promise<MacDataItem | null> {
     const doc = await getCollection().findOne({ _id: docId(userId, id) });
     return doc?.item ?? null;
-}
-
-/** Several items by id, in one query; missing ones are left out. */
-export async function findDeviceItemsByIds(userId: string, ids: string[]): Promise<MacDataItem[]> {
-    if (ids.length === 0) return [];
-    const docs = await getCollection()
-        .find({ _id: { $in: [...new Set(ids)].map((id) => docId(userId, id)) } })
-        .project<{ item: MacDataItem }>({ item: 1 })
-        .toArray();
-    return docs.map((doc) => doc.item);
 }
 
 /** Everything the search index needs for one user, vectors included. */

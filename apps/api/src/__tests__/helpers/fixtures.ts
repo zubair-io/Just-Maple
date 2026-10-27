@@ -360,7 +360,8 @@ export interface PageDoc {
         | 'recording'
         | 'json'
         | 'canvas'
-        | 'gmail';
+        | 'gmail'
+        | 'graph';
     title: string;
     content: any;
     version: number;
@@ -385,7 +386,8 @@ export interface CreatePageOptions {
         | 'recording'
         | 'json'
         | 'canvas'
-        | 'gmail';
+        | 'gmail'
+        | 'graph';
     title?: string;
     content?: any;
     id?: string;

@@ -1,0 +1,226 @@
+<div class="flex h-full min-h-0 flex-col bg-[var(--color-bg)]">
+  <header
+    class="flex flex-wrap items-center gap-3 border-b border-[var(--color-border)] px-6 py-3 max-md:px-4"
+  >
+    <span class="material-symbols-rounded text-xl text-[var(--color-primary)]" aria-hidden="true"
+      >hub</span
+    >
+    <div class="min-w-0 flex-1">
+      <h1 class="m-0 truncate font-sans text-base! font-bold text-[var(--color-text-main)]">
+        {{ page()?.title || 'Graph' }}
+      </h1>
+      <p class="m-0 font-sans text-xs text-[var(--color-text-muted)]" data-testid="summary">
+        {{ summary() }}
+        @if (service.graph(); as graph) {
+          @if (!graph.status.backfilledAt) {
+            · Linking the last 30 days…
+          }
+          @if (!graph.status.modelLinks) {
+            · Only certain links (no model on this server)
+          }
+          @if (graph.truncated) {
+            · Showing the newest 2,000 items
+          }
+        }
+      </p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2" role="group" aria-label="Date range">
+      <button type="button" class="graph-chip" (click)="setRange(7)">7 days</button>
+      <button type="button" class="graph-chip" (click)="setRange(30)">30 days</button>
+      <button type="button" class="graph-chip" (click)="setRange(null)">All</button>
+      <label class="flex items-center gap-1 font-sans text-xs text-[var(--color-text-muted)]">
+        From
+        <input
+          type="date"
+          data-testid="from"
+          [value]="fromDate()"
+          (change)="fromDate.set($any($event.target).value)"
+          class="h-8 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 font-sans text-xs text-[var(--color-text-main)]"
+        />
+      </label>
+      <label class="flex items-center gap-1 font-sans text-xs text-[var(--color-text-muted)]">
+        To
+        <input
+          type="date"
+          data-testid="to"
+          [value]="toDate()"
+          (change)="toDate.set($any($event.target).value)"
+          class="h-8 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 font-sans text-xs text-[var(--color-text-main)]"
+        />
+      </label>
+    </div>
+  </header>
+
+  <!-- Legend: each kind is a filter -->
+  <div
+    class="flex flex-wrap items-center gap-1.5 border-b border-[var(--color-border)] px-6 py-2 max-md:px-4"
+    role="group"
+    aria-label="Show kinds"
+  >
+    @for (kind of presentKinds(); track kind.key) {
+      <button
+        type="button"
+        class="graph-chip"
+        [class.graph-chip-off]="hiddenKinds().has(kind.key)"
+        [attr.aria-pressed]="!hiddenKinds().has(kind.key)"
+        [attr.data-kind]="kind.key"
+        (click)="toggleKind(kind.key)"
+      >
+        <span [class]="dotClass(kind.key)" aria-hidden="true"></span>
+        {{ kind.label }}
+      </button>
+    }
+  </div>
+
+  <div class="relative flex min-h-0 flex-1 max-md:flex-col">
+    <div #stage class="graph-stage relative min-h-0 flex-1 overflow-hidden">
+      <canvas #canvas class="block" aria-label="Graph of linked items"></canvas>
+
+      @if (service.error(); as error) {
+        <p
+          class="absolute inset-x-0 top-6 mx-auto w-fit rounded-lg bg-[var(--color-surface)] px-4 py-2 font-sans text-sm text-[var(--color-error)]"
+        >
+          {{ error }}
+        </p>
+      } @else if (service.graph() && view().nodes.length === 0) {
+        <div
+          class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center"
+          data-testid="empty"
+        >
+          <span
+            class="material-symbols-rounded text-4xl text-[var(--color-text-muted)]"
+            aria-hidden="true"
+            >hub</span
+          >
+          @if (service.graph()!.nodes.length === 0) {
+            <p class="m-0 font-sans text-sm text-[var(--color-text-main)]">Nothing linked yet.</p>
+            <p class="m-0 max-w-sm font-sans text-xs text-[var(--color-text-muted)]">
+              Add data pages (Mail, Calendar, Messages, Places…) to this notebook. Links between
+              what they share show up here as they're found.
+            </p>
+          } @else {
+            <p class="m-0 font-sans text-sm text-[var(--color-text-main)]">
+              Nothing matches these filters.
+            </p>
+          }
+        </div>
+      }
+
+      <div class="absolute bottom-3 left-3 flex flex-col gap-1">
+        <button type="button" class="graph-tool" (click)="zoom(1.4)" aria-label="Zoom in">
+          <span class="material-symbols-rounded text-lg" aria-hidden="true">add</span>
+        </button>
+        <button type="button" class="graph-tool" (click)="zoom(1 / 1.4)" aria-label="Zoom out">
+          <span class="material-symbols-rounded text-lg" aria-hidden="true">remove</span>
+        </button>
+        <button type="button" class="graph-tool" (click)="fit()" aria-label="Fit to screen">
+          <span class="material-symbols-rounded text-lg" aria-hidden="true">fit_screen</span>
+        </button>
+      </div>
+    </div>
+
+    @if (selected(); as node) {
+      <aside
+        class="flex w-80 shrink-0 flex-col gap-3 overflow-y-auto border-l border-[var(--color-border)] bg-[var(--color-surface)] p-4 max-md:max-h-[50%] max-md:w-full max-md:border-l-0 max-md:border-t"
+        data-testid="details"
+        aria-label="Details"
+      >
+        <div class="flex items-start gap-2">
+          <span [class]="dotClass(colorKey(node)) + ' mt-1.5'" aria-hidden="true"></span>
+          <div class="min-w-0 flex-1">
+            <p class="m-0 font-sans text-xs text-[var(--color-text-muted)]">
+              {{ kindLabel(node) }}
+              @if (node.ownerName) {
+                · {{ node.ownerName }}'s
+              }
+            </p>
+            <h2 class="m-0 break-words font-sans text-sm! font-bold text-[var(--color-text-main)]">
+              {{ node.label }}
+            </h2>
+          </div>
+          <button
+            type="button"
+            class="graph-tool"
+            (click)="select(null)"
+            aria-label="Close details"
+          >
+            <span class="material-symbols-rounded text-lg" aria-hidden="true">close</span>
+          </button>
+        </div>
+
+        @if (node.at !== undefined) {
+          <p class="m-0 font-sans text-xs text-[var(--color-text-main)]">
+            {{ node.at * 1000 | date: 'EEE, MMM d, y, h:mm a' }}
+            @if (node.endAt !== undefined && node.endAt !== node.at) {
+              – {{ node.endAt * 1000 | date: 'h:mm a' }}
+            }
+          </p>
+        }
+        @if (node.location) {
+          <p class="m-0 font-sans text-xs text-[var(--color-text-muted)]">{{ node.location }}</p>
+        }
+        @if (node.snippet) {
+          <p
+            class="m-0 line-clamp-4 whitespace-pre-line font-sans text-xs text-[var(--color-text-main)]"
+          >
+            {{ node.snippet }}
+          </p>
+        }
+        @if (node.kind === 'item' && node.pageId) {
+          <button
+            type="button"
+            class="h-8 w-fit rounded-lg border-none bg-[var(--color-primary)] px-3 font-sans text-xs font-medium text-white hover:bg-[var(--color-primary-hover)]"
+            (click)="open(node)"
+          >
+            Open
+          </button>
+        }
+
+        <h3 class="m-0 mt-1 font-sans text-xs! font-bold text-[var(--color-text-muted)]">
+          Linked ({{ selectedLinks().length }})
+        </h3>
+        @if (actionError(); as error) {
+          <p class="m-0 font-sans text-xs text-[var(--color-error)]">{{ error }}</p>
+        }
+        <ul class="m-0 flex list-none flex-col gap-1 p-0" data-testid="links">
+          @for (entry of selectedLinks(); track entry.link.id) {
+            <li
+              class="group flex items-start gap-2 rounded-lg px-2 py-1.5 hover:bg-[var(--color-surface-hover)]"
+            >
+              <span [class]="dotClass(colorKey(entry.other)) + ' mt-1'" aria-hidden="true"></span>
+              <button
+                type="button"
+                class="min-w-0 flex-1 cursor-pointer border-none bg-transparent p-0 text-left"
+                (click)="select(entry.other.id, true)"
+              >
+                <span class="block truncate font-sans text-xs text-[var(--color-text-main)]">{{
+                  entry.other.label
+                }}</span>
+                <span class="block font-sans text-[11px] text-[var(--color-text-muted)]">
+                  {{ entry.link.evidence }} ·
+                  @if (entry.link.madeBy === 'model') {
+                    model, {{ entry.link.confidence * 100 | number: '1.0-0' }}%
+                  } @else {
+                    certain
+                  }
+                </span>
+              </button>
+              <button
+                type="button"
+                class="graph-tool opacity-60 group-hover:opacity-100"
+                [disabled]="busy()"
+                (click)="removeLink(entry)"
+                [attr.aria-label]="'Remove link to ' + entry.other.label"
+                title="Remove link"
+              >
+                <span class="material-symbols-rounded text-base" aria-hidden="true">link_off</span>
+              </button>
+            </li>
+          } @empty {
+            <li class="font-sans text-xs text-[var(--color-text-muted)]">No links shown.</li>
+          }
+        </ul>
+      </aside>
+    }
+  </div>
+</div>

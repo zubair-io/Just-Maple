@@ -25,6 +25,7 @@ export const PAGE_TYPE_LABELS: Record<string, string> = {
   json: 'JSON Documents',
   devicedata: 'Device Data',
   aboutme: 'About me',
+  graph: 'Graph',
 };
 
 /**
@@ -40,6 +41,7 @@ export const PAGE_TYPE_ICONS: Record<string, string> = {
   json: 'data_object',
   devicedata: 'devices',
   aboutme: 'person_heart',
+  graph: 'hub',
 };
 
 /**

@@ -22,6 +22,7 @@ import {
     emptyTrash,
     publishPage,
     findAboutMePage,
+    findGraphPage,
 } from '../repositories/page.repo';
 import { otService } from '../services/ot.service';
 import { realtimeWSService } from '../services/realtime-ws.service';
@@ -35,7 +36,8 @@ import {
     ProactiveSettingsError,
 } from '../services/proactive-settings.service';
 import { ensureProfile } from '../services/about-me.service';
-import { aboutMePageId } from '@maple/shared';
+import { aboutMePageId, graphPageId } from '@maple/shared';
+import { requestGraphPass, runGraphPass } from '../services/graph.service';
 import { updateLinksForPage, handlePageRename, handlePageDeletion } from '../services/link.service';
 import { indexPage, removeFromIndex } from '../repositories/search.repo';
 import type { Page } from '@maple/shared';
@@ -46,9 +48,13 @@ const DATA_PAGE_CREATOR_ONLY = {
     message: 'Only the person who added this data page can change it',
 };
 
-/** Moving a data page into a shared notebook resets its filter: tell open clients. */
+/**
+ * Moving a data page into a shared notebook resets its filter: tell open clients. A data
+ * page arriving in a notebook may bring items its graph hasn't linked yet.
+ */
 async function emitDataPageFilterIfReset(previousPage: Page | null, page: Page): Promise<void> {
     if (page.type !== 'devicedata' || !page.notebookId) return;
+    if (previousPage?.notebookId !== page.notebookId) requestGraphPass(page.notebookId);
     if (JSON.stringify(previousPage?.deviceFilter) === JSON.stringify(page.deviceFilter)) return;
     realtimeWSService.sendToUsers(await getUsersWithNotebookAccess(page.notebookId), {
         type: 'page.updated',
@@ -185,9 +191,10 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 set.status = 400;
                 return { error: 'Invalid page', message: 'Choose which data the page shows' };
             }
-            // About me: one per notebook (a fixed id), added by a member who can write.
-            // Adding it again returns the one that's there, restoring it from the trash.
-            if (body.type === 'aboutme') {
+            // About me and Graph: one per notebook (a fixed id), added by a member who can
+            // write. Adding it again returns the one that's there, restoring it from the trash.
+            const single = body.type ? ONE_PER_NOTEBOOK[body.type] : undefined;
+            if (single) {
                 const notebookId = body.notebookId;
                 if (
                     !notebookId ||
@@ -198,14 +205,14 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                     set.status = 403;
                     return {
                         error: 'Not allowed',
-                        message: 'Only members who can edit this notebook can add About me',
+                        message: `Only members who can edit this notebook can add ${single.name}`,
                     };
                 }
                 const existing =
-                    (await findAboutMePage(notebookId)) ??
-                    (await restoreAboutMePage(aboutMePageId(notebookId), auth.user._id));
+                    (await single.find(notebookId)) ??
+                    (await restoreSinglePage(single.id(notebookId), auth.user._id));
                 if (existing) return { page: existing };
-                body.id = aboutMePageId(notebookId);
+                body.id = single.id(notebookId);
             }
             const sanitizedBody = {
                 ...body,
@@ -218,11 +225,9 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
             try {
                 page = await createPage(auth.user._id, sanitizedBody);
             } catch (error) {
-                // Another member added About me at the same moment: theirs is the one.
+                // Another member added About me (or Graph) at the same moment: theirs is the one.
                 const existing =
-                    body.type === 'aboutme' && body.notebookId
-                        ? await findAboutMePage(body.notebookId)
-                        : null;
+                    single && body.notebookId ? await single.find(body.notebookId) : null;
                 if (existing) return { page: existing };
                 throw error;
             }
@@ -248,6 +253,16 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 ).catch((error) => console.error('[AboutMe] Could not seed About me:', error));
             }
 
+            // A new data page may bring items the notebook's graph hasn't linked yet.
+            if (page.type === 'devicedata' && page.notebookId) requestGraphPass(page.notebookId);
+
+            // Adding Graph starts linking the notebook's last 30 days.
+            if (page.type === 'graph' && page.notebookId) {
+                void runGraphPass(page.notebookId).catch((error) =>
+                    console.error('[Graph] Could not start linking:', error),
+                );
+            }
+
             // Index page for search (background, don't block response)
             indexPage(page.id).catch((err) =>
                 console.error(`[Search] Failed to index page ${page.id}:`, err),
@@ -270,6 +285,7 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                         t.Literal('canvas'),
                         t.Literal('devicedata'),
                         t.Literal('aboutme'),
+                        t.Literal('graph'),
                     ]),
                 ),
                 title: t.Optional(t.String({ maxLength: 255 })),
@@ -304,7 +320,7 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 set.status = 403;
                 return DATA_PAGE_CREATOR_ONLY;
             }
-            const aboutMeError = await aboutMeChangeError(previousPage, body);
+            const aboutMeError = await singlePageChangeError(previousPage, body);
             if (aboutMeError) {
                 set.status = 409;
                 return { error: 'Not allowed', message: aboutMeError };
@@ -384,7 +400,7 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 set.status = 403;
                 return DATA_PAGE_CREATOR_ONLY;
             }
-            const aboutMeError = await aboutMeChangeError(previousPage, body);
+            const aboutMeError = await singlePageChangeError(previousPage, body);
             if (aboutMeError) {
                 set.status = 409;
                 return { error: 'Not allowed', message: aboutMeError };
@@ -504,7 +520,7 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 set.status = 403;
                 return DATA_PAGE_CREATOR_ONLY;
             }
-            const aboutMeError = await aboutMeChangeError(trashedPage, { isTrashed: false });
+            const aboutMeError = await singlePageChangeError(trashedPage, { isTrashed: false });
             if (aboutMeError) {
                 set.status = 409;
                 return { error: 'Not allowed', message: aboutMeError };
@@ -717,27 +733,42 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
         { params: t.Object({ id: t.String() }) },
     );
 
+/** Page types a notebook has at most one of, each with a fixed id. */
+const ONE_PER_NOTEBOOK: Record<
+    string,
+    {
+        name: string;
+        id: (notebookId: string) => string;
+        find: (notebookId: string) => Promise<Page | null>;
+    }
+> = {
+    aboutme: { name: 'About me', id: aboutMePageId, find: findAboutMePage },
+    graph: { name: 'Graph', id: graphPageId, find: findGraphPage },
+};
+
 /**
- * Why a change to an About me page isn't allowed, or null. Its data belongs to its
- * notebook, so it can't move to another one, and a notebook keeps one: an older copy
+ * Why a change to an About me or Graph page isn't allowed, or null. Its data belongs to
+ * its notebook, so it can't move to another one, and a notebook keeps one: an older copy
  * can't come back from the trash while another is there.
  */
-async function aboutMeChangeError(
+async function singlePageChangeError(
     page: Page | null,
     changes: { notebookId?: string; isTrashed?: boolean },
 ): Promise<string | null> {
-    if (page?.type !== 'aboutme' || !page.notebookId) return null;
+    const single = page ? ONE_PER_NOTEBOOK[page.type] : undefined;
+    if (!page || !single || !page.notebookId) return null;
     if (changes.notebookId !== undefined && changes.notebookId !== page.notebookId)
-        return 'About me belongs to its notebook and can’t be moved';
+        return `${single.name} belongs to its notebook and can’t be moved`;
     if (changes.isTrashed === false && page.isTrashed) {
-        const current = await findAboutMePage(page.notebookId);
-        if (current && current.id !== page.id) return 'This notebook already has an About me page';
+        const current = await single.find(page.notebookId);
+        if (current && current.id !== page.id)
+            return `This notebook already has a${single.name === 'About me' ? 'n' : ''} ${single.name} page`;
     }
     return null;
 }
 
-/** Brings a notebook's trashed About me page back, if the user may. */
-async function restoreAboutMePage(id: string, userId: string): Promise<Page | null> {
+/** Brings a notebook's trashed About me or Graph page back, if the user may. */
+async function restoreSinglePage(id: string, userId: string): Promise<Page | null> {
     const page = await findPageById(id, userId);
     return page?.isTrashed ? restorePageFromTrash(id, userId) : null;
 }

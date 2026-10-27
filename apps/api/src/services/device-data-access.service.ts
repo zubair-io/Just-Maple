@@ -230,3 +230,34 @@ export async function dataPageSlicesFor(
     }
     return slices;
 }
+
+/**
+ * What the notebook's data pages share with its members, whoever reads: each page through
+ * its filter, as every member (and the creator's bots) sees it. The connected-data graph
+ * is built only from these, so it never holds anything a member couldn't see on the pages.
+ */
+export async function notebookDataSlices(notebookId: string): Promise<DataPageSlice[]> {
+    const notebook = await findNotebookByIdUnsafe(notebookId).catch(() => null);
+    if (!notebook) return [];
+    const pages = await findDeviceDataPagesInNotebook(notebookId);
+    const names = new Map<string, string>();
+    const slices: DataPageSlice[] = [];
+    for (const page of pages) {
+        // As its creator reads it, limited to what bots in the notebook may read: in a
+        // shared notebook that's the filter; trashed pages and departed creators share nothing.
+        const view = dataPageView(page, page.userId, notebook);
+        if (!view?.visible || !view.botsCanRead) continue;
+        const match = await itemMatcherFor(view);
+        if (!match) continue;
+        if (!names.has(view.ownerId)) names.set(view.ownerId, await displayNameOf(view.ownerId));
+        slices.push({
+            pageId: page.id,
+            source: view.source,
+            ownerId: view.ownerId,
+            ownerName: names.get(view.ownerId)!,
+            title: page.title,
+            match,
+        });
+    }
+    return slices;
+}
