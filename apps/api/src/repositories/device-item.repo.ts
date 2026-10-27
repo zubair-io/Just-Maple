@@ -317,6 +317,16 @@ export async function findDeviceItem(userId: string, id: string): Promise<MacDat
 }
 
 /** Everything the search index needs for one user, vectors included. */
+/** Several items by id, in one query; missing ones are left out. */
+export async function findDeviceItemsByIds(userId: string, ids: string[]): Promise<MacDataItem[]> {
+    if (ids.length === 0) return [];
+    const docs = await getCollection()
+        .find({ _id: { $in: [...new Set(ids)].map((id) => docId(userId, id)) } })
+        .project<{ item: MacDataItem }>({ item: 1 })
+        .toArray();
+    return docs.map((doc) => doc.item);
+}
+
 export async function findDeviceItemsForIndex(userId: string): Promise<DeviceItemDocument[]> {
     return getCollection().find({ userId }).toArray();
 }
