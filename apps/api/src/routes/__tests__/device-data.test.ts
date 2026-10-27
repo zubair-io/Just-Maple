@@ -17,8 +17,8 @@ vi.mock('../../services/proactive-bot.service', () => ({
 }));
 
 import { handleDeviceDataChanges } from '../../services/proactive-bot.service';
-import { flushDeviceNews } from '../../services/device-data.service';
-import { purgeExpiredDeviceItems } from '../../repositories/device-item.repo';
+import { conversationsFor, flushDeviceNews } from '../../services/device-data.service';
+import { purgeExpiredDeviceItems, upsertDeviceItems } from '../../repositories/device-item.repo';
 import { searchDeviceData } from '../../services/device-search.service';
 
 const now = Math.floor(Date.now() / 1000);
@@ -217,6 +217,98 @@ describe.runIf(mongoAvailable)('device data routes', () => {
                 entries: [{ kind: 'added', item: expect.objectContaining({ id: 'mail:new' }) }],
             },
         ]);
+    });
+
+    it("summarizes a message's thread with the user's replies, whichever service they used", async () => {
+        const text = (
+            id: string,
+            minutesAgo: number,
+            body: string,
+            chatId: string,
+            fromMe = false,
+        ) =>
+            item(id, 'imessage', {
+                occurredAt: now - minutesAgo * 60,
+                body,
+                thread: '+15185550142',
+                sender: fromMe ? 'Me' : '+15185550142',
+                isFromMe: fromMe,
+                participants: ['+15185550142'],
+                extra: { chatId },
+            });
+        const link = text('imessage:3', 60, 'example.com/menu', 'iMessage;-;+15185550142');
+        await upsertDeviceItems(userId, 'mac-device-1', [
+            text('imessage:1', 180, 'Coffee this week?', 'iMessage;-;+15185550142'),
+            // The reply went out as SMS, to the same number written another way.
+            text('imessage:2', 120, 'Yes! Thursday?', 'SMS;-;(518) 555-0142', true),
+            link,
+            item('imessage:other', 'imessage', {
+                body: 'Someone else',
+                isFromMe: true,
+                extra: { chatId: 'iMessage;-;+15185550100' },
+            }),
+        ]);
+
+        const tz = 'America/New_York';
+        const everything = () => true;
+        const noReplies = (m: MacDataItem) => !m.isFromMe;
+        // One read for two notebooks; the second's pages don't share the user's replies.
+        const [shared, filtered] = await conversationsFor(
+            userId,
+            [link],
+            [everything, noReplies],
+            tz,
+        );
+        const conversation = shared!.get('dm:+15185550142');
+        expect([...shared!.keys()]).toEqual(['dm:+15185550142']);
+        expect(conversation?.recent.map((m) => [m.from, m.text])).toEqual([
+            ['them', 'Coffee this week?'],
+            ['me', 'Yes! Thursday?'],
+            ['them', 'example.com/menu'],
+        ]);
+        expect(Date.parse(conversation!.lastFromMe!) / 1000).toBe(now - 120 * 60);
+        expect(Date.parse(conversation!.lastFromThem!) / 1000).toBe(now - 60 * 60);
+        expect(filtered!.get('dm:+15185550142')?.lastFromMe).toBeUndefined();
+    });
+
+    it("finds the user's last reply behind a busy stretch, and in messages stored before thread keys", async () => {
+        const message = (id: string, minutesAgo: number, fromMe: boolean, chatId: string) =>
+            item(id, 'imessage', {
+                occurredAt: now - minutesAgo * 60,
+                body: fromMe ? 'On my way' : `Message ${id}`,
+                isFromMe: fromMe,
+                extra: { chatId },
+            });
+        const chat = 'iMessage;-;+15185550142';
+        // The reply, then 80 messages from them, and lots of chatter in another thread.
+        const busy = Array.from({ length: 80 }, (_, i) =>
+            message(`them:${i}`, 500 - i, false, chat),
+        );
+        const other = Array.from({ length: 80 }, (_, i) =>
+            message(`other:${i}`, 100 - i, true, 'iMessage;-;+15185550100'),
+        );
+        await upsertDeviceItems(userId, 'mac-device-1', [
+            message('reply', 3 * 24 * 60, true, chat),
+            ...busy,
+            ...other,
+        ]);
+        // A message from before thread keys were stored.
+        await upsertDeviceItems(userId, 'mac-device-1', [message('old', 600, true, chat)]);
+        await testDb!
+            .collection('device_items')
+            .updateOne({ id: 'old' }, { $unset: { threadKey: '' } });
+
+        const [conversations] = await conversationsFor(userId, [busy.at(-1)!], [() => true], 'UTC');
+        const conversation = conversations!.get('dm:+15185550142')!;
+        expect(Date.parse(conversation.lastFromMe!) / 1000).toBe(now - 600 * 60);
+        expect(conversation.recent).toHaveLength(6);
+        expect(conversation.recent.every((m) => m.from === 'them')).toBe(true);
+
+        await testDb!.collection('device_items').deleteOne({ id: 'old' });
+        const [again] = await conversationsFor(userId, [busy.at(-1)!], [() => true], 'UTC');
+        expect(Date.parse(again!.get('dm:+15185550142')!.lastFromMe!) / 1000).toBe(
+            now - 3 * 24 * 60 * 60,
+        );
     });
 
     it('shows page data only to the page owner, even in a shared notebook', async () => {

@@ -2,6 +2,8 @@ import type { Collection } from 'mongodb';
 import { getDb } from '../db/client';
 import {
     DEVICE_DATA_RETENTION_DAYS,
+    deviceChoiceKey,
+    deviceItemThreadKey,
     type DeviceDataChoice,
     type DeviceItemVectors,
     type MacDataItem,
@@ -28,6 +30,8 @@ export interface DeviceItemDocument {
     dimensions?: number;
     /** The revision the vectors were made from; stale vectors are ignored. */
     embeddedRevision?: string;
+    /** Messages: the conversation, so a thread's messages can be read without a scan. */
+    threadKey?: string;
     updatedAt: Date;
 }
 
@@ -70,6 +74,7 @@ export async function upsertDeviceItems(
     await getCollection().bulkWrite(
         items.map((raw) => {
             const item = { ...raw, body: raw.body.slice(0, MAX_BODY_CHARS) };
+            const threadKey = deviceItemThreadKey(item);
             return {
                 updateOne: {
                     filter: { _id: docId(userId, item.id) },
@@ -84,6 +89,7 @@ export async function upsertDeviceItems(
                             endAt: item.endAt,
                             item,
                             searchText: searchTextFor(item),
+                            ...(threadKey ? { threadKey } : {}),
                             updatedAt: now,
                         },
                     },
@@ -265,7 +271,8 @@ export async function findDeviceItemFacets(
         if (!name || !seen) continue;
         const rawId = row.source === 'calendar' ? item?.extra?.calendarId : item?.extra?.chatId;
         const id = typeof rawId === 'string' && rawId ? rawId : undefined;
-        const key = id ? `id:${id}` : `name:${name}`;
+        // A person's iMessage, SMS and RCS chats are one chat.
+        const key = id ? `id:${deviceChoiceKey(row.source, { id, name })}` : `name:${name}`;
         const previous = seen.get(key);
         // Keep the name from the most recent item (a chat that was renamed).
         if (!previous || row.occurredAt >= previous.at) {
@@ -307,6 +314,51 @@ export async function findContactsByName(userId: string, names: string[]): Promi
             { userId, source: 'contacts', 'item.title': { $in: names } },
             { projection: { item: 1 } },
         )
+        .toArray();
+    return docs.map((doc) => doc.item);
+}
+
+const HEAD_PROJECTION = { 'item.body': 0, vectors: 0, searchText: 0 } as const;
+
+/**
+ * Messages in these threads since `since`, without bodies: each thread's newest
+ * `perThread`, plus the user's own newest `perThread`, so a reply isn't lost behind a
+ * busy stretch from the other side. Messages stored before threads had keys are found
+ * by a scan, which empties as they age out of the window.
+ */
+export async function findThreadMessageHeads(
+    userId: string,
+    threadKeys: string[],
+    since: number,
+    perThread = 50,
+): Promise<MacDataItem[]> {
+    const heads = new Map<string, MacDataItem>();
+    const add = (docs: DeviceItemDocument[]) => {
+        for (const doc of docs) heads.set(doc._id, { ...doc.item, body: '' });
+    };
+    const newest = (filter: Record<string, unknown>, limit: number) =>
+        getCollection()
+            .find(
+                { userId, occurredAt: { $gte: since }, ...filter },
+                { projection: HEAD_PROJECTION },
+            )
+            .sort({ occurredAt: -1 })
+            .limit(limit)
+            .toArray();
+    for (const threadKey of threadKeys) {
+        add(await newest({ threadKey }, perThread));
+        add(await newest({ threadKey, 'item.isFromMe': true }, perThread));
+    }
+    const wanted = new Set(threadKeys);
+    const legacy = await newest({ source: 'imessage', threadKey: { $exists: false } }, 5_000);
+    add(legacy.filter((doc) => wanted.has(deviceItemThreadKey(doc.item) ?? '')));
+    return [...heads.values()].sort((a, b) => b.occurredAt - a.occurredAt);
+}
+
+export async function findDeviceItemsByIds(userId: string, ids: string[]): Promise<MacDataItem[]> {
+    if (ids.length === 0) return [];
+    const docs = await getCollection()
+        .find({ _id: { $in: ids.map((id) => docId(userId, id)) } }, { projection: { item: 1 } })
         .toArray();
     return docs.map((doc) => doc.item);
 }
