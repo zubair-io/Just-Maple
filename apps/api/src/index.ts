@@ -13,6 +13,8 @@ import { botRoutes } from './routes/bots';
 import { macDataRoutes } from './routes/mac-data';
 import { deviceDataRoutes } from './routes/device-data';
 import { aboutMeRoutes } from './routes/about-me';
+import { graphRoutes } from './routes/graph';
+import { startGraphLinking } from './services/graph.service';
 import { startDeviceDataRetention } from './services/device-data.service';
 import { startProactiveScheduler } from './services/proactive-scheduler.service';
 import { legoRoutes } from './routes/lego';
@@ -70,6 +72,8 @@ async function main() {
     await connectToDatabase();
     // Hourly: drop device data older than the retention window
     startDeviceDataRetention();
+    // Every 5 minutes: link the data in notebooks that have a Graph page
+    startGraphLinking();
     // Every minute: daily briefs and leave-now reminders
     startProactiveScheduler();
 
@@ -98,6 +102,7 @@ async function main() {
         .use(macDataRoutes)
         .use(deviceDataRoutes)
         .use(aboutMeRoutes)
+        .use(graphRoutes)
         .use(legoRoutes)
         .use(collabRoutes)
         .use(memoRoutes)

@@ -11,6 +11,7 @@ import {
   JsonPageGuard,
   CanvasPageGuard,
   AboutMePageGuard,
+  GraphPageGuard,
 } from './guards/page-type.guard';
 import { swUpdateGuard } from './guards/sw-update.guard';
 import {
@@ -301,6 +302,13 @@ export const routes: Routes = [
               import('./pages/about-me-view/about-me-view.component').then(
                 (m) => m.AboutMeViewComponent,
               ),
+          },
+          // Graph page - links between what the notebook's data pages share
+          {
+            path: ':id',
+            canMatch: [GraphPageGuard],
+            loadComponent: () =>
+              import('./pages/graph-view/graph-view.component').then((m) => m.GraphViewComponent),
           },
           // Memo-type page - shows collaborative notebook editor (default for pages)
           {

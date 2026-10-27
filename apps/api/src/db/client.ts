@@ -109,6 +109,13 @@ export async function createIndexes(database: Db): Promise<void> {
     await database.collection('profile_relations').createIndex({ userId: 1, notebookId: 1 });
     await database.collection('profile_facts').createIndex({ notebookId: 1 });
     await database.collection('profile_facts').createIndex({ userId: 1, notebookId: 1 });
+    // Connected-data graph: everything is per notebook.
+    await database.collection('pages').createIndex({ type: 1 }); // Notebooks with a graph page
+    await database.collection('device_items').createIndex({ userId: 1, updatedAt: 1 }); // New items to link
+    await database.collection('graph_links').createIndex({ notebookId: 1, status: 1 });
+    await database.collection('graph_links').createIndex({ notebookId: 1, a: 1 });
+    await database.collection('graph_links').createIndex({ notebookId: 1, b: 1 });
+    await database.collection('graph_nodes').createIndex({ notebookId: 1 });
     await database.collection('travel_estimates').createIndex({ userId: 1 });
     await database.collection('travel_estimates').createIndex({ savedAt: 1 }); // Cleanup
     await database.collection('scheduled_sends').createIndex({ sentAt: 1 }); // Cleanup

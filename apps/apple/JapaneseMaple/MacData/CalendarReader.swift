@@ -71,6 +71,15 @@ nonisolated struct CalendarReader {
             checkpoint: String(now.timeIntervalSince1970))
     }
 
+    /// The calendar's id, and when the event was made (the graph links an event booked at a
+    /// place to the visit there).
+    private static func extra(calendarId: String?, created: Date?) -> [String: JSONValue]? {
+        var extra: [String: JSONValue] = [:]
+        if let calendarId { extra["calendarId"] = .string(calendarId) }
+        if let created { extra["createdAt"] = .string(created.formatted(.iso8601)) }
+        return extra.isEmpty ? nil : extra
+    }
+
     static func item(from event: EKEvent) -> MacDataItem {
         let start = event.startDate.timeIntervalSince1970
         let identifier = event.calendarItemExternalIdentifier ?? event.calendarItemIdentifier
@@ -104,7 +113,7 @@ nonisolated struct CalendarReader {
             allDay: event.isAllDay,
             mailbox: event.status == .canceled ? "Canceled" : nil,
             isRead: nil,
-            extra: calendarId.map { ["calendarId": .string($0)] })
+            extra: Self.extra(calendarId: calendarId, created: event.creationDate))
     }
 }
 #endif

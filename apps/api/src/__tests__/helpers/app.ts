@@ -8,6 +8,7 @@ import { botRoutes } from '../../routes/bots';
 import { deviceDataRoutes } from '../../routes/device-data';
 import { macDataRoutes } from '../../routes/mac-data';
 import { aboutMeRoutes } from '../../routes/about-me';
+import { graphRoutes } from '../../routes/graph';
 import { aiRoutes } from '../../routes/ai';
 import { templateRoutes } from '../../routes/templates';
 import { linkRoutes } from '../../routes/links';
@@ -32,6 +33,7 @@ export function createTestApp() {
         .use(deviceDataRoutes)
         .use(macDataRoutes)
         .use(aboutMeRoutes)
+        .use(graphRoutes)
         .use(aiRoutes)
         .use(templateRoutes)
         .use(linkRoutes)

@@ -1348,6 +1348,26 @@ export async function findAboutMePage(notebookId: string): Promise<Page | null> 
     return doc ? toPageResponse(doc) : null;
 }
 
+/** The notebook's graph page, if it has one (there is at most one per notebook). */
+export async function findGraphPage(notebookId: string): Promise<Page | null> {
+    if (!ObjectId.isValid(notebookId)) return null;
+    const doc = await getCollection().findOne({
+        type: 'graph',
+        notebookId: new ObjectId(notebookId),
+        isTrashed: { $ne: true },
+    });
+    return doc ? toPageResponse(doc) : null;
+}
+
+/** Notebooks with a graph page: the ones whose data gets linked. */
+export async function findGraphNotebookIds(limit = 1000): Promise<string[]> {
+    const docs = await getCollection()
+        .find({ type: 'graph', isTrashed: { $ne: true } }, { projection: { notebookId: 1 } })
+        .limit(limit)
+        .toArray();
+    return [...new Set(docs.map((doc) => doc.notebookId?.toString()).filter(Boolean))] as string[];
+}
+
 /** Every device data page in a notebook, whoever created it. */
 export async function findDeviceDataPagesInNotebook(notebookId: string): Promise<Page[]> {
     if (!ObjectId.isValid(notebookId)) return [];

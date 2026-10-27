@@ -1,0 +1,103 @@
+// Node colors by kind, read by the canvas (CSS variables, so the theme can change them).
+:host {
+  display: block;
+  height: 100%;
+  --graph-mail: #3b82f6;
+  --graph-imessage: #16a34a;
+  --graph-calendar: #d97706;
+  --graph-location: #a855f7;
+  --graph-contacts: #0891b2;
+  --graph-health: #db2777;
+  --graph-item: #78716c;
+  --graph-person: #d94e3b;
+  --graph-place: #6d28d9;
+  --graph-topic: #0d9488;
+  --graph-edge: #a8a29e;
+  --graph-edge-lit: #44403c;
+  --graph-label: var(--color-text-main);
+  --graph-halo: var(--color-bg);
+  --graph-ring: var(--color-text-main);
+}
+
+:host-context(.dark),
+:host-context([data-theme='dark']) {
+  --graph-mail: #60a5fa;
+  --graph-imessage: #4ade80;
+  --graph-calendar: #fbbf24;
+  --graph-location: #c084fc;
+  --graph-contacts: #22d3ee;
+  --graph-health: #f472b6;
+  --graph-item: #a8a29e;
+  --graph-person: #f87171;
+  --graph-place: #a78bfa;
+  --graph-topic: #2dd4bf;
+  --graph-edge: #57534e;
+  --graph-edge-lit: #d6d3d1;
+}
+
+.graph-stage {
+  background-color: var(--color-bg);
+  cursor: grab;
+  touch-action: none;
+}
+
+.graph-dot {
+  display: inline-block;
+  width: 0.625rem;
+  height: 0.625rem;
+  flex-shrink: 0;
+  border-radius: 9999px;
+}
+
+@each $kind in (mail, imessage, calendar, location, contacts, health, item, person, place, topic) {
+  .graph-dot-#{$kind} {
+    background-color: var(--graph-#{$kind});
+  }
+}
+
+.graph-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  height: 1.75rem;
+  padding: 0 0.625rem;
+  border: 1px solid var(--color-border);
+  border-radius: 9999px;
+  background: var(--color-surface);
+  color: var(--color-text-main);
+  font-family: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--color-surface-hover);
+  }
+}
+
+.graph-chip-off {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+
+.graph-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  flex-shrink: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  background: var(--color-surface);
+  color: var(--color-text-main);
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: var(--color-surface-hover);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+}

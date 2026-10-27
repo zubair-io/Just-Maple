@@ -311,6 +311,52 @@ export async function findContactsByName(userId: string, names: string[]): Promi
     return docs.map((doc) => doc.item);
 }
 
+/**
+ * Items for linking in the graph: one source in a time window (or uploaded since a
+ * moment), newest first, at most `limit`. Bodies are cut to `bodyChars` right away so a
+ * big backfill stays small in memory.
+ */
+export async function findDeviceItemsForGraph(
+    userId: string,
+    source: MacDataSource,
+    query: { from?: number; to?: number; updatedSince?: Date; limit: number; bodyChars: number },
+): Promise<MacDataItem[]> {
+    const filter: Record<string, unknown> = { userId, source };
+    if (query.from !== undefined || query.to !== undefined) {
+        filter.occurredAt = {
+            ...(query.from !== undefined ? { $gte: query.from } : {}),
+            ...(query.to !== undefined ? { $lte: query.to } : {}),
+        };
+    }
+    if (query.updatedSince) filter.updatedAt = { $gt: query.updatedSince };
+    const docs = await getCollection()
+        .find(filter, { projection: { item: 1 } })
+        .sort({ occurredAt: -1 })
+        .limit(Math.max(1, query.limit))
+        .toArray();
+    return docs.map((doc) => ({ ...doc.item, body: doc.item.body.slice(0, query.bodyChars) }));
+}
+
+/** Several items of one user by id. */
+export async function findDeviceItemsByIds(
+    userId: string,
+    ids: string[],
+    bodyChars = 400,
+): Promise<MacDataItem[]> {
+    const items: MacDataItem[] = [];
+    for (let i = 0; i < ids.length; i += 500) {
+        const docs = await getCollection()
+            .find(
+                { _id: { $in: ids.slice(i, i + 500).map((id) => docId(userId, id)) } },
+                { projection: { item: 1 } },
+            )
+            .toArray();
+        for (const doc of docs)
+            items.push({ ...doc.item, body: doc.item.body.slice(0, bodyChars) });
+    }
+    return items;
+}
+
 export async function findDeviceItem(userId: string, id: string): Promise<MacDataItem | null> {
     const doc = await getCollection().findOne({ _id: docId(userId, id) });
     return doc?.item ?? null;

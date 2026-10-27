@@ -45,7 +45,7 @@ import {
 import { getPageTypeLabel as getLabel, getPageTypeIcon as getIcon } from '../../utils/page-types';
 import { isLocalNotebook } from '../../providers/data-provider.interface';
 import type { NotebookMember, Page, Message, MacDataSource } from '@maple/shared';
-import { aboutMePageId } from '@maple/shared';
+import { aboutMePageId, graphPageId } from '@maple/shared';
 
 interface NotebookSummary {
   pageCounts: Record<string, number>;
@@ -206,6 +206,8 @@ export class ChatViewComponent implements OnInit, OnDestroy {
         return 'Canvases';
       case 'collectable':
         return 'Collectibles';
+      case 'graph':
+        return 'Graph';
       default:
         return `${type.charAt(0).toUpperCase() + type.slice(1)}s`;
     }
@@ -308,6 +310,11 @@ export class ChatViewComponent implements OnInit, OnDestroy {
   /** "+ New" offers About me only until the notebook has one. */
   readonly hasAboutMePage = computed(() =>
     this.navigationPages().some((page) => page.type === 'aboutme'),
+  );
+
+  /** "+ New" offers Graph only until the notebook has one. */
+  readonly hasGraphPage = computed(() =>
+    this.navigationPages().some((page) => page.type === 'graph'),
   );
 
   /** Device data sources offered in "+ New" on every device (Mac and iPhone sources). */
@@ -571,6 +578,31 @@ export class ChatViewComponent implements OnInit, OnDestroy {
       console.error('Failed to create About me page:', error);
       await this.dialogService.alert({
         title: 'Could not add About me',
+        message:
+          'Only members who can edit this notebook can add it. Check your connection and try again.',
+      });
+    }
+  }
+
+  /** Adds the notebook's Graph page (linking starts on the server) and opens it. */
+  async createGraphPage(): Promise<void> {
+    const notebookId = this.selectedNotebookId();
+    if (!notebookId) return;
+    try {
+      const page = await lastValueFrom(
+        this.pageService.createPage({
+          // The server gives each notebook's Graph this fixed id.
+          id: graphPageId(notebookId),
+          type: 'graph',
+          title: 'Graph',
+          notebookId,
+        }),
+      );
+      await this.router.navigate(['/', notebookId, page.id]);
+    } catch (error) {
+      console.error('Failed to create Graph page:', error);
+      await this.dialogService.alert({
+        title: 'Could not add Graph',
         message:
           'Only members who can edit this notebook can add it. Check your connection and try again.',
       });

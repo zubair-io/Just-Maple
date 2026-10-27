@@ -244,6 +244,18 @@
                     <span>About me</span>
                   </button>
                 }
+                <!-- One Graph per notebook: links between what its data pages share -->
+                @if (!hasGraphPage()) {
+                  <button
+                    (click)="newPageDropdownOpen.set(false); createGraphPage()"
+                    class="flex items-center gap-2 w-full h-8 px-2 box-border font-sans text-xs text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] border-none bg-transparent rounded-lg cursor-pointer text-left transition-colors"
+                  >
+                    <span class="material-symbols-rounded text-sm text-[var(--color-text-muted)]"
+                      >hub</span
+                    >
+                    <span>Graph</span>
+                  </button>
+                }
               }
             </div>
           }

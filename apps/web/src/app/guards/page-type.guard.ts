@@ -76,3 +76,6 @@ export const CanvasPageGuard = createPageTypeGuard('canvas');
 
 /** Guard that matches About me pages */
 export const AboutMePageGuard = createPageTypeGuard('aboutme');
+
+/** Guard that matches Graph pages (links between the notebook's data) */
+export const GraphPageGuard = createPageTypeGuard('graph');
