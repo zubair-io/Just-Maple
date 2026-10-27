@@ -1,0 +1,97 @@
+// Matches the device data tables (device-data-panel).
+:host {
+  display: block;
+  height: 100%;
+  min-height: 0;
+}
+
+table.about-me-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-sans, inherit);
+  font-size: 0.8125rem;
+  color: var(--color-text-main);
+
+  th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 0.75rem 0.75rem 0.5rem;
+    background: var(--color-bg);
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text-muted);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-align: left;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  td {
+    padding: 0.625rem 0.75rem;
+    border-bottom: 1px solid var(--color-border);
+    vertical-align: top;
+  }
+
+  tbody tr:hover td {
+    background: var(--color-surface-hover);
+  }
+
+  // Waiting for approval: pinned on top, marked down the left edge.
+  tr.pending td {
+    background: var(--color-surface);
+  }
+
+  tr.pending td:first-child {
+    box-shadow: inset 3px 0 0 var(--color-primary);
+  }
+
+  .nowrap {
+    white-space: nowrap;
+  }
+
+  .muted {
+    color: var(--color-text-muted);
+  }
+
+  .clamp {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+  }
+
+  .badge {
+    margin-left: 0.375rem;
+    padding: 0.0625rem 0.375rem;
+    border-radius: 999px;
+    background: var(--color-primary);
+    color: white;
+    font-size: 0.6875rem;
+    font-weight: 600;
+  }
+
+  .action {
+    margin-left: 0.75rem;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--color-primary);
+    font-size: 0.75rem;
+    cursor: pointer;
+
+    &.muted {
+      color: var(--color-text-muted);
+    }
+
+    &:hover {
+      text-decoration: underline;
+    }
+
+    &:disabled {
+      cursor: wait;
+      opacity: 0.6;
+    }
+  }
+}
