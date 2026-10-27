@@ -212,4 +212,87 @@ describe('EventProposalCardComponent', () => {
     expect(service.proposals()[ID]!.status).toBe('failed');
     fixture.destroy();
   });
+
+  it('still loads who can confirm when an update arrives before the card has loaded', async () => {
+    const service = TestBed.inject(CalendarProposalService);
+    const fixture = TestBed.createComponent(EventProposalCardComponent);
+    fixture.componentRef.setInput('proposalId', ID);
+    fixture.componentRef.setInput('event', event);
+    fixture.detectChanges();
+    const pending = http.expectOne(`/api/calendar-proposals/${ID}`);
+    // Another device's tap failed; the event beats this card's own load.
+    const { canConfirm: _, ...failed } = proposal({
+      status: 'failed',
+      error: 'Calendar is read-only',
+      updatedAt: '2026-10-27T12:05:00.000Z',
+    });
+    events.next({
+      action: 'calendar_proposal_updated',
+      data: failed,
+      pageId: 'chat',
+      notebookId: 'n1',
+      userId: 'owner',
+      timestamp: new Date().toISOString(),
+    });
+    expect(service.proposals()[ID]).toMatchObject({ status: 'failed', canConfirm: false });
+    // The load answers with older state: the newer status stays, the owner gets Try again.
+    pending.flush({ proposal: proposal({ status: 'adding' }) });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(service.proposals()[ID]).toMatchObject({ status: 'failed', canConfirm: true });
+    const host: HTMLElement = fixture.nativeElement;
+    expect(
+      [...host.querySelectorAll('button')].some((b) => b.textContent?.trim() === 'Try again'),
+    ).toBe(true);
+    fixture.destroy();
+  });
+
+  it('fetches the full state for a shown card that only heard about it from an update', async () => {
+    const service = TestBed.inject(CalendarProposalService);
+    // The card's first load failed (offline); then an update arrives.
+    const { fixture } = await render(null);
+    const { canConfirm: _, ...added } = proposal({
+      status: 'added',
+      itemId: 'calendar:A@1',
+      updatedAt: '2026-10-27T13:00:00.000Z',
+    });
+    events.next({
+      action: 'calendar_proposal_updated',
+      data: added,
+      pageId: 'chat',
+      notebookId: 'n1',
+      userId: 'owner',
+      timestamp: new Date().toISOString(),
+    });
+    http
+      .expectOne(`/api/calendar-proposals/${ID}`)
+      .flush({ proposal: proposal({ status: 'added', itemId: 'calendar:A@1' }) });
+    await fixture.whenStable();
+    expect(service.proposals()[ID]).toMatchObject({ status: 'added', canConfirm: true });
+    // Fully loaded now: later updates don't fetch again.
+    events.next({
+      action: 'calendar_proposal_updated',
+      data: added,
+      pageId: 'chat',
+      notebookId: 'n1',
+      userId: 'owner',
+      timestamp: new Date().toISOString(),
+    });
+    http.expectNone(`/api/calendar-proposals/${ID}`);
+    fixture.destroy();
+  });
+
+  it("doesn't fetch proposals no card is showing", () => {
+    TestBed.inject(CalendarProposalService);
+    const { canConfirm: _, ...data } = proposal();
+    events.next({
+      action: 'calendar_proposal_updated',
+      data,
+      pageId: 'chat',
+      notebookId: 'n1',
+      userId: 'owner',
+      timestamp: new Date().toISOString(),
+    });
+    http.expectNone(`/api/calendar-proposals/${ID}`);
+  });
 });

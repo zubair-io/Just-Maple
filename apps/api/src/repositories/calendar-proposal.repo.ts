@@ -7,10 +7,15 @@ import type { CalendarEventDraft, DeviceAction, DeviceActionResult } from '@mapl
 // owner taps Add. One document per proposal; its id is also the action id the Mac sees.
 //
 // proposed ──tap──▶ queued ──Mac lists it──▶ delivered ──Mac reports──▶ added | failed
-//    │                 │                          │
+//    │                 │   ▲                      │
+//    │                 │   └── 15 min unreported, ┤
+//    │                 │       or Mac stopped     │
+//    │                 │       collecting calendar│
 //    └─────────────────┴──── 7 days ──────────────┴──▶ expired
 //
 // failed ──tap again──▶ queued
+//
+// Queries sort in code: Cosmos DB needs a matching index for every sort.
 
 export type StoredProposalStatus =
     | 'proposed'
@@ -30,8 +35,10 @@ export interface CalendarProposalDocument {
     botId: string;
     event: CalendarEventDraft;
     status: StoredProposalStatus;
-    /** The Mac that picked the action up; only it gets it again until it reports. */
+    /** The Mac holding the action now; only it gets it again until it reports. */
     deviceId?: string;
+    /** Every Mac it was ever given to: a late success from any of them still counts. */
+    deliveredTo?: string[];
     eventIdentifier?: string;
     itemId?: string;
     error?: string;
@@ -45,7 +52,18 @@ export interface CalendarProposalDocument {
 }
 
 export const PROPOSAL_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
-const OPEN: StoredProposalStatus[] = ['proposed', 'queued', 'delivered'];
+/** A delivered action unreported this long goes back to the queue. */
+export const STALE_DELIVERY_MS = 15 * 60 * 1000;
+export const OPEN_STATUSES: StoredProposalStatus[] = ['proposed', 'queued', 'delivered'];
+const OPEN = OPEN_STATUSES;
+
+export function isStaleDelivery(doc: CalendarProposalDocument, now = Date.now()): boolean {
+    return (
+        doc.status === 'delivered' &&
+        !!doc.deliveredAt &&
+        now - doc.deliveredAt.getTime() >= STALE_DELIVERY_MS
+    );
+}
 
 function getCollection(): Collection<CalendarProposalDocument> {
     return getDb().collection<CalendarProposalDocument>('calendar_proposals');
@@ -71,29 +89,25 @@ export async function createProposal(input: {
 }
 
 /**
- * An open proposal for the same event in this notebook, so a bot that sees the same email
- * twice offers it once.
+ * The same event (title and start) already open or added for this user, in any notebook,
+ * so a bot that sees the same email twice, or in two chats, offers it once. Prefers one
+ * in `notebookId`.
  */
-export async function findOpenDuplicate(
+export async function findDuplicate(
     userId: string,
     notebookId: string,
     event: Pick<CalendarEventDraft, 'title' | 'start'>,
 ): Promise<CalendarProposalDocument | null> {
-    await expireStale(userId);
     const docs = await getCollection()
-        .find({ userId, notebookId, 'event.start': event.start, status: { $in: OPEN } })
+        .find({ userId, 'event.start': event.start, status: { $in: [...OPEN, 'added'] } })
         .toArray();
     const title = event.title.trim().toLowerCase();
-    return docs.find((doc) => doc.event.title.trim().toLowerCase() === title) ?? null;
+    const same = docs.filter((doc) => doc.event.title.trim().toLowerCase() === title);
+    return same.find((doc) => doc.notebookId === notebookId) ?? same[0] ?? null;
 }
 
 export async function findProposal(id: string): Promise<CalendarProposalDocument | null> {
-    const doc = await getCollection().findOne({ _id: id });
-    if (doc && OPEN.includes(doc.status) && doc.expiresAt.getTime() <= Date.now()) {
-        await expireStale(doc.userId);
-        return getCollection().findOne({ _id: id });
-    }
-    return doc;
+    return getCollection().findOne({ _id: id });
 }
 
 /** Records where the card was posted, so updates reach that chat. */
@@ -110,17 +124,27 @@ export async function attachToMessage(
 }
 
 /**
- * The owner's tap: queue the action. Only from `proposed` or `failed`, so a second tap
- * (or a double click) never queues it twice. Null when it can't be confirmed now.
+ * The owner's tap: queue the action. From `proposed`, `failed`, or a delivery that went
+ * unreported for 15 minutes, so a second tap (or a double click) never queues it twice.
+ * Null when it can't be confirmed now.
  */
 export async function queueProposal(
     id: string,
     userId: string,
 ): Promise<CalendarProposalDocument | null> {
-    await expireStale(userId);
     const now = new Date();
     return getCollection().findOneAndUpdate(
-        { _id: id, userId, status: { $in: ['proposed', 'failed'] } },
+        {
+            _id: id,
+            userId,
+            $or: [
+                { status: { $in: ['proposed', 'failed'] } },
+                {
+                    status: 'delivered',
+                    deliveredAt: { $lte: new Date(now.getTime() - STALE_DELIVERY_MS) },
+                },
+            ],
+        },
         {
             $set: {
                 status: 'queued',
@@ -146,42 +170,71 @@ export async function failProposal(
 }
 
 /**
+ * Delivered actions stuck on a Mac go back to the queue: unreported for 15 minutes, or
+ * held by a Mac that no longer collects the calendar (`calendarDeviceId` is the one that
+ * does, if any). Returns the ones that moved.
+ */
+export async function requeueStranded(
+    userId: string,
+    calendarDeviceId: string | null,
+): Promise<CalendarProposalDocument[]> {
+    const now = new Date();
+    const delivered = await getCollection().find({ userId, status: 'delivered' }).toArray();
+    const moved: CalendarProposalDocument[] = [];
+    for (const doc of delivered) {
+        if (doc.deviceId === calendarDeviceId && !isStaleDelivery(doc, now.getTime())) continue;
+        const updated = await getCollection().findOneAndUpdate(
+            { _id: doc._id, status: 'delivered', deviceId: doc.deviceId },
+            {
+                $set: { status: 'queued', updatedAt: now },
+                $unset: { deviceId: '', deliveredAt: '' },
+            },
+            { returnDocument: 'after' },
+        );
+        if (updated) moved.push(updated);
+    }
+    return moved;
+}
+
+/**
  * Actions for this device: newly queued ones, and ones it picked up before but never
  * reported (it may have crashed mid-way; its own records keep it from adding twice).
- * Listing marks the new ones as delivered to it.
+ * Listing marks the new ones as delivered to it. Oldest tap first, at most 50.
  */
 export async function takePendingActions(
     userId: string,
     deviceId: string,
 ): Promise<{ actions: DeviceAction[]; delivered: CalendarProposalDocument[] }> {
-    await expireStale(userId);
     const now = new Date();
-    const fresh = await getCollection()
-        .find({ userId, status: 'queued' })
-        .sort({ confirmedAt: 1 })
-        .limit(50)
-        .toArray();
+    const fresh = byConfirmed(await getCollection().find({ userId, status: 'queued' }).toArray());
     const delivered: CalendarProposalDocument[] = [];
-    for (const doc of fresh) {
+    for (const doc of fresh.slice(0, 50)) {
         const updated = await getCollection().findOneAndUpdate(
             { _id: doc._id, status: 'queued' },
-            { $set: { status: 'delivered', deviceId, deliveredAt: now, updatedAt: now } },
+            {
+                $set: { status: 'delivered', deviceId, deliveredAt: now, updatedAt: now },
+                $addToSet: { deliveredTo: deviceId },
+            },
             { returnDocument: 'after' },
         );
         if (updated) delivered.push(updated);
     }
-    const mine = await getCollection()
-        .find({ userId, status: 'delivered', deviceId })
-        .sort({ confirmedAt: 1 })
-        .limit(50)
-        .toArray();
+    const mine = byConfirmed(
+        await getCollection().find({ userId, status: 'delivered', deviceId }).toArray(),
+    ).slice(0, 50);
     return { actions: mine.map(toAction), delivered };
+}
+
+function byConfirmed(docs: CalendarProposalDocument[]): CalendarProposalDocument[] {
+    const at = (doc: CalendarProposalDocument) => (doc.confirmedAt ?? doc.createdAt).getTime();
+    return docs.sort((a, b) => at(a) - at(b));
 }
 
 /**
  * The device's report. Idempotent: a repeated report returns the stored result without
- * changing it, and a success always wins over a failure or expiry (the event exists).
- * Null when the action isn't this device's.
+ * changing it, and a success always wins over a failure or expiry (the event exists),
+ * even from a Mac it was taken back from. Only the Mac holding it can report a failure.
+ * Null when the action was never this device's.
  */
 export async function completeAction(
     userId: string,
@@ -190,7 +243,7 @@ export async function completeAction(
     result: DeviceActionResult,
 ): Promise<{ doc: CalendarProposalDocument; changed: boolean } | null> {
     const doc = await getCollection().findOne({ _id: id, userId });
-    if (!doc || doc.deviceId !== deviceId) return null;
+    if (!doc || (doc.deviceId !== deviceId && !doc.deliveredTo?.includes(deviceId))) return null;
     if (doc.status === 'added') return { doc, changed: false };
     const now = new Date();
     const update = result.ok

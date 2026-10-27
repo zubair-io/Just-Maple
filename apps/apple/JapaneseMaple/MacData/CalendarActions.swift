@@ -12,7 +12,7 @@
 //     default one, and reports the result with the event's identifier and the item id
 //     the next calendar upload will use (`POST .../actions/:id/result`).
 //
-//  Never twice: the action id is saved with its result before reporting, and the event
+//  Never twice: an added event's result is saved before reporting, and the event
 //  carries the id in its URL, so a retry (lost reply, crash, reinstall) finds the event
 //  it already made instead of adding another.
 //
@@ -79,8 +79,9 @@ nonisolated protocol DeviceActionsAPI: Sendable {
     func report(_ id: String, _ result: DeviceActionResult) async throws
 }
 
-/// Results saved before reporting, so a report that fails is sent again instead of the
-/// event being added again.
+/// Successful results saved before reporting, so a report that fails is sent again
+/// instead of the event being added again. Failures aren't saved: when the action comes
+/// back (the user tapped Try again), it is tried again.
 nonisolated protocol DeviceActionLedger: Sendable {
     func result(for id: String) async throws -> DeviceActionResult?
     func save(_ result: DeviceActionResult, for id: String) async throws
@@ -115,14 +116,14 @@ nonisolated struct CalendarActionRunner: Sendable {
     }
 
     /// Handles every pending action. Returns how many were reported. A failed report
-    /// stops the pass; the next one sends the saved result again.
+    /// stops the pass; the next one sends a saved success again, or tries a failure again.
     @discardableResult
     func run() async throws -> Int {
         var reported = 0
         for action in try await api.pendingActions() {
-            let saved = try await ledger.result(for: action.id)
+            let saved = try await ledger.result(for: action.id).flatMap { $0.ok ? $0 : nil }
             let result = saved ?? perform(action)
-            if saved == nil { try await ledger.save(result, for: action.id) }
+            if saved == nil, result.ok { try await ledger.save(result, for: action.id) }
             try await api.report(action.id, result)
             reported += 1
         }

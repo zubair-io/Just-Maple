@@ -72,8 +72,8 @@ describe.runIf(mongoAvailable)('Add to calendar', () => {
         });
     }
 
-    async function botContext(who = owner): Promise<MacDataToolContext> {
-        const ctx = await getMacDataToolContext(who.id, notebookId, {
+    async function botContext(who = owner, inNotebook = notebookId): Promise<MacDataToolContext> {
+        const ctx = await getMacDataToolContext(who.id, inNotebook, {
             id: 'bot-1',
             name: 'Maple',
             ownerId: who.id,
@@ -382,5 +382,121 @@ describe.runIf(mongoAvailable)('Add to calendar', () => {
         expect((await json(report(id, { ok: true, itemId: 'calendar:A@1' }))).proposal.status).toBe(
             'added',
         );
+    });
+
+    // MARK: - Review fixes
+
+    it('creates the indexes its queries need, and sorts in code (Cosmos needs an index to sort)', async () => {
+        const { createIndexes } =
+            await vi.importActual<typeof import('../../db/client')>('../../db/client');
+        // A separate database: these indexes would outlive the other suites' cleanup.
+        const scratch = testDb!.client.db('calendar-proposal-indexes');
+        try {
+            await createIndexes(scratch);
+            const keys = (await scratch.collection('calendar_proposals').indexes()).map(
+                (i) => i.key,
+            );
+            expect(keys).toEqual(
+                expect.arrayContaining([
+                    { userId: 1, status: 1 },
+                    { userId: 1, 'event.start': 1 },
+                ]),
+            );
+        } finally {
+            await scratch.dropDatabase();
+        }
+
+        // Two taps in order; the Mac gets the older one first.
+        const first = await propose();
+        const second = await propose({
+            ...pizzaParty,
+            title: 'Practice',
+            start: '2026-10-29T17:00',
+            end: '2026-10-29T18:00',
+        });
+        await confirm(owner, second);
+        await confirm(owner, first);
+        const coll = testDb!.collection('calendar_proposals');
+        await coll.updateOne({ _id: first as never }, { $set: { confirmedAt: new Date(1000) } });
+        expect((await actions()).map((a) => a.id)).toEqual([first, second]);
+    });
+
+    it('gives an action unreported for 15 minutes to the Mac now collecting the calendar', async () => {
+        const id = await propose();
+        await confirm(owner, id);
+        expect(await actions()).toHaveLength(1);
+        await registerMac('mac-two-2', ['calendar']);
+        await call(owner, '/api/collectors/mac-two-2', 'PATCH', { activeSources: ['calendar'] });
+
+        // Mac one stopped collecting: its action goes back to the queue right away.
+        expect((await view(owner, id)).device?.name).toBe('Mac mac-two-2');
+        expect((await actions('mac-two-2')).map((a) => a.id)).toEqual([id]);
+        expect(await actions()).toEqual([]);
+
+        // Mac two goes quiet for 15 minutes: offered again (to whichever Mac collects it).
+        await testDb!
+            .collection('calendar_proposals')
+            .updateOne(
+                { _id: id as never },
+                { $set: { deliveredAt: new Date(Date.now() - 16 * 60 * 1000) } },
+            );
+        expect((await actions('mac-two-2')).map((a) => a.id)).toEqual([id]);
+
+        // A late success from the first Mac still counts; the second then has nothing to do.
+        expect((await json(report(id, { ok: true, itemId: 'calendar:A@1' }))).proposal.status).toBe(
+            'added',
+        );
+        expect(await actions('mac-two-2')).toEqual([]);
+        // Only the Mac holding it can report a failure.
+        expect(
+            (await json(report(id, { ok: false, error: 'x' }, 'mac-two-2'))).proposal.status,
+        ).toBe('added');
+    });
+
+    it('nudges the Mac again when the owner taps while it is still adding', async () => {
+        const id = await propose();
+        await confirm(owner, id);
+        vi.mocked(macDataRelay.request).mockClear();
+        expect((await json(confirm(owner, id))).proposal.status).toBe('adding');
+        expect(macDataRelay.request).toHaveBeenCalledWith(owner.id, 'runActions', {}, 5000);
+        expect(await actions()).toHaveLength(1);
+    });
+
+    it('tells open cards when a proposal expires', async () => {
+        const id = await propose();
+        await testDb!
+            .collection('calendar_proposals')
+            .updateOne({ _id: id as never }, { $set: { expiresAt: new Date(Date.now() - 1) } });
+        // Any read or poll catches it up, and the card is told.
+        await actions();
+        expect(broadcasts()).toEqual(['expired']);
+        expect((await view(member, id)).status).toBe('expired');
+        expect(broadcasts()).toEqual(['expired']);
+    });
+
+    it("doesn't offer an event again that is open in another chat or already added", async () => {
+        const id = await propose();
+        const otherNotebook = (await createNotebookFixture({ createdBy: owner.id }))._id.toString();
+        await call(owner, '/api/pages', 'POST', {
+            type: 'devicedata',
+            deviceSource: 'calendar',
+            title: 'Calendar',
+            notebookId: otherNotebook,
+        });
+        const elsewhere = await botContext(owner, otherNotebook);
+        expect(await executeMacDataTool(elsewhere, 'propose_calendar_event', pizzaParty)).toContain(
+            'another chat',
+        );
+        expect(elsewhere.proposedEvents ?? []).toEqual([]);
+
+        await confirm(owner, id);
+        await actions();
+        await report(id, { ok: true, itemId: 'calendar:A@1' });
+        const again = await botContext();
+        expect(await executeMacDataTool(again, 'propose_calendar_event', pizzaParty)).toContain(
+            'already added',
+        );
+        expect(again.proposedEvents ?? []).toEqual([]);
+        expect(await testDb!.collection('calendar_proposals').countDocuments()).toBe(1);
     });
 });

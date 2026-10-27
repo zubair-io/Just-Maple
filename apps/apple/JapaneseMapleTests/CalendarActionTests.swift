@@ -150,6 +150,34 @@ struct CalendarActionTests {
         #expect(calendar.events.isEmpty)
     }
 
+    @Test func tryAgainAfterAFailureAddsTheEvent() async throws {
+        let server = FakeServer([party])
+        let calendar = FakeCalendar()
+        let ledger = MemoryLedger()
+        calendar.failure = CalendarActionError.noAccess
+        try await runner(server, calendar, ledger).run()
+        #expect(await server.reports.last?.result.ok == false)
+        #expect(ledger.results[party.id] == nil)
+
+        // The user grants access and taps Try again: the same action comes back.
+        calendar.failure = nil
+        await server.requeue(party)
+        try await runner(server, calendar, ledger).run()
+        #expect(calendar.events.count == 1)
+        #expect(await server.reports.last?.result.ok == true)
+        #expect(ledger.results[party.id]?.ok == true)
+    }
+
+    @Test func ignoresAFailureSavedByAnEarlierVersion() async throws {
+        let server = FakeServer([party])
+        let calendar = FakeCalendar()
+        let ledger = MemoryLedger()
+        ledger.results[party.id] = DeviceActionResult(ok: false, error: "old")
+        try await runner(server, calendar, ledger).run()
+        #expect(calendar.events.count == 1)
+        #expect(await server.reports.last?.result.ok == true)
+    }
+
     @Test func refusesActionsItDoesNotKnow() async throws {
         var unknown = party
         unknown.type = "delete_event"
