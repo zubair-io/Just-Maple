@@ -6,6 +6,7 @@ import {
     createPageFixture,
     createUserFixture,
 } from '../../__tests__/helpers/fixtures';
+import { ObjectId } from 'mongodb';
 import { mongoAvailable, testDb } from '../../__tests__/setup';
 import {
     dataGraphItemNodeId,
@@ -35,7 +36,15 @@ vi.mock('../../services/graph.service', async (importOriginal) => ({
 }));
 
 import { judgeGraphBatch, type GraphJudgeRequest } from '../../services/graph-model.service';
-import { getDataGraph, graphTick, runGraphPass } from '../../services/graph.service';
+import {
+    getDataGraph,
+    graphTick,
+    NOTEBOOK_DAILY_CALLS,
+    runGraphPass,
+    runIncrementalGraphPass,
+    USER_DAILY_CALLS,
+} from '../../services/graph.service';
+import { findDecidedPairs, findGraphLinks } from '../../repositories/graph.repo';
 import { executeMacDataTool, getMacDataToolContext } from '../../services/mac-data-tools.service';
 import { saveTravelEstimates } from '../../repositories/travel-estimate.repo';
 
@@ -291,12 +300,7 @@ describe.runIf(mongoAvailable)('connected-data graph', () => {
 
         // B learns its own link later; A's removal doesn't block it.
         agreeableModel('Soccer');
-        await testDb!
-            .collection('graph_state')
-            .updateOne(
-                { _id: b.notebookId as never },
-                { $unset: { backfilledAt: '', backfillBefore: '' } },
-            );
+        await testDb!.collection('graph_judged').deleteMany({ notebookId: b.notebookId });
         await testDb!
             .collection('graph_links')
             .deleteMany({ notebookId: b.notebookId, status: 'rejected' });
@@ -338,29 +342,65 @@ describe.runIf(mongoAvailable)('connected-data graph', () => {
 
     // MARK: - Filters and access
 
-    it('drops links from reads the moment a filter stops sharing an item, then cleans them up', async () => {
-        await upload(['calendar', 'location'], [visit, followUp]);
-        const { notebookId, pages } = await notebook(['calendar', 'location']);
+    it('hides links the moment a filter stops sharing an item, and deletes nothing on read', async () => {
+        await upload(['calendar', 'mail'], [partyMail, partyEvent]);
+        const { notebookId, pages } = await notebook(['calendar', 'mail']);
+        agreeableModel();
         await runGraphPass(notebookId);
-        const appointment = node(alex.id, followUp.id);
-        expect(
-            (await graphOf(alex, notebookId)).graph.nodes.some((n) => n.id === appointment),
-        ).toBe(true);
+        const event = node(alex.id, partyEvent.id);
+        const stored = async () =>
+            testDb!
+                .collection('graph_links')
+                .countDocuments({ notebookId, $or: [{ a: event }, { b: event }] });
+        const before = await stored();
+        expect(before).toBeGreaterThan(0);
 
         await setFilter(pages.calendar!, { calendars: [{ name: 'Work' }] });
         const after = (await graphOf(alex, notebookId)).graph;
-        expect(after.nodes.some((n) => n.id === appointment)).toBe(false);
-        expect(after.links.some((l) => l.source === appointment || l.target === appointment)).toBe(
-            false,
-        );
+        expect(after.nodes.some((n) => n.id === event)).toBe(false);
+        expect(after.links.some((l) => l.source === event || l.target === event)).toBe(false);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(await stored()).toBe(before);
 
-        // The cleanup runs behind the read.
-        await vi.waitFor(async () => {
-            const left = await testDb!
-                .collection('graph_links')
-                .countDocuments({ notebookId, $or: [{ a: appointment }, { b: appointment }] });
-            expect(left).toBe(0);
+        // Widened again: the model's links are back, with no new model call.
+        judge.mockClear();
+        await setFilter(pages.calendar!, { includeAll: true });
+        const again = (await graphOf(alex, notebookId)).graph;
+        expect(between(again, node(alex.id, partyMail.id), event)).toMatchObject({
+            madeBy: 'model',
         });
+        expect(judge).not.toHaveBeenCalled();
+    });
+
+    it('deletes model links only once an item has been gone for 30 days', async () => {
+        await upload(['calendar', 'mail'], [partyMail, partyEvent]);
+        const { notebookId } = await notebook(['calendar', 'mail']);
+        agreeableModel();
+        await runGraphPass(notebookId);
+        const linkId = (await findGraphLinks(notebookId)).find((l) => l.kind === 'related')!._id;
+        const pass = (days: number) =>
+            runGraphPass(notebookId, new Date(Date.now() + days * 24 * HOUR * 1000));
+
+        // Still in the device data: not gone.
+        await pass(1);
+        expect(
+            await testDb!.collection('graph_links').findOne({ _id: linkId as never }),
+        ).not.toHaveProperty('goneSince');
+
+        await testDb!
+            .collection('device_items')
+            .deleteOne({ userId: alex.id, 'item.id': partyEvent.id });
+        await pass(2);
+        const missing = await testDb!.collection('graph_links').findOne({ _id: linkId as never });
+        expect(missing?.goneSince).toBeInstanceOf(Date);
+        await pass(20);
+        expect(
+            await testDb!.collection('graph_links').countDocuments({ _id: linkId as never }),
+        ).toBe(1);
+        await pass(33);
+        expect(
+            await testDb!.collection('graph_links').countDocuments({ _id: linkId as never }),
+        ).toBe(0);
     });
 
     it('shows members only what the pages share them, and nothing to outsiders', async () => {
@@ -609,5 +649,295 @@ describe.runIf(mongoAvailable)('connected-data graph', () => {
         }).then((g) => ({ graph: g }));
         expect(graph.nodes.some((n) => n.id === node(alex.id, visit.id))).toBe(false);
         expect(graph.nodes.some((n) => n.id === node(alex.id, followUp.id))).toBe(true);
+    });
+
+    // MARK: - Review fixes
+
+    it('hides what was written while private once the notebook is shared, then scrubs it', async () => {
+        await upload(['calendar', 'mail', 'location'], [partyMail, partyEvent, visit, followUp]);
+        const { notebookId, pages } = await notebook(['calendar', 'mail', 'location']);
+        await saveTravelEstimates(alex.id, 'phone', [
+            {
+                eventId: followUp.id,
+                minutes: 18,
+                origin: 'Home',
+                computedAt: new Date().toISOString(),
+            },
+        ]);
+        judge.mockImplementation(async (request) => ({
+            pairs: request.pairs.map((pair) => ({
+                p: pair.p,
+                related: true,
+                confidence: 0.9,
+                reason: 'Both about the lawyer meeting',
+            })),
+            topics: [{ name: 'Divorce', items: request.items.map((i) => i.n), confidence: 0.9 }],
+        }));
+        // Private: everything is saved as the model said it.
+        await runGraphPass(notebookId);
+        const private_ = (await graphOf(alex, notebookId)).graph;
+        expect(private_.nodes.some((n) => n.label === 'Divorce')).toBe(true);
+        expect(private_.links.some((l) => l.kind === 'travel')).toBe(true);
+
+        // Shared with Sam, before any pass: reads already hide it.
+        await testDb!.collection('notebooks').updateOne(
+            { _id: new ObjectId(notebookId) },
+            {
+                $push: {
+                    'sharing.sharedWith': { userId: sam.id, accessLevel: 'write' },
+                } as never,
+            },
+        );
+        for (const source of ['calendar', 'mail', 'location'])
+            await setFilter(pages[source]!, { includeAll: true });
+        for (const who of [alex, sam]) {
+            const seen = (await graphOf(who, notebookId)).graph;
+            expect(seen.nodes.some((n) => n.label === 'Divorce')).toBe(false);
+            expect(seen.links.some((l) => l.kind === 'travel')).toBe(false);
+            expect(seen.links.some((l) => /lawyer|Divorce|Home/.test(l.evidence))).toBe(false);
+            expect(seen.links.find((l) => l.kind === 'related')?.evidence).toBe('Related');
+        }
+        const bot = { id: 'bot', name: 'Bot', ownerId: alex.id };
+        const ctx = await getMacDataToolContext(alex.id, notebookId, bot);
+        const read = JSON.stringify(
+            JSON.parse(await executeMacDataTool(ctx!, 'get_local_item', { id: partyMail.id })),
+        );
+        expect(read).not.toMatch(/lawyer|Divorce/);
+
+        // The next pass scrubs what's stored.
+        judge.mockResolvedValue({ pairs: [], topics: [] });
+        await runGraphPass(notebookId);
+        expect(
+            await testDb!
+                .collection('graph_nodes')
+                .countDocuments({ notebookId, label: 'Divorce' }),
+        ).toBe(0);
+        expect(
+            await testDb!.collection('graph_links').countDocuments({
+                notebookId,
+                $or: [{ evidence: /lawyer|Divorce|Home/ }, { kind: 'travel', status: 'active' }],
+            }),
+        ).toBe(0);
+    });
+
+    it('judges items that arrive later: a new page, a wider filter, a big upload', async () => {
+        const judgedTitles = () =>
+            judge.mock.calls.flatMap(([request]) => request.items.map((i) => i.title));
+        await upload(['calendar', 'mail'], [partyMail, partyEvent]);
+        const { notebookId, pages } = await notebook(['calendar']);
+        await setFilter(pages.calendar!, { calendars: [{ name: 'Work' }] });
+        await runGraphPass(notebookId);
+        expect(judgedTitles()).toEqual([]);
+
+        // The calendar filter widens: the party event is new to the model.
+        await setFilter(pages.calendar!, { includeAll: true });
+        expect(
+            await testDb!.collection('graph_state').findOne({ _id: notebookId as never }),
+        ).toMatchObject({ fullPassRequested: true });
+        await runGraphPass(notebookId);
+        expect(judgedTitles()).toEqual(['Soccer pizza party']);
+
+        // A mail page is added: the email uploaded long ago is new too.
+        judge.mockClear();
+        await json(
+            call(alex, '/api/pages', 'POST', {
+                type: 'devicedata',
+                deviceSource: 'mail',
+                title: 'Mail',
+                notebookId,
+            }),
+        );
+        await runGraphPass(notebookId);
+        expect(judgedTitles()).toContain("Greyson's soccer pizza party");
+
+        // A big upload goes through over several passes; the cursor doesn't skip any.
+        judge.mockClear();
+        const many = Array.from({ length: 200 }, (_, i) =>
+            item(`mail:bulk${i}`, 'mail', { occurredAt: now - i * 60, title: `Bulk ${i}` }),
+        );
+        await upload(['calendar', 'mail'], many);
+        const first = await runGraphPass(notebookId);
+        expect(first).toMatchObject({ pending: 40, modelCalls: 4 });
+        const second = await runGraphPass(notebookId);
+        expect(second).toMatchObject({ pending: 0, modelCalls: 1 });
+        expect(new Set(judgedTitles()).size).toBe(200);
+    });
+
+    it('keeps a removed person link removed when two people merge into one', async () => {
+        const coach = item('imessage:coach', 'imessage', {
+            sender: 'Coach Dana',
+            participants: ['+15185550199'],
+            body: 'Practice at 5',
+        });
+        const smith = item('imessage:smith', 'imessage', {
+            sender: 'Dana Smith',
+            participants: ['+15185550142'],
+            body: 'See you there',
+        });
+        await upload(['imessage', 'contacts'], [coach, smith]);
+        const { notebookId } = await notebook(['imessage', 'contacts']);
+        await runGraphPass(notebookId);
+        const graph = (await graphOf(alex, notebookId)).graph;
+        const coachLink = graph.links.find(
+            (l) => l.kind === 'person' && [l.source, l.target].includes(node(alex.id, coach.id)),
+        )!;
+        expect(
+            (
+                await call(
+                    alex,
+                    `/api/graph/${notebookId}/links/${encodeURIComponent(coachLink.id)}`,
+                    'DELETE',
+                )
+            ).status,
+        ).toBe(200);
+
+        // One contact card with both numbers: they're one person now, under one of the ids.
+        await upload(
+            ['imessage', 'contacts'],
+            [
+                item('contacts:dana', 'contacts', {
+                    title: 'Dana Smith',
+                    extra: {
+                        phones: [
+                            { label: 'mobile', value: '(518) 555-0199' },
+                            { label: 'work', value: '(518) 555-0142' },
+                        ],
+                    },
+                }),
+            ],
+        );
+        await runGraphPass(notebookId);
+        const after = (await graphOf(alex, notebookId)).graph;
+        const people = after.nodes.filter((n) => n.kind === 'person');
+        expect(people).toHaveLength(1);
+        expect(
+            after.links.some(
+                (l) =>
+                    l.kind === 'person' && [l.source, l.target].includes(node(alex.id, coach.id)),
+            ),
+        ).toBe(false);
+        expect(
+            after.links.some(
+                (l) =>
+                    l.kind === 'person' && [l.source, l.target].includes(node(alex.id, smith.id)),
+            ),
+        ).toBe(true);
+    });
+
+    it('caps model calls a day, and runs full passes at most every 15 minutes', async () => {
+        const many = Array.from({ length: 200 }, (_, i) =>
+            item(`mail:m${i}`, 'mail', { occurredAt: now - i * 60, title: `Mail ${i}` }),
+        );
+        await upload(['mail', 'location'], [...many, visit]);
+        const { notebookId } = await notebook(['mail', 'location']);
+        const day = new Date().toISOString().slice(0, 10);
+        const usage = testDb!.collection('graph_usage');
+        await usage.insertOne({
+            _id: `notebook:${notebookId}|${day}` as never,
+            day,
+            calls: NOTEBOOK_DAILY_CALLS - 1,
+        });
+        const first = await runGraphPass(notebookId);
+        // 200 emails and a visit: one call's batch of 40 is done.
+        expect(first).toMatchObject({ modelCalls: 1, pending: 161 });
+        expect(await runGraphPass(notebookId)).toMatchObject({ modelCalls: 0 });
+
+        // The person who added the Graph page has a cap of their own across notebooks.
+        await usage.deleteMany({});
+        await usage.insertOne({
+            _id: `user:${alex.id}|${day}` as never,
+            day,
+            calls: USER_DAILY_CALLS,
+        });
+        expect(await runGraphPass(notebookId)).toMatchObject({ modelCalls: 0 });
+        expect(
+            await usage.findOne({ _id: `notebook:${notebookId}|${day}` as never }),
+        ).toMatchObject({ calls: 0 });
+        await usage.deleteMany({});
+
+        // Between full passes, uploads are linked by rules alone.
+        judge.mockClear();
+        const state = () => testDb!.collection('graph_state').findOne({ _id: notebookId as never });
+        const lastFull = (await state())!.lastFullRunAt as Date;
+        const later = new Date(lastFull.getTime() + 60_000);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        const again = item('location:visit:again', 'location', {
+            ...visit,
+            id: 'location:visit:again',
+            occurredAt: now - 30 * 60,
+        });
+        await upload(['mail', 'location'], [again]);
+        await graphTick(later);
+        expect(judge).not.toHaveBeenCalled();
+        expect((await state())!.lastFullRunAt).toEqual(lastFull);
+        expect(await runIncrementalGraphPass(notebookId, later)).toMatchObject({ items: 1 });
+        const atOffice = (await graphOf(alex, notebookId)).graph.links.find(
+            (l) => l.kind === 'at_place' && l.source === node(alex.id, again.id),
+        );
+        expect(atOffice).toBeDefined();
+
+        // Items still waiting: a full pass after 15 minutes, not before.
+        await graphTick(new Date(lastFull.getTime() + 10 * 60_000));
+        expect(judge).not.toHaveBeenCalled();
+        await graphTick(new Date(lastFull.getTime() + 16 * 60_000));
+        expect(judge).toHaveBeenCalled();
+    });
+
+    it('asks only about the pairs at hand, forgets old rejections, and reads newest first', async () => {
+        await upload(['calendar', 'mail'], [partyMail, partyEvent]);
+        const { notebookId } = await notebook(['calendar', 'mail']);
+        const links = testDb!.collection('graph_links');
+        const old = new Date(Date.now() - 100 * 24 * HOUR * 1000);
+        await links.insertMany(
+            Array.from({ length: 5 }, (_, i) => ({
+                _id: `${notebookId}|item:x:${i}|item:y:${i}` as never,
+                notebookId,
+                a: `item:x:${i}`,
+                b: `item:y:${i}`,
+                kind: 'related',
+                confidence: i === 0 ? 0.8 : 0,
+                evidence: '',
+                madeBy: 'model',
+                status: i === 0 ? 'removed' : i === 1 ? 'active' : 'rejected',
+                createdAt: old,
+                updatedAt: i === 4 ? new Date() : old,
+            })),
+        );
+        const keys = [0, 1, 2, 3, 4, 9].map((i) => `${notebookId}|item:x:${i}|item:y:${i}`);
+        expect([...(await findDecidedPairs(notebookId, keys))].sort()).toEqual(keys.slice(0, 5));
+        expect(await findDecidedPairs(notebookId, [])).toEqual(new Set());
+
+        await runGraphPass(notebookId);
+        const left = (await links.find({ notebookId, a: /^item:x:/ }).toArray()).map(
+            (l) => l.status,
+        );
+        // Old rejections go; removals and links stay.
+        expect(left.sort()).toEqual(['active', 'rejected', 'removed']);
+
+        const newest = await findGraphLinks(notebookId, ['active', 'rejected', 'removed'], 1);
+        expect(newest[0]!._id).toBe(`${notebookId}|item:x:4|item:y:4`);
+    });
+
+    it('removes a link whose id has a % in it', async () => {
+        const sale = item('mail:50%off', 'mail', {
+            title: 'Pizza party 50% off',
+            mailbox: 'Inbox',
+            body: 'Soccer pizza party deal',
+        });
+        await upload(['calendar', 'mail'], [sale, partyEvent]);
+        const { notebookId } = await notebook(['calendar', 'mail']);
+        agreeableModel();
+        await runGraphPass(notebookId);
+        const link = (await findGraphLinks(notebookId)).find((l) => l._id.includes('%'))!;
+        expect(link).toBeDefined();
+        const response = await call(
+            alex,
+            `/api/graph/${notebookId}/links/${encodeURIComponent(link._id)}`,
+            'DELETE',
+        );
+        expect(response.status).toBe(200);
+        expect(
+            await testDb!.collection('graph_links').findOne({ _id: link._id as never }),
+        ).toMatchObject({ status: 'removed' });
     });
 });

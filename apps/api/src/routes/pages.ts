@@ -37,7 +37,7 @@ import {
 } from '../services/proactive-settings.service';
 import { ensureProfile } from '../services/about-me.service';
 import { aboutMePageId, graphPageId } from '@maple/shared';
-import { runGraphPass } from '../services/graph.service';
+import { requestGraphPass, runGraphPass } from '../services/graph.service';
 import { updateLinksForPage, handlePageRename, handlePageDeletion } from '../services/link.service';
 import { indexPage, removeFromIndex } from '../repositories/search.repo';
 import type { Page } from '@maple/shared';
@@ -48,9 +48,13 @@ const DATA_PAGE_CREATOR_ONLY = {
     message: 'Only the person who added this data page can change it',
 };
 
-/** Moving a data page into a shared notebook resets its filter: tell open clients. */
+/**
+ * Moving a data page into a shared notebook resets its filter: tell open clients. A data
+ * page arriving in a notebook may bring items its graph hasn't linked yet.
+ */
 async function emitDataPageFilterIfReset(previousPage: Page | null, page: Page): Promise<void> {
     if (page.type !== 'devicedata' || !page.notebookId) return;
+    if (previousPage?.notebookId !== page.notebookId) requestGraphPass(page.notebookId);
     if (JSON.stringify(previousPage?.deviceFilter) === JSON.stringify(page.deviceFilter)) return;
     realtimeWSService.sendToUsers(await getUsersWithNotebookAccess(page.notebookId), {
         type: 'page.updated',
@@ -248,6 +252,9 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                     { seed: true },
                 ).catch((error) => console.error('[AboutMe] Could not seed About me:', error));
             }
+
+            // A new data page may bring items the notebook's graph hasn't linked yet.
+            if (page.type === 'devicedata' && page.notebookId) requestGraphPass(page.notebookId);
 
             // Adding Graph starts linking the notebook's last 30 days.
             if (page.type === 'graph' && page.notebookId) {

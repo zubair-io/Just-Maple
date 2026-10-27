@@ -26,7 +26,19 @@ export interface GraphItem {
     item: MacDataItem;
 }
 
-export type GraphNodeInput = Pick<GraphNodeDocument, 'id' | 'kind' | 'label' | 'addresses'>;
+export type GraphNodeInput = Pick<
+    GraphNodeDocument,
+    'id' | 'kind' | 'label' | 'addresses' | 'keys' | 'handles' | 'aliases'
+>;
+
+/** People and places already in the notebook, so ids stay the same from pass to pass. */
+export interface KnownHubs {
+    /** Handle → the person id it belongs to. */
+    personOf: Map<string, string>;
+    /** Person id → name. */
+    people: Map<string, string>;
+    places: GraphNodeInput[];
+}
 
 export interface RuleGraph {
     nodes: GraphNodeInput[];
@@ -97,7 +109,35 @@ export function locationKeys(text: string | undefined): Set<string> {
     return keys;
 }
 
-const shareKey = (a: Set<string>, b: Set<string>) => [...a].some((key) => b.has(key));
+/** How well two locations match: whole address beats street line beats name. 0 is none. */
+function matchStrength(a: Set<string>, b: Set<string>): number {
+    let best = 0;
+    for (const key of a) {
+        if (!b.has(key)) continue;
+        best = Math.max(best, key.startsWith('all:') ? 3 : key.startsWith('street:') ? 2 : 1);
+    }
+    return best;
+}
+
+/** The best matching place; ties go to the smaller id, so arrival order doesn't matter. */
+function bestPlace<P extends { id: string; keys: Set<string> }>(
+    places: Iterable<P>,
+    keys: Set<string>,
+): P | undefined {
+    let best: P | undefined;
+    let bestStrength = 0;
+    for (const place of places) {
+        const strength = matchStrength(place.keys, keys);
+        if (
+            strength > bestStrength ||
+            (strength > 0 && strength === bestStrength && place.id < best!.id)
+        ) {
+            best = place;
+            bestStrength = strength;
+        }
+    }
+    return best;
+}
 
 // MARK: - People
 
@@ -177,9 +217,9 @@ function itemHandles(item: MacDataItem): { from: string[]; with: string[] } {
     return { from: [], with: [] };
 }
 
-const isString = (value: string | null): value is string => !!value;
+const isString = (value: string | null | undefined): value is string => !!value;
 
-function buildPeople(items: GraphItem[], out: RuleGraph): void {
+function buildPeople(items: GraphItem[], known: Map<string, string>, out: RuleGraph): void {
     const groups = new UnionFind();
     const names = new Map<string, string>(); // handle → name seen
     const byName = new Map<string, string>(); // normalized name → first handle
@@ -224,18 +264,35 @@ function buildPeople(items: GraphItem[], out: RuleGraph): void {
         const root = groups.find(handle);
         members.set(root, [...(members.get(root) ?? []), handle]);
     }
-    for (const [root, handles] of members) {
+    // A person keeps the id they had: the oldest id among their handles. A new number on a
+    // contact card doesn't make a new person; two people merged keep one id, the other's
+    // becomes an alias.
+    const taken = new Set<string>();
+    const ordered = [...members.entries()].sort(([a], [b]) => (a < b ? -1 : 1));
+    for (const [root, handles] of ordered) {
         const contact = handles.map((h) => contactOf.get(h)).find(Boolean);
         if (!contact && !handles.some((h) => texted.has(h))) continue;
-        const id = `person:${hash(root)}`;
+        const earlier = [...new Set(handles.map((h) => known.get(h)).filter(isString))]
+            .filter((id) => !taken.has(id))
+            .sort();
+        let id = earlier[0] ?? `person:${hash(root)}`;
+        // A split person: the other part gets an id of its own.
+        if (taken.has(id)) id = `person:${hash(`${root}|${handles.length}`)}`;
+        taken.add(id);
         const label =
             contact?.item.title?.trim() ||
             handles.map((h) => names.get(h)).find(Boolean) ||
             handles[0]!;
         labels.set(id, label);
         for (const handle of handles) personOf.set(handle, id);
+        out.nodes.push({
+            id,
+            kind: 'person',
+            label,
+            handles: [...handles].sort(),
+            aliases: earlier.slice(1),
+        });
     }
-    for (const [id, label] of labels) out.nodes.push({ id, kind: 'person', label });
 
     const link = (entry: GraphItem, person: string, evidence: string) => {
         out.links.push({
@@ -328,43 +385,20 @@ function buildPlaces(
     const visits: Array<{ entry: GraphItem; place: Place }> = [];
     for (const entry of items) {
         const { item } = entry;
-        if (item.source !== 'location') continue;
-        const lat = num(item.extra?.lat);
-        const lon = num(item.extra?.lon);
-        const placeId = typeof item.extra?.placeId === 'string' ? item.extra.placeId : null;
-        const key = placeId
-            ? `np:${placeId}`
-            : Number.isFinite(lat) && Number.isFinite(lon)
-              ? `geo:${lat.toFixed(3)},${lon.toFixed(3)}`
-              : item.location
-                ? `addr:${normalizeAddressPart(item.location)}`
-                : null;
-        if (!key) continue;
-        const id = `place:${hash(key)}`;
-        const label =
-            (typeof item.extra?.place === 'string' && item.extra.place) ||
-            item.title ||
-            item.location ||
-            'A place';
-        let place = places.get(id);
+        const seen = visitPlace(item);
+        if (!seen) continue;
+        let place = places.get(seen.id);
         if (!place) {
-            place = {
-                id,
-                label,
-                keys: new Set(),
-                addresses: new Set(),
-                ...(Number.isFinite(lat) ? { lat, lon } : {}),
-            };
-            places.set(id, place);
+            place = { ...seen, keys: new Set(), addresses: new Set() };
+            places.set(seen.id, place);
         }
-        for (const k of locationKeys(item.location)) place.keys.add(k);
-        for (const k of locationKeys(label)) if (k.startsWith('name:')) place.keys.add(k);
+        for (const k of seen.keys) place.keys.add(k);
         if (item.location) place.addresses.add(normalizeAddressPart(item.location));
         visits.push({ entry, place });
-        out.placeOf.set(entry.nodeId, id);
+        out.placeOf.set(entry.nodeId, place.id);
         out.links.push({
             a: entry.nodeId,
-            b: id,
+            b: place.id,
             kind: 'at_place',
             confidence: 1,
             evidence: `Visit at ${place.label}`,
@@ -379,7 +413,7 @@ function buildPlaces(
         const { item } = entry;
         if (item.source !== 'calendar' || !item.location?.trim()) continue;
         const keys = locationKeys(item.location);
-        const place = [...places.values()].find((p) => shareKey(p.keys, keys));
+        const place = bestPlace(places.values(), keys);
         if (place) {
             out.placeOf.set(entry.nodeId, place.id);
             out.links.push({
@@ -427,11 +461,10 @@ function buildPlaces(
             if (!estimate) continue;
             const origin = estimate.origin?.trim() || 'where you were';
             const keys = locationKeys(origin);
-            let place = [...places.values()].find(
-                (p) =>
-                    normalizeAddressPart(p.label) === normalizeAddressPart(origin) ||
-                    shareKey(p.keys, keys),
-            );
+            let place =
+                [...places.values()]
+                    .filter((p) => normalizeAddressPart(p.label) === normalizeAddressPart(origin))
+                    .sort((x, y) => (x.id < y.id ? -1 : 1))[0] ?? bestPlace(places.values(), keys);
             if (!place) {
                 const id = `place:${hash(`origin:${normalizeAddressPart(origin)}`)}`;
                 place = { id, label: origin, keys, addresses: new Set() };
@@ -455,8 +488,40 @@ function buildPlaces(
             kind: 'place',
             label: place.label,
             addresses: [...place.addresses],
+            keys: [...place.keys],
         });
     }
+}
+
+/** The place a visit was at: its named place, or a ~100 m square, or its address. */
+function visitPlace(
+    item: MacDataItem,
+): { id: string; label: string; keys: Set<string>; lat?: number; lon?: number } | null {
+    if (item.source !== 'location') return null;
+    const lat = num(item.extra?.lat);
+    const lon = num(item.extra?.lon);
+    const placeId = typeof item.extra?.placeId === 'string' ? item.extra.placeId : null;
+    const key = placeId
+        ? `np:${placeId}`
+        : Number.isFinite(lat) && Number.isFinite(lon)
+          ? `geo:${lat.toFixed(3)},${lon.toFixed(3)}`
+          : item.location
+            ? `addr:${normalizeAddressPart(item.location)}`
+            : null;
+    if (!key) return null;
+    const label =
+        (typeof item.extra?.place === 'string' && item.extra.place) ||
+        item.title ||
+        item.location ||
+        'A place';
+    const keys = locationKeys(item.location);
+    for (const k of locationKeys(label)) if (k.startsWith('name:')) keys.add(k);
+    return {
+        id: `place:${hash(key)}`,
+        label,
+        keys,
+        ...(Number.isFinite(lat) ? { lat, lon } : {}),
+    };
 }
 
 /** Visits at the event's place: created there, or there during the event. */
@@ -497,11 +562,86 @@ function linkVisitsToEvent(
 /** Every rule link among the items one notebook shares. */
 export function ruleGraph(
     items: GraphItem[],
-    options: { travel?: Map<string, TravelEstimate>; shared: boolean },
+    options: { travel?: Map<string, TravelEstimate>; shared: boolean; known?: KnownHubs },
 ): RuleGraph {
     const out: RuleGraph = { nodes: [], links: [], placeOf: new Map(), peopleOf: new Map() };
     buildPlaces(items, options.travel ?? new Map(), options.shared, out);
-    buildPeople(items, out);
+    buildPeople(items, options.known?.personOf ?? new Map(), out);
+    return out;
+}
+
+/**
+ * Rule links for newly uploaded items only, against the people and places the notebook
+ * already has: a visit to its place, an event to a known place, a message or email to a
+ * known person. The next full pass adds the rest (visits during events, new people).
+ */
+export function incrementalRuleLinks(items: GraphItem[], known: KnownHubs): RuleGraph {
+    const out: RuleGraph = { nodes: [], links: [], placeOf: new Map(), peopleOf: new Map() };
+    const places = known.places.map((place) => ({
+        id: place.id,
+        label: place.label,
+        keys: new Set(place.keys ?? []),
+    }));
+    const labels = new Map(known.places.map((place) => [place.id, place.label]));
+    for (const entry of items) {
+        const { item } = entry;
+        if (item.source === 'location') {
+            const place = visitPlace(item);
+            if (!place) continue;
+            if (!labels.has(place.id)) {
+                labels.set(place.id, place.label);
+                out.nodes.push({
+                    id: place.id,
+                    kind: 'place',
+                    label: place.label,
+                    keys: [...place.keys],
+                });
+            }
+            out.links.push({
+                a: entry.nodeId,
+                b: place.id,
+                kind: 'at_place',
+                confidence: 1,
+                evidence: `Visit at ${labels.get(place.id)}`,
+                madeBy: 'rule',
+            });
+            continue;
+        }
+        if (item.source === 'calendar' && item.location?.trim()) {
+            const place = bestPlace(places, locationKeys(item.location));
+            if (place)
+                out.links.push({
+                    a: entry.nodeId,
+                    b: place.id,
+                    kind: 'at_place',
+                    confidence: 0.95,
+                    evidence: `Event at ${place.label}`,
+                    madeBy: 'rule',
+                });
+        }
+        const { from, with: others } = itemHandles(item);
+        const people = new Set(
+            [...from, ...others].map((h) => known.personOf.get(h)).filter(isString),
+        );
+        for (const person of [...people].slice(0, MAX_PEOPLE_PER_ITEM)) {
+            const name = known.people.get(person) ?? 'someone';
+            out.links.push({
+                a: entry.nodeId,
+                b: person,
+                kind: 'person',
+                confidence: 1,
+                evidence:
+                    item.source === 'calendar'
+                        ? `${name} is invited`
+                        : item.source === 'mail'
+                          ? from.some((h) => known.personOf.get(h) === person)
+                              ? `Email from ${name}`
+                              : `Email to ${name}`
+                          : `Message with ${name}`,
+                madeBy: 'rule',
+            });
+        }
+    }
     return out;
 }
 

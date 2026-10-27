@@ -78,7 +78,8 @@ export const graphRoutes = new Elysia({ prefix: '/api/graph' })
                 set.status = 404;
                 return NOT_FOUND;
             }
-            const linkId = decodeURIComponent(params.linkId);
+            // Elysia has already decoded the path; decoding again breaks ids with a '%'.
+            const linkId = params.linkId;
             // Link ids start with their notebook's id: another notebook's can't match.
             if (
                 !linkId.startsWith(`${params.notebookId}|`) ||

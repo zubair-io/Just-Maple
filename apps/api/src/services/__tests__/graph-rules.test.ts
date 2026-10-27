@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { MacDataItem, MacDataSource, TravelEstimate } from '@maple/shared';
 import {
+    incrementalRuleLinks,
     locationKeys,
     modelCandidates,
     normalizeHandle,
     ruleGraph,
     type GraphItem,
+    type KnownHubs,
 } from '../graph-rules';
 import { linkKey } from '../../repositories/graph.repo';
 
@@ -224,5 +226,104 @@ describe('model candidates', () => {
                 1,
             ),
         ).toHaveLength(1);
+    });
+});
+
+describe('stable people and places', () => {
+    const card = (phones: string[]) =>
+        entry('contacts:dana', 'contacts', {
+            title: 'Coach Dana',
+            extra: { phones: phones.map((value) => ({ label: 'mobile', value })) },
+        });
+    const text = entry('imessage:1', 'imessage', {
+        sender: 'Coach Dana',
+        participants: ['+15185550199'],
+    });
+    const knownFrom = (graph: ReturnType<typeof ruleGraph>): KnownHubs => {
+        const personOf = new Map<string, string>();
+        const people = new Map<string, string>();
+        for (const node of graph.nodes) {
+            if (node.kind !== 'person') continue;
+            people.set(node.id, node.label);
+            for (const handle of node.handles ?? []) personOf.set(handle, node.id);
+        }
+        return { personOf, people, places: graph.nodes.filter((n) => n.kind === 'place') };
+    };
+
+    it("keeps a person's id when their contact card gains a number", () => {
+        const before = ruleGraph([card(['(518) 555-0199']), text], { shared: false });
+        const id = before.nodes.find((n) => n.kind === 'person')!.id;
+        // The new number sorts first: without the known ids, the person would get a new id.
+        const after = ruleGraph([card(['(212) 555-0100', '(518) 555-0199']), text], {
+            shared: false,
+            known: knownFrom(before),
+        });
+        const people = after.nodes.filter((n) => n.kind === 'person');
+        expect(people.map((p) => p.id)).toEqual([id]);
+        expect(people[0]!.handles).toContain('+12125550100');
+        expect(
+            ruleGraph([card(['(212) 555-0100', '(518) 555-0199']), text], {
+                shared: false,
+            }).nodes.find((n) => n.kind === 'person')!.id,
+        ).not.toBe(id);
+    });
+
+    it('keeps one id when two people merge, and lists the other as an alias', () => {
+        const other = entry('imessage:2', 'imessage', {
+            sender: 'Dana Smith',
+            participants: ['+15185550142'],
+        });
+        const before = ruleGraph([text, other], { shared: false });
+        const ids = before.nodes
+            .filter((n) => n.kind === 'person')
+            .map((n) => n.id)
+            .sort();
+        expect(ids).toHaveLength(2);
+        const after = ruleGraph([card(['(518) 555-0199', '(518) 555-0142']), text, other], {
+            shared: false,
+            known: knownFrom(before),
+        });
+        const people = after.nodes.filter((n) => n.kind === 'person');
+        expect(people).toHaveLength(1);
+        expect(people[0]!.id).toBe(ids[0]);
+        expect(people[0]!.aliases).toEqual([ids[1]]);
+    });
+
+    it('matches an event to the same place whatever order the visits came in', () => {
+        const named = entry('location:visit:a', 'location', {
+            title: 'Riverside Field',
+            location: '40 River Rd, Albany, NY',
+            extra: { lat: 42.66, lon: -73.73 },
+        });
+        const nearby = entry('location:visit:b', 'location', {
+            title: 'Riverside Field',
+            location: 'Riverside Field',
+            extra: { lat: 42.7, lon: -73.7 },
+        });
+        const game = entry('calendar:game@1', 'calendar', {
+            title: 'Game',
+            location: 'Riverside Field, 40 River Rd, Albany NY',
+        });
+        const placeOf = (items: GraphItem[]) =>
+            ruleGraph(items, { shared: false }).placeOf.get(game.nodeId);
+        expect(placeOf([named, nearby, game])).toBe(placeOf([nearby, named, game]));
+        // The street address is the stronger match than the name alone.
+        expect(placeOf([nearby, named, game])).toBe(
+            ruleGraph([named], { shared: false }).placeOf.get(named.nodeId),
+        );
+    });
+
+    it('links new uploads to the people and places already known', () => {
+        const full = ruleGraph([visit, card(['(518) 555-0199']), text], { shared: false });
+        const later = entry('calendar:later@1', 'calendar', {
+            title: 'Checkup',
+            location: '12 Main St, Albany',
+        });
+        const reply = entry('imessage:3', 'imessage', { participants: ['+15185550199'] });
+        const update = incrementalRuleLinks([later, reply], knownFrom(full));
+        const place = full.placeOf.get(visit.nodeId)!;
+        const person = full.nodes.find((n) => n.kind === 'person')!.id;
+        expect(link(update, later.nodeId, place)?.kind).toBe('at_place');
+        expect(link(update, reply.nodeId, person)?.evidence).toBe('Message with Coach Dana');
     });
 });

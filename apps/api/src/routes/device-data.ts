@@ -40,6 +40,7 @@ import { getUsersWithNotebookAccess } from '../repositories/notebook.repo';
 import { realtimeWSService } from '../services/realtime-ws.service';
 import { applyDeviceUpload, DeviceUploadError } from '../services/device-data.service';
 import { bumpDeviceDataVersion } from '../services/device-search.service';
+import { requestGraphPass } from '../services/graph.service';
 
 /**
  * Devices (Mac, iPhone) collect the user's personal data and upload it here:
@@ -360,6 +361,8 @@ export const deviceDataRoutes = new Elysia({ prefix: '/api' })
                 return { error: 'Page not found' };
             }
             if (page.notebookId) {
+                // A wider filter shares items the notebook's graph hasn't linked yet.
+                if (body.deviceFilter) requestGraphPass(page.notebookId);
                 // Other open clients update the page's filter and description without a reload.
                 realtimeWSService.sendToUsers(await getUsersWithNotebookAccess(page.notebookId), {
                     type: 'page.updated',
