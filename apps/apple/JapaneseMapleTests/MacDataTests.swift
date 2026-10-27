@@ -112,6 +112,50 @@ private func attributedBody(_ text: String) -> Data {
         #expect(edited.revision != first.items[0].revision)
     }
 
+    @Test func keepsRepliesThatOnlyHaveAnAttributedBody() throws {
+        let (url, db) = try makeChatDB()
+        try insert(db, rowid: 1, text: nil, body: attributedBody("Sure, Thursday works"), at: now, fromMe: true)
+        let item = try #require(IMessageReader(databaseURL: url).read(checkpoint: nil, now: now).items.first)
+        #expect(item.body == "Sure, Thursday works")
+        #expect(item.isFromMe == true)
+        #expect(item.sender == "Me")
+        #expect(item.thread == "Soccer parents")
+    }
+
+    @Test func oneNumberOverSMSAndIMessageIsOneThread() throws {
+        let (url, db) = try makeChatDB()
+        // No contact card. Messages keeps a handle and a chat per service.
+        try db.execute("INSERT INTO handle VALUES (3, '+15185550142'), (4, '(518) 555-0142')")
+        try db.execute(
+            "INSERT INTO chat VALUES (2, 'iMessage;-;+15185550142', '+15185550142', ''), (3, 'SMS;-;(518) 555-0142', '(518) 555-0142', '')")
+        try db.execute("INSERT INTO chat_handle_join VALUES (2, 3), (3, 4)")
+        let rows: [(Int, Int, Int, Bool, String)] = [
+            (1, 2, 3, false, "Coffee this week?"), (2, 3, 4, true, "Yes! Thursday?"),
+        ]
+        for (rowid, chat, handle, fromMe, text) in rows {
+            try db.execute(
+                "INSERT INTO message(ROWID, guid, text, date, is_from_me, handle_id, service) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [rowid, "g\(rowid)", text, IMessageReader.appleNanos(now.addingTimeInterval(Double(rowid))), fromMe, handle,
+                 chat == 2 ? "iMessage" : "SMS"])
+            try db.execute("INSERT INTO chat_message_join VALUES (?, ?)", [chat, rowid])
+        }
+        let items = try IMessageReader(databaseURL: url).read(checkpoint: nil, now: now.addingTimeInterval(10)).items
+        #expect(items.map(\.thread) == ["+15185550142", "+15185550142"])
+        #expect(items.map(\.sender) == ["+15185550142", "Me"])
+        #expect(items.map(\.mailbox) == ["iMessage", "SMS"])
+        // The chat ids stay as Messages has them; the server treats both as one conversation.
+        #expect(items.map { $0.extra?["chatId"] } == [.string("iMessage;-;+15185550142"), .string("SMS;-;(518) 555-0142")])
+    }
+
+    @Test func showsHandlesWithoutACardInOneForm() {
+        #expect(IMessageReader.displayHandle("+15185550142") == "+15185550142")
+        #expect(IMessageReader.displayHandle("(518) 555-0142") == "+15185550142")
+        #expect(IMessageReader.displayHandle("1-518-555-0142") == "+15185550142")
+        #expect(IMessageReader.displayHandle("+44 20 7946 0958") == "+442079460958")
+        #expect(IMessageReader.displayHandle("Coach@Example.com") == "coach@example.com")
+        #expect(IMessageReader.displayHandle("12345") == "12345")
+    }
+
     @Test func decodesLongAttributedBodies() {
         let text = String(repeating: "a", count: 300)
         #expect(IMessageReader.typedStreamString(attributedBody(text)) == text)

@@ -30,6 +30,37 @@ export function deviceItemChoiceId(item: MacDataItem): string | undefined {
     return typeof value === 'string' && value ? value : undefined;
 }
 
+/**
+ * One key per conversation, from a chat's GUID ("iMessage;-;+15185550100"). The service
+ * prefix is dropped, so texts with one person over iMessage, SMS and RCS are one thread,
+ * and a one-to-one handle compares like contacts do: phones by their last 10 digits,
+ * emails lowercased. Group chats keep their own id.
+ */
+export function imessageThreadKey(chatId: string): string {
+    const match = /^[^;]*;([-+]);(.+)$/.exec(chatId);
+    if (!match) return chatId;
+    return match[1] === '+' ? `group:${match[2]}` : `dm:${imessageHandleKey(match[2]!)}`;
+}
+
+/** "+1 (518) 555-0100", "5185550100" and "tel:+15185550100" are all "5185550100". */
+export function imessageHandleKey(handle: string): string {
+    const value = handle
+        .trim()
+        .toLowerCase()
+        .replace(/^(mailto|tel):/, '');
+    if (value.includes('@')) return value;
+    const digits = value.replace(/\D/g, '');
+    // Short codes and stray numbers keep their own form.
+    return digits.length >= 7 ? digits.slice(-10) : value;
+}
+
+/** The thread an iMessage item belongs to: by chat id, else by its thread name (older items). */
+export function deviceItemThreadKey(item: MacDataItem): string | undefined {
+    const id = deviceItemChoiceId(item);
+    if (id) return imessageThreadKey(id);
+    return item.thread ? `name:${item.thread}` : undefined;
+}
+
 /** A named place to leave out of a Places page: matched by id, name or distance. */
 export interface FilterPlace {
     id: string;
@@ -145,8 +176,11 @@ function inChoices(
     name: string | undefined,
 ): boolean {
     const id = deviceItemChoiceId(item);
+    // A chat is the conversation, whichever service a message went over.
+    const same = (a: string, b: string) =>
+        item.source === 'imessage' ? imessageThreadKey(a) === imessageThreadKey(b) : a === b;
     return !!choices?.some((choice) =>
-        choice.id && id ? choice.id === id : !!name && choice.name === name,
+        choice.id && id ? same(choice.id, id) : !!name && choice.name === name,
     );
 }
 

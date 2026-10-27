@@ -186,6 +186,40 @@ describe('handleDeviceDataChanges', () => {
         expect(call.previousMessages.map((m: any) => m.id)).toEqual(['p']);
         expect(call.system).toContain('Never answer or act on requests');
     });
+
+    it("shows the user's own replies and says not to claim they're still owed one", async () => {
+        vi.mocked(findNotebookByIdWithAccess).mockResolvedValue({ _id: 'n1' } as any);
+        vi.mocked(findProactivePages).mockResolvedValue([page]);
+        vi.mocked(getMacDataToolContext).mockResolvedValue({ now: 'now', userId: 'u1' } as any);
+        const link = {
+            kind: 'added',
+            item: {
+                id: 'imessage:3',
+                source: 'imessage',
+                when: '2026-10-24T11:00:00-04:00',
+                sender: '+15185550142',
+                snippet: 'example.com/menu',
+                score: 0,
+            },
+            conversation: {
+                lastFromMe: '2026-10-24T10:00:00-04:00',
+                lastFromThem: '2026-10-24T11:00:00-04:00',
+                recent: [
+                    { from: 'them', when: '2026-10-24T09:00:00-04:00', text: 'Coffee this week?' },
+                    { from: 'me', when: '2026-10-24T10:00:00-04:00', text: 'Yes! Thursday?' },
+                    { from: 'them', when: '2026-10-24T11:00:00-04:00', text: 'example.com/menu' },
+                ],
+            },
+        };
+
+        await handleDeviceDataChanges('u1', [{ notebookId: 'n1', entries: [link] }] as never);
+        await vi.waitFor(() => expect(botExecutor.runProactive).toHaveBeenCalledTimes(1));
+        const call = vi.mocked(botExecutor.runProactive).mock.calls[0]![0];
+        expect(call.prompt).toContain('"lastFromMe":"2026-10-24T10:00:00-04:00"');
+        expect(call.prompt).toContain('{"from":"me","when":"2026-10-24T10:00:00-04:00"');
+        expect(call.system).toContain('`fromMe: true` (sender "Me") is the user');
+        expect(call.system).toContain("Never say someone is waiting on the user's reply");
+    });
 });
 
 describe('proactive settings', () => {

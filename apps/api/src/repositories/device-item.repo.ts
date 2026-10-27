@@ -2,6 +2,7 @@ import type { Collection } from 'mongodb';
 import { getDb } from '../db/client';
 import {
     DEVICE_DATA_RETENTION_DAYS,
+    imessageThreadKey,
     type DeviceDataChoice,
     type DeviceItemVectors,
     type MacDataItem,
@@ -265,7 +266,10 @@ export async function findDeviceItemFacets(
         if (!name || !seen) continue;
         const rawId = row.source === 'calendar' ? item?.extra?.calendarId : item?.extra?.chatId;
         const id = typeof rawId === 'string' && rawId ? rawId : undefined;
-        const key = id ? `id:${id}` : `name:${name}`;
+        // A person's iMessage, SMS and RCS chats are one chat.
+        const key = id
+            ? `id:${row.source === 'imessage' ? imessageThreadKey(id) : id}`
+            : `name:${name}`;
         const previous = seen.get(key);
         // Keep the name from the most recent item (a chat that was renamed).
         if (!previous || row.occurredAt >= previous.at) {
@@ -307,6 +311,30 @@ export async function findContactsByName(userId: string, names: string[]): Promi
             { userId, source: 'contacts', 'item.title': { $in: names } },
             { projection: { item: 1 } },
         )
+        .toArray();
+    return docs.map((doc) => doc.item);
+}
+
+/** The user's messages since `since`, newest first, without bodies: enough to sort them into threads. */
+export async function findRecentMessageHeads(
+    userId: string,
+    since: number,
+): Promise<MacDataItem[]> {
+    const docs = await getCollection()
+        .find(
+            { userId, source: 'imessage', occurredAt: { $gte: since } },
+            { projection: { 'item.body': 0, vectors: 0, searchText: 0 } },
+        )
+        .sort({ occurredAt: -1 })
+        .limit(5_000)
+        .toArray();
+    return docs.map((doc) => ({ ...doc.item, body: '' }));
+}
+
+export async function findDeviceItemsByIds(userId: string, ids: string[]): Promise<MacDataItem[]> {
+    if (ids.length === 0) return [];
+    const docs = await getCollection()
+        .find({ _id: { $in: ids.map((id) => docId(userId, id)) } }, { projection: { item: 1 } })
         .toArray();
     return docs.map((doc) => doc.item);
 }

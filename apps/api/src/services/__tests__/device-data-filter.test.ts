@@ -3,6 +3,7 @@ import {
     describeDeviceFilter,
     deviceFilterIsEmpty,
     deviceItemMatchesFilter,
+    imessageThreadKey,
     type MacDataItem,
 } from '@maple/shared';
 
@@ -62,5 +63,30 @@ describe('device data page filters', () => {
         expect(describeDeviceFilter('mail', { mailboxes: ['Kids'] })).toBe('Only mail in Kids');
         expect(describeDeviceFilter('health', {})).toBe('Nothing yet');
         expect(describeDeviceFilter('contacts', undefined)).toBe('Everything');
+    });
+
+    it('treats one person over iMessage, SMS and RCS as one chat, but keeps groups apart', () => {
+        expect(imessageThreadKey('iMessage;-;+15185550142')).toBe('dm:5185550142');
+        expect(imessageThreadKey('SMS;-;(518) 555-0142')).toBe('dm:5185550142');
+        expect(imessageThreadKey('RCS;-;+1 518-555-0142')).toBe('dm:5185550142');
+        expect(imessageThreadKey('iMessage;-;Coach@Example.com')).toBe('dm:coach@example.com');
+        expect(imessageThreadKey('iMessage;+;chat123')).toBe('group:chat123');
+        expect(imessageThreadKey('SMS;+;chat456')).not.toBe(
+            imessageThreadKey('iMessage;+;chat123'),
+        );
+
+        const message = (chatId: string, thread: string): MacDataItem => ({
+            ...visit('2026-10-20T10:00:00Z'),
+            source: 'imessage',
+            thread,
+            extra: { chatId },
+        });
+        // A page that shares the iMessage chat also shows replies that went over SMS.
+        const filter = { chats: [{ id: 'iMessage;-;+15185550142', name: '+15185550142' }] };
+        expect(deviceItemMatchesFilter(message('SMS;-;5185550142', 'x'), filter, utc)).toBe(true);
+        expect(deviceItemMatchesFilter(message('SMS;-;5185550100', 'x'), filter, utc)).toBe(false);
+        expect(
+            deviceItemMatchesFilter(message('iMessage;+;chat1', '+15185550142'), filter, utc),
+        ).toBe(false);
     });
 });

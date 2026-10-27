@@ -145,7 +145,7 @@ nonisolated struct IMessageReader {
         let isFromMe = (row["is_from_me"]?.int ?? 0) != 0
         let handle = row["handle"]?.string
         let displayName = row["display_name"]?.string?.trimmingCharacters(in: .whitespaces)
-        let named = { (handle: String) in names.name(for: handle) ?? handle }
+        let named = { (handle: String) in names.name(for: handle) ?? Self.displayHandle(handle) }
         let thread =
             (displayName?.isEmpty == false ? displayName : nil)
             ?? (participants.isEmpty
@@ -172,6 +172,22 @@ nonisolated struct IMessageReader {
             mailbox: row["service"]?.string,
             isRead: nil,
             extra: row["chat_guid"]?.string.map { ["chatId": .string($0)] })
+    }
+
+    // MARK: - Handles
+
+    /// One form for a handle with no contact card, so the same person's SMS, RCS and
+    /// iMessage chats get one thread name: "+15185550100" for "(518) 555-0100",
+    /// "5185550100" and "+1 518-555-0100", and emails lowercased. Short codes stay as they are.
+    static func displayHandle(_ handle: String) -> String {
+        let value = handle.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.contains("@") { return value.lowercased() }
+        let digits = value.unicodeScalars.filter { ("0"..."9").contains($0) }.map(String.init).joined()
+        guard digits.count >= 7 else { return value }
+        if value.hasPrefix("+") { return "+" + digits }
+        if digits.count == 10 { return "+1" + digits }
+        if digits.count == 11, digits.hasPrefix("1") { return "+" + digits }
+        return value
     }
 
     // MARK: - Dates

@@ -227,6 +227,7 @@ export function hit(
         ...(item.allDay !== undefined ? { allDay: item.allDay } : {}),
         ...(item.title ? { title: item.title } : {}),
         ...(item.sender ? { sender: item.sender } : {}),
+        ...(item.isFromMe ? { fromMe: true } : {}),
         ...(item.participants.length ? { participants: item.participants.slice(0, 10) } : {}),
         ...(item.location ? { location: item.location } : {}),
         ...(item.calendar ? { calendar: item.calendar } : {}),

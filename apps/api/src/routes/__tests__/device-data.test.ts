@@ -17,8 +17,8 @@ vi.mock('../../services/proactive-bot.service', () => ({
 }));
 
 import { handleDeviceDataChanges } from '../../services/proactive-bot.service';
-import { flushDeviceNews } from '../../services/device-data.service';
-import { purgeExpiredDeviceItems } from '../../repositories/device-item.repo';
+import { conversationsFor, flushDeviceNews } from '../../services/device-data.service';
+import { purgeExpiredDeviceItems, upsertDeviceItems } from '../../repositories/device-item.repo';
 import { searchDeviceData } from '../../services/device-search.service';
 
 const now = Math.floor(Date.now() / 1000);
@@ -217,6 +217,53 @@ describe.runIf(mongoAvailable)('device data routes', () => {
                 entries: [{ kind: 'added', item: expect.objectContaining({ id: 'mail:new' }) }],
             },
         ]);
+    });
+
+    it("summarizes a message's thread with the user's replies, whichever service they used", async () => {
+        const text = (
+            id: string,
+            minutesAgo: number,
+            body: string,
+            chatId: string,
+            fromMe = false,
+        ) =>
+            item(id, 'imessage', {
+                occurredAt: now - minutesAgo * 60,
+                body,
+                thread: '+15185550142',
+                sender: fromMe ? 'Me' : '+15185550142',
+                isFromMe: fromMe,
+                participants: ['+15185550142'],
+                extra: { chatId },
+            });
+        const link = text('imessage:3', 60, 'example.com/menu', 'iMessage;-;+15185550142');
+        await upsertDeviceItems(userId, 'mac-device-1', [
+            text('imessage:1', 180, 'Coffee this week?', 'iMessage;-;+15185550142'),
+            // The reply went out as SMS, to the same number written another way.
+            text('imessage:2', 120, 'Yes! Thursday?', 'SMS;-;(518) 555-0142', true),
+            link,
+            item('imessage:other', 'imessage', {
+                body: 'Someone else',
+                isFromMe: true,
+                extra: { chatId: 'iMessage;-;+15185550100' },
+            }),
+        ]);
+
+        const tz = 'America/New_York';
+        const conversations = await conversationsFor(userId, [link], () => true, tz);
+        const conversation = conversations.get('dm:5185550142');
+        expect([...conversations.keys()]).toEqual(['dm:5185550142']);
+        expect(conversation?.recent.map((m) => [m.from, m.text])).toEqual([
+            ['them', 'Coffee this week?'],
+            ['me', 'Yes! Thursday?'],
+            ['them', 'example.com/menu'],
+        ]);
+        expect(Date.parse(conversation!.lastFromMe!) / 1000).toBe(now - 120 * 60);
+        expect(Date.parse(conversation!.lastFromThem!) / 1000).toBe(now - 60 * 60);
+
+        // Messages the pages don't share aren't counted.
+        const filtered = await conversationsFor(userId, [link], (m) => !m.isFromMe, tz);
+        expect(filtered.get('dm:5185550142')?.lastFromMe).toBeUndefined();
     });
 
     it('shows page data only to the page owner, even in a shared notebook', async () => {
