@@ -89,6 +89,34 @@
                 </button>
               }
             </div>
+            <!-- Where events added from bot cards ("Add to calendar") go on this Mac -->
+            @if (
+              source === 'calendar' && macEnabled(status) && actionCalendars()?.calendars?.length
+            ) {
+              @let info = actionCalendars()!;
+              <label
+                class="flex items-center gap-3 px-4 pb-4 pl-[52px] text-xs text-[var(--color-text-muted)]"
+                data-testid="action-calendar"
+              >
+                Add events to
+                <select
+                  class="h-8 min-w-0 flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-xs text-[var(--color-text-main)]"
+                  [disabled]="!!busy()"
+                  (change)="setActionCalendar($any($event.target).value)"
+                >
+                  <option value="" [selected]="!info.selected">
+                    Default calendar{{
+                      defaultCalendarTitle() ? ' (' + defaultCalendarTitle() + ')' : ''
+                    }}
+                  </option>
+                  @for (calendar of info.calendars; track calendar.id) {
+                    <option [value]="calendar.id" [selected]="info.selected === calendar.id">
+                      {{ calendar.title }}{{ calendar.account ? ' · ' + calendar.account : '' }}
+                    </option>
+                  }
+                </select>
+              </label>
+            }
           }
         </div>
       </section>

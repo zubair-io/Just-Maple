@@ -45,6 +45,9 @@
           {{ block.label }}
         </button>
       }
+      @case ('event_proposal') {
+        <app-event-proposal-card [proposalId]="block.proposalId" [event]="block.event" />
+      }
       @case ('form') {
         <form class="maple-card" (ngSubmit)="submit(block, index)">
           <h3>{{ block.title }}</h3>

@@ -60,6 +60,19 @@ const library = createLibrary({
                 label: z.string().max(200),
                 itemId: z.string().regex(new RegExp(MAC_DATA_ITEM_ID_PATTERN)).max(400),
               }),
+              z.object({
+                type: z.literal('event_proposal'),
+                proposalId: z.string().regex(/^[0-9a-f-]{36}$/),
+                event: z.object({
+                  title: z.string().min(1).max(200),
+                  start: z.number(),
+                  end: z.number(),
+                  allDay: z.boolean().optional(),
+                  location: z.string().max(500).optional(),
+                  notes: z.string().max(2000).optional(),
+                  timeZone: z.string().max(100).optional(),
+                }),
+              }),
             ]),
           )
           .min(1)

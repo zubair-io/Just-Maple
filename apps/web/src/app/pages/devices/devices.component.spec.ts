@@ -51,6 +51,15 @@ describe('DevicesComponent', () => {
     disableSource: vi.fn(async () => undefined),
     requestAccess: vi.fn(async () => undefined),
     syncNow: vi.fn(async () => undefined),
+    actionCalendars: vi.fn(async () => ({
+      calendars: [
+        { id: 'home', title: 'Home', account: 'iCloud' },
+        { id: 'kids', title: 'Kids', account: 'iCloud' },
+      ],
+      selected: null as string | null,
+      defaultId: 'home',
+    })),
+    setActionCalendar: vi.fn(async () => undefined),
   };
   const iphoneStatuses = signal<IPhoneSourceStatus[]>([]);
   const iphone = {
@@ -189,6 +198,28 @@ describe('DevicesComponent', () => {
     button(contacts, 'Turn on').click();
     await flush();
     expect(macData.enableSource).toHaveBeenCalledWith('contacts');
+  });
+
+  it('picks the calendar that Add to calendar uses on this Mac', async () => {
+    macData.isAvailable.set(true);
+    macStatuses.set({
+      calendar: { source: 'calendar', state: 'ready', itemCount: 3, enabled: true },
+    });
+    const root = await render();
+    const picker = root.querySelector<HTMLSelectElement>('[data-testid="action-calendar"] select')!;
+    expect([...picker.options].map((o) => o.textContent?.trim())).toEqual([
+      'Default calendar (Home)',
+      'Home · iCloud',
+      'Kids · iCloud',
+    ]);
+    picker.value = 'kids';
+    picker.dispatchEvent(new Event('change'));
+    await flush();
+    expect(macData.setActionCalendar).toHaveBeenCalledWith('kids');
+    picker.value = '';
+    picker.dispatchEvent(new Event('change'));
+    await flush();
+    expect(macData.setActionCalendar).toHaveBeenLastCalledWith(null);
   });
 
   it('shows iPhone switches for Places and Health inside the iPhone app', async () => {

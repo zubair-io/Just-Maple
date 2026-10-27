@@ -97,6 +97,7 @@ export const ChatActionSchema = Type.Union([
     Type.Literal('collectable_created'),
     Type.Literal('collectable_updated'),
     Type.Literal('collectable_deleted'),
+    Type.Literal('calendar_proposal_updated'), // An "Add to calendar" card changed state
 ]);
 
 export type ChatAction = Static<typeof ChatActionSchema>;

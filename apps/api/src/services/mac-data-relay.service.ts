@@ -112,7 +112,8 @@ export class MacDataRelayService {
 
     async request<T>(
         userId: string,
-        op: 'embed',
+        /** `embed` a query; `runActions` asks it to fetch its pending actions now. */
+        op: 'embed' | 'runActions',
         params: Record<string, unknown>,
         timeoutMs = DEFAULT_TIMEOUT_MS,
     ): Promise<T> {

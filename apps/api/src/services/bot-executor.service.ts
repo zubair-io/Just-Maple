@@ -10,6 +10,7 @@ import type {
 } from '@maple/shared';
 import { isBotModel } from '@maple/shared';
 import { botUIPrompt, parseBotResponse, botUIToText } from './bot-ui.service';
+import { attachProposals, withProposalCards } from './calendar-proposal.service';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { SDKAssistantMessage } from '@anthropic-ai/claude-agent-sdk';
 import { findBotTemplateById } from '../repositories/bot-template.repo';
@@ -292,7 +293,7 @@ export class BotExecutorService {
             }
 
             // Get the response content
-            const responseContent = this.prepareResponse(ctx);
+            const responseContent = await this.prepareResponse(ctx);
 
             // Create thread and post response
             const { threadId, messageId } = await this.postResponse(
@@ -939,11 +940,28 @@ export class BotExecutorService {
     /**
      * Prepare response content for posting
      */
-    private prepareResponse(ctx: ExecutionContext): PageContent {
+    private async prepareResponse(ctx: ExecutionContext): Promise<PageContent> {
         const response = String(ctx.variables.$response || '');
         const parsed = parseBotResponse(response);
-        ctx.variables.$botUI = parsed.ui;
-        return markdownToProseMirror(parsed.markdown || (parsed.ui ? botUIToText(parsed.ui) : ''));
+        // "Add to calendar" cards come from the proposals saved in this run, never from
+        // what the model wrote.
+        const proposals = ctx.macData?.proposedEvents ?? [];
+        const ui = proposals.length ? await withProposalCards(parsed.ui, proposals) : parsed.ui;
+        ctx.variables.$botUI = ui;
+        return markdownToProseMirror(parsed.markdown || (ui ? botUIToText(ui) : ''));
+    }
+
+    /** Points the run's proposals at the message that shows their cards. */
+    private async attachProposalCards(
+        ctx: ExecutionContext,
+        pageId: string,
+        messageId: string,
+    ): Promise<void> {
+        const proposals = ctx.macData?.proposedEvents ?? [];
+        if (proposals.length)
+            await attachProposals(proposals, pageId, messageId).catch((error) =>
+                console.error('[BotExecutor] Could not attach proposals:', error),
+            );
     }
 
     /**
@@ -989,6 +1007,7 @@ export class BotExecutorService {
             senderProfilePictureUrl: template.avatar,
             content,
         });
+        await this.attachProposalCards(ctx, source.pageId, message.id);
 
         // Increment thread message count
         await incrementThreadMessageCount(thread._id);
@@ -1033,6 +1052,7 @@ export class BotExecutorService {
             botUI: ctx.variables.$botUI as Message['botUI'],
             botModel: ctx.variables.$model as string | undefined,
         });
+        await this.attachProposalCards(ctx, page.id, message.id);
         if (page.notebookId) {
             await broadcastChatEvent(page.notebookId, {
                 pageId: page.id,
@@ -1100,7 +1120,7 @@ export class BotExecutorService {
         await this.executeLLM(llm, ctx, { system: params.system, user: params.prompt });
         const raw = String(ctx.variables.$response || '').trim();
         if (!raw || /^NO_UPDATE\b/i.test(raw)) return null;
-        const content = this.prepareResponse(ctx);
+        const content = await this.prepareResponse(ctx);
         return this.postTopLevel(params.page, params.userBot, params.template, content, ctx, {
             ownerUserId: params.macData.userId,
         });

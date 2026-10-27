@@ -1,0 +1,64 @@
+<section class="event-card" [attr.data-status]="status() ?? 'loading'">
+  <div class="event-head">
+    <span class="material-symbols-rounded" aria-hidden="true">calendar_add_on</span>
+    <h3>{{ event().title }}</h3>
+  </div>
+  <p class="event-when">{{ when() }}</p>
+  @if (event().location) {
+    <p class="event-detail">
+      <span class="material-symbols-rounded" aria-hidden="true">location_on</span>
+      {{ event().location }}
+    </p>
+  }
+  @if (event().notes) {
+    <p class="event-notes">{{ event().notes }}</p>
+  }
+
+  <div class="event-state" role="status">
+    @switch (status()) {
+      @case ('proposed') {
+        @if (canConfirm()) {
+          <button type="button" class="event-add" [disabled]="tapping()" (click)="add()">
+            {{ tapping() ? 'Adding…' : 'Add to calendar' }}
+          </button>
+        } @else {
+          <button type="button" class="event-add" disabled>Add to calendar</button>
+          <span class="event-muted">Only the calendar's owner can add this.</span>
+        }
+      }
+      @case ('adding') {
+        <span class="event-progress">
+          <span class="spinner" aria-hidden="true"></span>
+          @if (proposal()?.device?.offline) {
+            {{ proposal()!.device!.name }} is offline. It will be added when it's next on.
+          } @else {
+            Adding to the calendar on {{ proposal()?.device?.name ?? 'your Mac' }}…
+          }
+        </span>
+      }
+      @case ('added') {
+        <span class="event-done">
+          <span class="material-symbols-rounded" aria-hidden="true">check_circle</span>
+          Added to calendar
+        </span>
+        @if (proposal()?.itemId) {
+          <button type="button" class="event-link" (click)="open()">Open in Calendar</button>
+        }
+      }
+      @case ('failed') {
+        <span class="event-error">Couldn't add it: {{ proposal()?.error }}</span>
+        @if (canConfirm()) {
+          <button type="button" class="event-add" [disabled]="tapping()" (click)="add()">
+            Try again
+          </button>
+        }
+      }
+      @case ('expired') {
+        <span class="event-muted">This offer expired. Ask again if you still want it added.</span>
+      }
+    }
+    @if (tapError(); as message) {
+      <span class="event-error">{{ message }}</span>
+    }
+  </div>
+</section>
