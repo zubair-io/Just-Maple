@@ -355,20 +355,11 @@ export async function findThreadMessageHeads(
     return [...heads.values()].sort((a, b) => b.occurredAt - a.occurredAt);
 }
 
-export async function findDeviceItemsByIds(userId: string, ids: string[]): Promise<MacDataItem[]> {
-    if (ids.length === 0) return [];
-    const docs = await getCollection()
-        .find({ _id: { $in: ids.map((id) => docId(userId, id)) } }, { projection: { item: 1 } })
-        .toArray();
-    return docs.map((doc) => doc.item);
-}
-
 export async function findDeviceItem(userId: string, id: string): Promise<MacDataItem | null> {
     const doc = await getCollection().findOne({ _id: docId(userId, id) });
     return doc?.item ?? null;
 }
 
-/** Everything the search index needs for one user, vectors included. */
 /** Several items by id, in one query; missing ones are left out. */
 export async function findDeviceItemsByIds(userId: string, ids: string[]): Promise<MacDataItem[]> {
     if (ids.length === 0) return [];
@@ -379,6 +370,7 @@ export async function findDeviceItemsByIds(userId: string, ids: string[]): Promi
     return docs.map((doc) => doc.item);
 }
 
+/** Everything the search index needs for one user, vectors included. */
 export async function findDeviceItemsForIndex(userId: string): Promise<DeviceItemDocument[]> {
     return getCollection().find({ userId }).toArray();
 }
