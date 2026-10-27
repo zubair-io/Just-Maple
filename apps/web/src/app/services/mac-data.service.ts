@@ -31,6 +31,14 @@ interface MacDataEventDetail {
  * one-time move of the old local pages to the cloud. Page data itself comes from the API
  * (see DeviceDataService); this service only talks to the `macData` script handler.
  */
+/** Where events the user adds from bot cards go on this Mac. */
+export interface MacActionCalendars {
+  calendars: Array<{ id: string; title: string; account?: string }>;
+  /** Chosen in Settings → Devices; null means the default calendar. */
+  selected: string | null;
+  defaultId: string | null;
+}
+
 @Injectable({ providedIn: 'root' })
 export class MacDataService {
   private readonly zone = inject(NgZone);
@@ -92,6 +100,19 @@ export class MacDataService {
     if (!this.isAvailable()) return;
     await this.call('disableSource', { source });
     void this.refreshStatus().catch(() => undefined);
+  }
+
+  // MARK: - Add to calendar
+
+  /** Calendars on this Mac that accept new events, and the one "Add to calendar" uses. */
+  async actionCalendars(): Promise<MacActionCalendars | null> {
+    if (!this.isAvailable()) return null;
+    return this.call<MacActionCalendars>('actionCalendars');
+  }
+
+  /** null goes back to the Mac's default calendar. */
+  async setActionCalendar(calendarId: string | null): Promise<void> {
+    await this.call('setActionCalendar', calendarId ? { calendarId } : {});
   }
 
   // MARK: - Migration

@@ -12,6 +12,7 @@ import { notificationRoutes } from './routes/notifications';
 import { botRoutes } from './routes/bots';
 import { macDataRoutes } from './routes/mac-data';
 import { deviceDataRoutes } from './routes/device-data';
+import { calendarProposalRoutes } from './routes/calendar-proposals';
 import { aboutMeRoutes } from './routes/about-me';
 import { graphRoutes } from './routes/graph';
 import { startGraphLinking } from './services/graph.service';
@@ -101,6 +102,7 @@ async function main() {
         .use(botRoutes)
         .use(macDataRoutes)
         .use(deviceDataRoutes)
+        .use(calendarProposalRoutes)
         .use(aboutMeRoutes)
         .use(graphRoutes)
         .use(legoRoutes)

@@ -2,6 +2,8 @@ import type { Collection } from 'mongodb';
 import { getDb } from '../db/client';
 import {
     DEVICE_DATA_RETENTION_DAYS,
+    deviceChoiceKey,
+    deviceItemThreadKey,
     type DeviceDataChoice,
     type DeviceItemVectors,
     type MacDataItem,
@@ -28,6 +30,8 @@ export interface DeviceItemDocument {
     dimensions?: number;
     /** The revision the vectors were made from; stale vectors are ignored. */
     embeddedRevision?: string;
+    /** Messages: the conversation, so a thread's messages can be read without a scan. */
+    threadKey?: string;
     updatedAt: Date;
 }
 
@@ -70,6 +74,7 @@ export async function upsertDeviceItems(
     await getCollection().bulkWrite(
         items.map((raw) => {
             const item = { ...raw, body: raw.body.slice(0, MAX_BODY_CHARS) };
+            const threadKey = deviceItemThreadKey(item);
             return {
                 updateOne: {
                     filter: { _id: docId(userId, item.id) },
@@ -84,6 +89,7 @@ export async function upsertDeviceItems(
                             endAt: item.endAt,
                             item,
                             searchText: searchTextFor(item),
+                            ...(threadKey ? { threadKey } : {}),
                             updatedAt: now,
                         },
                     },
@@ -265,7 +271,8 @@ export async function findDeviceItemFacets(
         if (!name || !seen) continue;
         const rawId = row.source === 'calendar' ? item?.extra?.calendarId : item?.extra?.chatId;
         const id = typeof rawId === 'string' && rawId ? rawId : undefined;
-        const key = id ? `id:${id}` : `name:${name}`;
+        // A person's iMessage, SMS and RCS chats are one chat.
+        const key = id ? `id:${deviceChoiceKey(row.source, { id, name })}` : `name:${name}`;
         const previous = seen.get(key);
         // Keep the name from the most recent item (a chat that was renamed).
         if (!previous || row.occurredAt >= previous.at) {
@@ -337,22 +344,67 @@ export async function findDeviceItemsForGraph(
     return docs.map((doc) => ({ ...doc.item, body: doc.item.body.slice(0, query.bodyChars) }));
 }
 
-/** Several items of one user by id. */
+const HEAD_PROJECTION = { 'item.body': 0, vectors: 0, searchText: 0 } as const;
+
+/**
+ * Messages in these threads since `since`, without bodies: each thread's newest
+ * `perThread`, plus the user's own newest `perThread`, so a reply isn't lost behind a
+ * busy stretch from the other side. Messages stored before threads had keys are found
+ * by a scan, which empties as they age out of the window.
+ */
+export async function findThreadMessageHeads(
+    userId: string,
+    threadKeys: string[],
+    since: number,
+    perThread = 50,
+): Promise<MacDataItem[]> {
+    const heads = new Map<string, MacDataItem>();
+    const add = (docs: DeviceItemDocument[]) => {
+        for (const doc of docs) heads.set(doc._id, { ...doc.item, body: '' });
+    };
+    const newest = (filter: Record<string, unknown>, limit: number) =>
+        getCollection()
+            .find(
+                { userId, occurredAt: { $gte: since }, ...filter },
+                { projection: HEAD_PROJECTION },
+            )
+            .sort({ occurredAt: -1 })
+            .limit(limit)
+            .toArray();
+    for (const threadKey of threadKeys) {
+        add(await newest({ threadKey }, perThread));
+        add(await newest({ threadKey, 'item.isFromMe': true }, perThread));
+    }
+    const wanted = new Set(threadKeys);
+    const legacy = await newest({ source: 'imessage', threadKey: { $exists: false } }, 5_000);
+    add(legacy.filter((doc) => wanted.has(deviceItemThreadKey(doc.item) ?? '')));
+    return [...heads.values()].sort((a, b) => b.occurredAt - a.occurredAt);
+}
+
+/**
+ * Several items by id, in batches of 500; missing ones are left out. `bodyChars` cuts
+ * bodies short for big batches.
+ */
 export async function findDeviceItemsByIds(
     userId: string,
     ids: string[],
-    bodyChars = 400,
+    bodyChars?: number,
 ): Promise<MacDataItem[]> {
+    const unique = [...new Set(ids)];
     const items: MacDataItem[] = [];
-    for (let i = 0; i < ids.length; i += 500) {
+    for (let i = 0; i < unique.length; i += 500) {
         const docs = await getCollection()
             .find(
-                { _id: { $in: ids.slice(i, i + 500).map((id) => docId(userId, id)) } },
+                { _id: { $in: unique.slice(i, i + 500).map((id) => docId(userId, id)) } },
                 { projection: { item: 1 } },
             )
             .toArray();
         for (const doc of docs)
-            items.push({ ...doc.item, body: doc.item.body.slice(0, bodyChars) });
+            items.push(
+                bodyChars === undefined
+                    ? doc.item
+                    : { ...doc.item, body: doc.item.body.slice(0, bodyChars) },
+            );
     }
     return items;
 }
@@ -363,6 +415,7 @@ export async function findDeviceItem(userId: string, id: string): Promise<MacDat
 }
 
 /** Everything the search index needs for one user, vectors included. */
+
 export async function findDeviceItemsForIndex(userId: string): Promise<DeviceItemDocument[]> {
     return getCollection().find({ userId }).toArray();
 }

@@ -34,3 +34,4 @@ export * from './device-data-filter';
 export * from './about-me';
 export * from './proactive';
 export * from './data-graph';
+export * from './calendar-proposal';

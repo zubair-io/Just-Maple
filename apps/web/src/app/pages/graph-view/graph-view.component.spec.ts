@@ -250,12 +250,15 @@ describe('GraphCanvas', () => {
     const internal = canvas as unknown as {
       nodes: CanvasNode[];
       simulation: { stop(): void; tick(n: number): void };
+      transform: { apply(point: [number, number]): [number, number] };
     };
     internal.simulation.stop();
     internal.simulation.tick(200);
     const node = internal.nodes.find((n) => n.id === 'place:office')!;
+    // The layout starts centered in the canvas.
+    const [x, y] = internal.transform.apply([node.x!, node.y!]);
 
-    expect(canvas.nodeAt(node.x!, node.y!)).toBe('place:office');
+    expect(canvas.nodeAt(x, y)).toBe('place:office');
     element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(click).toHaveBeenCalled();
     canvas.destroy();

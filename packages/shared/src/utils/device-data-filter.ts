@@ -30,6 +30,69 @@ export function deviceItemChoiceId(item: MacDataItem): string | undefined {
     return typeof value === 'string' && value ? value : undefined;
 }
 
+/**
+ * One key per conversation, from a chat's GUID ("iMessage;-;+15185550100"). The service
+ * prefix is dropped, so texts with one person over iMessage, SMS and RCS are one thread.
+ * Group chats keep their own id. A one-to-one handle goes through `imessageHandleKey`,
+ * which merges two handles only when they are surely the same number or email.
+ */
+export function imessageThreadKey(chatId: string): string {
+    const match = /^[^;]*;([-+]);(.+)$/.exec(chatId);
+    if (!match) return chatId;
+    return match[1] === '+' ? `group:${match[2]}` : `dm:${imessageHandleKey(match[2]!)}`;
+}
+
+/**
+ * A handle in one form, failing closed: merging two people would share one person's
+ * texts as another's.
+ * - Emails: lowercased.
+ * - Numbers with a country code: "+" and every digit, so "+33 6 12 34 56 78" and
+ *   "+1 361-234-5678" stay apart.
+ * - Numbers without one are North American only when they look it: "(518) 555-0100" and
+ *   "1-518-555-0100" are "+15185550100" (area code and exchange start with 2–9).
+ * - Anything else (short codes, local numbers abroad) matches only itself, digit for digit.
+ */
+export function imessageHandleKey(handle: string): string {
+    const value = handle
+        .trim()
+        .toLowerCase()
+        .replace(/^(mailto|tel):/, '');
+    if (value.includes('@')) return value;
+    const digits = value.replace(/\D/g, '');
+    if (digits.length < 7) return `raw:${value}`;
+    if (value.startsWith('+')) return `+${digits}`;
+    const national = digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits;
+    if (/^[2-9]\d{2}[2-9]\d{6}$/.test(national)) return `+1${national}`;
+    return `raw:${digits}`;
+}
+
+/** A thread name that is just a phone number ("(518) 555-0100", "+15185550100"). */
+function isPhoneName(name: string): boolean {
+    return /^[+\d\s().-]+$/.test(name) && name.replace(/\D/g, '').length >= 7;
+}
+
+/** A chat's name for matching: a number by its handle key, so a reformatted name still matches. */
+function chatNameKey(name: string): string {
+    return isPhoneName(name) ? imessageHandleKey(name) : name;
+}
+
+/** The thread an iMessage item belongs to: by chat id, else by its thread name (older items). */
+export function deviceItemThreadKey(item: MacDataItem): string | undefined {
+    if (item.source !== 'imessage') return undefined;
+    const id = deviceItemChoiceId(item);
+    if (id) return imessageThreadKey(id);
+    return item.thread ? `name:${chatNameKey(item.thread)}` : undefined;
+}
+
+/**
+ * What makes two choices the same calendar or chat, for pickers: a chat by its thread
+ * key, so a person's iMessage and SMS chats are one row.
+ */
+export function deviceChoiceKey(source: MacDataSource, choice: DeviceDataChoice): string {
+    if (source !== 'imessage') return choice.id ?? `name:${choice.name}`;
+    return choice.id ? imessageThreadKey(choice.id) : `name:${chatNameKey(choice.name)}`;
+}
+
 /** A named place to leave out of a Places page: matched by id, name or distance. */
 export interface FilterPlace {
     id: string;
@@ -145,8 +208,14 @@ function inChoices(
     name: string | undefined,
 ): boolean {
     const id = deviceItemChoiceId(item);
+    // A chat is the conversation, whichever service a message went over; a chat saved by
+    // name still matches after its number is written another way.
+    const chat = item.source === 'imessage';
+    const sameId = (a: string, b: string) =>
+        chat ? imessageThreadKey(a) === imessageThreadKey(b) : a === b;
+    const sameName = (a: string, b: string) => (chat ? chatNameKey(a) === chatNameKey(b) : a === b);
     return !!choices?.some((choice) =>
-        choice.id && id ? choice.id === id : !!name && choice.name === name,
+        choice.id && id ? sameId(choice.id, id) : !!name && sameName(choice.name, name),
     );
 }
 

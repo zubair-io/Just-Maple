@@ -121,6 +121,7 @@ export const MacDataSearchHitSchema = Type.Object({
     allDay: Type.Optional(Type.Boolean()),
     title: Type.Optional(Type.String()),
     sender: Type.Optional(Type.String()),
+    fromMe: Type.Optional(Type.Boolean()), // The user wrote it (a message they sent)
     participants: Type.Optional(Type.Array(Type.String())),
     location: Type.Optional(Type.String()),
     calendar: Type.Optional(Type.String()),
@@ -142,6 +143,22 @@ export const MacDataSearchRequestSchema = Type.Object({
 
 export type MacDataSearchRequest = Static<typeof MacDataSearchRequestSchema>;
 
+// Who spoke last in a message's thread, so a bot never says someone is waiting on a
+// reply the user already sent. `recent` is the thread's last few messages, oldest first.
+export const MacDataConversationSchema = Type.Object({
+    lastFromMe: Type.Optional(Type.String()), // ISO 8601 in the Mac's time zone
+    lastFromThem: Type.Optional(Type.String()),
+    recent: Type.Array(
+        Type.Object({
+            from: Type.Union([Type.Literal('me'), Type.Literal('them')]),
+            when: Type.String(),
+            text: Type.String(),
+        }),
+    ),
+});
+
+export type MacDataConversation = Static<typeof MacDataConversationSchema>;
+
 // New or changed items the Mac offers a notebook's proactive bot
 export const MacDataChangeBatchSchema = Type.Object({
     notebookId: Type.String(),
@@ -149,6 +166,7 @@ export const MacDataChangeBatchSchema = Type.Object({
         Type.Object({
             kind: Type.String(), // 'added' | 'changed'
             item: MacDataSearchHitSchema,
+            conversation: Type.Optional(MacDataConversationSchema),
         }),
     ),
 });
