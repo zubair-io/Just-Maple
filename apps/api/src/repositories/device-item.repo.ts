@@ -415,7 +415,6 @@ export async function findDeviceItem(userId: string, id: string): Promise<MacDat
 }
 
 /** Everything the search index needs for one user, vectors included. */
-
 export async function findDeviceItemsForIndex(userId: string): Promise<DeviceItemDocument[]> {
     return getCollection().find({ userId }).toArray();
 }
