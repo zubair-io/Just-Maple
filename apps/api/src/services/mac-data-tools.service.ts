@@ -6,6 +6,7 @@ import { dataPageSlicesFor, isMemberOf, type DataPageSlice } from './device-data
 import { findNotebookByIdWithAccess } from '../repositories/notebook.repo';
 import { macDataRelay } from './mac-data-relay.service';
 import { searchDeviceData } from './device-search.service';
+import { findOverlapsForBot } from './calendar-overlap.service';
 import { formatInZone, toEpochSeconds } from '../utils/time-zone';
 
 export { formatInZone, toEpochSeconds };
@@ -171,6 +172,21 @@ export function macDataToolDefinitions(ctx: MacDataToolContext): ToolDefinition[
                 },
             },
         );
+    if (sources.includes('calendar'))
+        tools.push({
+            name: 'find_overlaps',
+            description:
+                'Find calendar clashes in a date range: timed events that overlap, and back-to-back events at different places without time to get between them. ' +
+                'Checked in code, so use it for questions like "anything clash on Wednesday?". Defaults to the next 7 days.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    from: { type: 'string', description: 'Start date/time, ISO 8601.' },
+                    to: { type: 'string', description: 'End date/time, ISO 8601.' },
+                },
+                additionalProperties: false,
+            },
+        });
     if (ctx.aboutMe) tools.push(...aboutMeToolDefinitions());
     if (ctx.rememberInstruction) {
         tools.push({
@@ -316,6 +332,9 @@ export async function executeMacDataTool(
                 ctx.readThirdPartyText = true;
                 return clip(JSON.stringify({ ...item, body: item.body.slice(0, 6_000) }));
             }
+            case 'find_overlaps':
+                if (!ctx.sources.includes('calendar')) return 'Unknown tool: find_overlaps';
+                return clip(JSON.stringify({ overlaps: await findOverlapsForBot(ctx, input) }));
             case 'recall_about_me':
                 if (!ctx.aboutMe) return 'Unknown tool: recall_about_me';
                 return clip(await recallAboutMe(ctx.userId, String(input.query ?? '')));

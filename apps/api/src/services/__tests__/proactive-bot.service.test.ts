@@ -24,8 +24,16 @@ vi.mock('../../repositories/message.repo', () => ({
     findMessagesByThreadId: vi.fn().mockResolvedValue([]),
 }));
 vi.mock('../../repositories/thread.repo', () => ({ findThreadById: vi.fn() }));
+vi.mock('../../repositories/collector.repo', () => ({
+    collectorTimeZone: vi.fn().mockResolvedValue('America/New_York'),
+}));
+vi.mock('../calendar-overlap.service', () => ({
+    overlapNewsFor: vi.fn(),
+    briefOverlapsFor: vi.fn().mockResolvedValue([]),
+}));
 
-import { maybeAutoReply, handleDeviceDataChanges } from '../proactive-bot.service';
+import { maybeAutoReply, handleDeviceDataChanges, runDailyBrief } from '../proactive-bot.service';
+import { briefOverlapsFor, overlapNewsFor } from '../calendar-overlap.service';
 import {
     appendProactiveInstruction,
     saveProactiveSettings,
@@ -185,6 +193,92 @@ describe('handleDeviceDataChanges', () => {
         // Earlier requests in the chat are not the proactive pass's business.
         expect(call.previousMessages.map((m: any) => m.id)).toEqual(['p']);
         expect(call.system).toContain('Never answer or act on requests');
+    });
+});
+
+describe('calendar overlaps in proactive passes', () => {
+    const calendarEntry = {
+        kind: 'changed',
+        item: {
+            id: 'calendar:dental',
+            source: 'calendar',
+            when: '2026-10-28T13:00:00-04:00',
+            snippet: 'Dental',
+            score: 0,
+        },
+    };
+    const note = {
+        kind: 'overlap',
+        summary:
+            'Dental (Wed 1:00 PM–2:00 PM) overlaps Pizza party (Wed 1:30 PM–4:00 PM) by 30 min',
+        events: [],
+    };
+
+    beforeEach(() => {
+        vi.mocked(findNotebookByIdWithAccess).mockResolvedValue({ _id: 'n1' } as any);
+        vi.mocked(findProactivePages).mockResolvedValue([page]);
+        vi.mocked(getMacDataToolContext).mockResolvedValue({ now: 'now', userId: 'u1' } as any);
+    });
+
+    it('adds the overlaps calendar changes create or clear to the batch', async () => {
+        const release = vi.fn();
+        vi.mocked(overlapNewsFor).mockResolvedValue({
+            flagged: [note as any],
+            cleared: [{ ...note, summary: 'Gym and Lunch no longer overlap' } as any],
+            release,
+        });
+        await handleDeviceDataChanges('u1', [
+            { notebookId: 'n1', entries: [calendarEntry] },
+        ] as never);
+        await vi.waitFor(() => expect(botExecutor.runProactive).toHaveBeenCalledTimes(1));
+        expect(overlapNewsFor).toHaveBeenCalledWith(
+            'page',
+            'u1',
+            'n1',
+            ['calendar:dental'],
+            'America/New_York',
+        );
+        const prompt = vi.mocked(botExecutor.runProactive).mock.calls[0]![0].prompt;
+        expect(prompt).toContain('now overlaps');
+        expect(prompt).toContain(note.summary);
+        expect(prompt).toContain('Gym and Lunch no longer overlap');
+        expect(release).not.toHaveBeenCalled();
+    });
+
+    it('releases the flags when the bot could not run, and skips the check without calendar items', async () => {
+        const release = vi.fn();
+        vi.mocked(overlapNewsFor).mockResolvedValue({
+            flagged: [note as any],
+            cleared: [],
+            release,
+        });
+        vi.mocked(findBotTemplateById).mockResolvedValueOnce(null);
+        await handleDeviceDataChanges('u1', [
+            { notebookId: 'n1', entries: [calendarEntry] },
+        ] as never);
+        await vi.waitFor(() => expect(release).toHaveBeenCalledTimes(1));
+
+        vi.mocked(overlapNewsFor).mockClear();
+        const mail = {
+            ...calendarEntry,
+            item: { ...calendarEntry.item, id: 'mail:1', source: 'mail' },
+        };
+        await handleDeviceDataChanges('u1', [{ notebookId: 'n1', entries: [mail] }] as never);
+        await vi.waitFor(() => expect(botExecutor.runProactive).toHaveBeenCalled());
+        expect(overlapNewsFor).not.toHaveBeenCalled();
+        expect(vi.mocked(botExecutor.runProactive).mock.calls.at(-1)![0].prompt).not.toContain(
+            'Calendar clashes',
+        );
+    });
+
+    it("lists today's and tomorrow's overlaps in the daily brief", async () => {
+        vi.mocked(briefOverlapsFor).mockResolvedValueOnce([note as any]);
+        expect(await runDailyBrief(page, 'u1')).toBe(true);
+        expect(briefOverlapsFor).toHaveBeenCalledWith('page', 'u1', 'n1', 'America/New_York');
+        const prompt = vi.mocked(botExecutor.runProactive).mock.calls[0]![0].prompt;
+        expect(prompt).toContain('daily brief');
+        expect(prompt).toContain(note.summary);
+        expect(prompt).toContain('List each one in the brief');
     });
 });
 

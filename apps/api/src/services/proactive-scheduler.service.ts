@@ -10,6 +10,7 @@ import {
     purgeOldScheduledSends,
 } from '../repositories/scheduled-send.repo';
 import { purgeOldTravelEstimates } from '../repositories/travel-estimate.repo';
+import { purgeOldOverlapFlags } from '../repositories/calendar-overlap.repo';
 import { findNotebookByIdUnsafe } from '../repositories/notebook.repo';
 import { listFacts, findMe } from '../repositories/profile.repo';
 import { runDailyBrief, sendLeaveReminder } from './proactive-bot.service';
@@ -58,6 +59,7 @@ async function purgeOldRecords(): Promise<void> {
     try {
         await purgeOldScheduledSends();
         await purgeOldTravelEstimates();
+        await purgeOldOverlapFlags();
     } catch (error) {
         console.error('[Scheduler] Cleanup failed:', error);
     }

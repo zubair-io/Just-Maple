@@ -18,6 +18,7 @@ vi.mock('../about-me.service', () => ({
 }));
 vi.mock('../../repositories/device-item.repo', () => ({ findDeviceItem: vi.fn() }));
 vi.mock('../device-search.service', () => ({ searchDeviceData: vi.fn() }));
+vi.mock('../calendar-overlap.service', () => ({ findOverlapsForBot: vi.fn() }));
 vi.mock('../../repositories/notebook.repo', () => ({
     findNotebookByIdWithAccess: vi.fn().mockResolvedValue({ sharing: { sharedWith: [] } }),
 }));
@@ -36,6 +37,7 @@ import { dataPageSlicesFor } from '../device-data-access.service';
 import { collectorTimeZone } from '../../repositories/collector.repo';
 import { findDeviceItem } from '../../repositories/device-item.repo';
 import { searchDeviceData } from '../device-search.service';
+import { findOverlapsForBot } from '../calendar-overlap.service';
 import { findNotebookByIdWithAccess } from '../../repositories/notebook.repo';
 
 const ownBot = { id: 'b1', name: 'Maple', ownerId: 'u1' };
@@ -160,11 +162,28 @@ describe('local-data tools', () => {
         expect(macDataToolDefinitions(ctx).map((t) => t.name)).toEqual([
             'search_local_data',
             'get_local_item',
+            'find_overlaps',
         ]);
         const withMemory = { ...ctx, rememberInstruction: vi.fn() };
         expect(macDataToolDefinitions(withMemory).map((t) => t.name)).toContain(
             'remember_instruction',
         );
+    });
+
+    it('offers find_overlaps only with a calendar, and answers from the overlap check', async () => {
+        const noCalendar = { ...ctx, sources: ['imessage' as const] };
+        expect(macDataToolDefinitions(noCalendar).map((t) => t.name)).not.toContain(
+            'find_overlaps',
+        );
+        expect(await executeMacDataTool(noCalendar, 'find_overlaps', {})).toBe(
+            'Unknown tool: find_overlaps',
+        );
+        vi.mocked(findOverlapsForBot).mockResolvedValue([
+            { kind: 'overlap', summary: 'A overlaps B by 30 min', events: [] },
+        ]);
+        const result = await executeMacDataTool(ctx, 'find_overlaps', { from: '2026-10-28' });
+        expect(JSON.parse(result).overlaps[0].summary).toBe('A overlaps B by 30 min');
+        expect(findOverlapsForBot).toHaveBeenCalledWith(ctx, { from: '2026-10-28' });
     });
 
     it("searches the cloud copy with dates in the user's time zone and only allowed sources", async () => {
