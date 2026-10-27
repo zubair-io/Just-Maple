@@ -37,6 +37,7 @@ export const PageTypeSchema = Type.Union([
     Type.Literal('json'), // JSON data document - API-editable structured data
     Type.Literal('canvas'), // Widget canvas - AI-generated reactive widgets
     Type.Literal('devicedata'), // A table of one source of the owner's device data (Messages, Mail…)
+    Type.Literal('aboutme'), // What bots know about each member, per notebook (one per notebook)
 ]);
 
 export type PageType = Static<typeof PageTypeSchema>;

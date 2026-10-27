@@ -24,6 +24,7 @@ export const PAGE_TYPE_LABELS: Record<string, string> = {
   recording: 'Recordings',
   json: 'JSON Documents',
   devicedata: 'Device Data',
+  aboutme: 'About me',
 };
 
 /**
@@ -38,6 +39,7 @@ export const PAGE_TYPE_ICONS: Record<string, string> = {
   recording: 'mic',
   json: 'data_object',
   devicedata: 'devices',
+  aboutme: 'person_heart',
 };
 
 /**

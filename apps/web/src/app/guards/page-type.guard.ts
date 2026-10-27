@@ -73,3 +73,6 @@ export const JsonPageGuard = createPageTypeGuard('json');
 
 /** Guard that matches canvas-type pages (AI-generated widget canvas) */
 export const CanvasPageGuard = createPageTypeGuard('canvas');
+
+/** Guard that matches About me pages */
+export const AboutMePageGuard = createPageTypeGuard('aboutme');

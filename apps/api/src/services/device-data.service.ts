@@ -26,7 +26,6 @@ import { findProactivePages } from '../repositories/page.repo';
 import { dataPageSlicesFor } from './device-data-access.service';
 import { bumpDeviceDataVersion, hit, snippet } from './device-search.service';
 import { handleDeviceDataChanges } from './proactive-bot.service';
-import { noteLocationVisits } from './about-me.service';
 import { formatInZone } from '../utils/time-zone';
 
 /**
@@ -87,14 +86,6 @@ export async function applyDeviceUpload(
 
     await touchCollector(userId, input.deviceId, true);
     if (stored || removed || vectors) await bumpDeviceDataVersion(userId);
-    // Visits from the iPhone keep "where you are now" in About me current.
-    const visits = changed.filter((item) => item.source === 'location');
-    if (visits.length) {
-        void noteLocationVisits(userId, visits, now).catch((error) =>
-            console.error('[DeviceData] Could not update the current place:', error),
-        );
-    }
-
     const news: NewsEntry[] = [];
     for (const item of changed) {
         const kind = previous.has(item.id) ? 'changed' : 'added';

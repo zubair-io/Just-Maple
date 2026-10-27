@@ -1,0 +1,221 @@
+<div class="flex h-full min-h-0 flex-col bg-[var(--color-bg)]">
+  <header
+    class="flex flex-wrap items-center gap-3 border-b border-[var(--color-border)] px-6 py-4 max-md:px-4"
+  >
+    <span class="material-symbols-rounded text-xl text-[var(--color-primary)]" aria-hidden="true"
+      >person_heart</span
+    >
+    <div class="min-w-0 flex-1">
+      <h1 class="m-0 truncate font-sans text-base! font-bold text-[var(--color-text-main)]">
+        {{ page()?.title || 'About me' }}
+      </h1>
+      <p class="m-0 font-sans text-xs text-[var(--color-text-muted)]" data-testid="summary">
+        {{ rows().length }} {{ rows().length === 1 ? 'item' : 'items' }} ·
+        @if (aboutMe.shared()) {
+          Only you see yours. Bots here read every member's.
+        } @else {
+          What bots in this notebook know about you
+        }
+      </p>
+    </div>
+    <label class="relative max-md:w-full">
+      <span class="sr-only">Search About me</span>
+      <span
+        class="material-symbols-rounded pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-base text-[var(--color-text-muted)]"
+        aria-hidden="true"
+        >search</span
+      >
+      <input
+        type="search"
+        [value]="search()"
+        (input)="search.set($any($event.target).value)"
+        placeholder="Search"
+        class="h-9 w-64 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] pl-8 pr-3 font-sans text-sm text-[var(--color-text-main)] outline-none focus:border-[var(--color-primary)] max-md:w-full"
+      />
+    </label>
+    <button
+      type="button"
+      (click)="removePage()"
+      title="Remove page"
+      aria-label="Remove page"
+      class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg border-none bg-transparent text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-main)]"
+    >
+      <span class="material-symbols-rounded text-xl" aria-hidden="true">delete</span>
+    </button>
+  </header>
+
+  @if (rows().length) {
+    <div class="flex flex-wrap items-center gap-2 px-6 pt-3 max-md:px-4">
+      <label class="flex items-center gap-1.5 font-sans text-xs text-[var(--color-text-muted)]">
+        Who
+        <select
+          [value]="whoFilter()"
+          (change)="whoFilter.set($any($event.target).value)"
+          class="h-8 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 font-sans text-xs text-[var(--color-text-main)]"
+        >
+          <option value="">Everyone</option>
+          @for (who of whoOptions(); track who) {
+            <option [value]="who">{{ who }}</option>
+          }
+        </select>
+      </label>
+      <label class="flex items-center gap-1.5 font-sans text-xs text-[var(--color-text-muted)]">
+        Source
+        <select
+          [value]="sourceFilter()"
+          (change)="sourceFilter.set($any($event.target).value)"
+          class="h-8 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 font-sans text-xs text-[var(--color-text-main)]"
+        >
+          <option value="">All sources</option>
+          @for (source of sourceOptions(); track source) {
+            <option [value]="source">{{ source }}</option>
+          }
+        </select>
+      </label>
+      @if (filtering()) {
+        <button
+          type="button"
+          (click)="clearFilters()"
+          class="cursor-pointer border-none bg-transparent p-0 font-sans text-xs text-[var(--color-primary)] hover:underline"
+        >
+          Clear
+        </button>
+      }
+    </div>
+  }
+
+  @if (removed(); as row) {
+    <p
+      class="mx-6 mt-3 mb-0 flex items-center gap-2 font-sans text-xs text-[var(--color-text-muted)] max-md:mx-4"
+      role="status"
+    >
+      Removed “{{ row.what }}”.
+      <button
+        type="button"
+        (click)="undoRemove()"
+        [disabled]="busy()"
+        class="cursor-pointer border-none bg-transparent p-0 font-sans text-xs font-semibold text-[var(--color-primary)] hover:underline"
+      >
+        Undo
+      </button>
+    </p>
+  }
+  @if (actionError() || aboutMe.error()) {
+    <p
+      class="mx-6 mt-3 mb-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 font-sans text-xs text-[var(--color-text-muted)] max-md:mx-4"
+      role="alert"
+    >
+      {{ actionError() || aboutMe.error() }}
+    </p>
+  }
+
+  <div class="about-me-scroll min-h-0 flex-1 overflow-auto px-6 pb-6 max-md:px-4">
+    @if (filtered().length) {
+      <table class="about-me-table">
+        <thead>
+          <tr>
+            <th scope="col">Who</th>
+            <th scope="col">What</th>
+            <th scope="col">Value</th>
+            <th scope="col">Until</th>
+            <th scope="col">Source</th>
+            <th scope="col"><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of filtered(); track row.id) {
+            <tr [class.pending]="row.pending" [attr.data-testid]="'row-' + row.id">
+              <td class="nowrap font-semibold">{{ row.who }}</td>
+              <td>{{ row.what }}</td>
+              @if (editingId() === row.id) {
+                <td>
+                  <input
+                    type="text"
+                    [value]="editValue()"
+                    (input)="editValue.set($any($event.target).value)"
+                    (keydown.enter)="saveEdit(row)"
+                    (keydown.escape)="cancelEdit()"
+                    [attr.aria-label]="'Value for ' + row.what"
+                    class="h-8 w-full min-w-[10rem] rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 font-sans text-sm text-[var(--color-text-main)] outline-none focus:border-[var(--color-primary)]"
+                  />
+                </td>
+                <td class="nowrap">
+                  @if (row.fact) {
+                    <input
+                      type="date"
+                      [value]="editUntil()"
+                      (input)="editUntil.set($any($event.target).value)"
+                      [attr.aria-label]="'Until for ' + row.what"
+                      class="h-8 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 font-sans text-xs text-[var(--color-text-main)]"
+                    />
+                  }
+                </td>
+              } @else {
+                <td class="max-w-[24rem]">
+                  <span class="clamp">{{ row.value }}</span>
+                </td>
+                <td class="nowrap muted">
+                  @if (row.until) {
+                    {{ row.until | date: 'MMM d, y' }}
+                  }
+                </td>
+              }
+              <td class="nowrap muted">
+                {{ row.source }}
+                @if (row.pending) {
+                  <span class="badge">Waiting for you</span>
+                }
+              </td>
+              <td class="nowrap text-right">
+                @if (row.pending) {
+                  <button type="button" class="action" [disabled]="busy()" (click)="approve(row)">
+                    Approve
+                  </button>
+                  <button
+                    type="button"
+                    class="action muted"
+                    [disabled]="busy()"
+                    (click)="dismiss(row)"
+                  >
+                    Dismiss
+                  </button>
+                } @else if (editingId() === row.id) {
+                  <button type="button" class="action" [disabled]="busy()" (click)="saveEdit(row)">
+                    Save
+                  </button>
+                  <button type="button" class="action muted" (click)="cancelEdit()">Cancel</button>
+                } @else {
+                  <button type="button" class="action" (click)="startEdit(row)">Edit</button>
+                  <button
+                    type="button"
+                    class="action muted"
+                    [disabled]="busy()"
+                    (click)="remove(row)"
+                    [title]="row.learned ? 'Undo what the bot learned' : 'Remove'"
+                  >
+                    {{ row.learned && row.fact ? 'Undo' : 'Remove' }}
+                  </button>
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    } @else if (aboutMe.profile() || aboutMe.error()) {
+      <div
+        class="py-12 text-center font-sans text-sm text-[var(--color-text-muted)]"
+        data-testid="empty"
+      >
+        @if (filtering()) {
+          <p class="m-0">Nothing matches.</p>
+        } @else {
+          <p class="m-0">Nothing here yet.</p>
+          <p class="m-0 mx-auto mt-1 max-w-sm text-xs leading-relaxed">
+            Bots in this notebook add what they learn about you as you chat. You can edit, undo or
+            remove anything here.
+          </p>
+        }
+      </div>
+    }
+  </div>
+</div>
