@@ -23,6 +23,7 @@ import {
   take,
   filter,
   startWith,
+  lastValueFrom,
 } from 'rxjs';
 import { NotebookService } from '../../services/notebook.service';
 import { NotificationService } from '../../services/notification.service';
@@ -44,6 +45,7 @@ import {
 import { getPageTypeLabel as getLabel, getPageTypeIcon as getIcon } from '../../utils/page-types';
 import { isLocalNotebook } from '../../providers/data-provider.interface';
 import type { NotebookMember, Page, Message, MacDataSource } from '@maple/shared';
+import { aboutMePageId } from '@maple/shared';
 
 interface NotebookSummary {
   pageCounts: Record<string, number>;
@@ -303,6 +305,11 @@ export class ChatViewComponent implements OnInit, OnDestroy {
     this.navigationPages().filter((page) => page.type === 'message'),
   );
 
+  /** "+ New" offers About me only until the notebook has one. */
+  readonly hasAboutMePage = computed(() =>
+    this.navigationPages().some((page) => page.type === 'aboutme'),
+  );
+
   /** Device data sources offered in "+ New" on every device (Mac and iPhone sources). */
   readonly deviceSources = DEVICE_DATA_SOURCES;
 
@@ -541,6 +548,31 @@ export class ChatViewComponent implements OnInit, OnDestroy {
       await this.dialogService.alert({
         title: 'Could not add the page',
         message: 'Check your connection and try again.',
+      });
+    }
+  }
+
+  /** Adds the notebook's About me page (bots fill it in) and opens it. */
+  async createAboutMePage(): Promise<void> {
+    const notebookId = this.selectedNotebookId();
+    if (!notebookId) return;
+    try {
+      const page = await lastValueFrom(
+        this.pageService.createPage({
+          // The server gives each notebook's About me this fixed id.
+          id: aboutMePageId(notebookId),
+          type: 'aboutme',
+          title: 'About me',
+          notebookId,
+        }),
+      );
+      await this.router.navigate(['/', notebookId, page.id]);
+    } catch (error) {
+      console.error('Failed to create About me page:', error);
+      await this.dialogService.alert({
+        title: 'Could not add About me',
+        message:
+          'Only members who can edit this notebook can add it. Check your connection and try again.',
       });
     }
   }

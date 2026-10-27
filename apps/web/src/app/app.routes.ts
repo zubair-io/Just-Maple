@@ -10,6 +10,7 @@ import {
   GmailPageGuard,
   JsonPageGuard,
   CanvasPageGuard,
+  AboutMePageGuard,
 } from './guards/page-type.guard';
 import { swUpdateGuard } from './guards/sw-update.guard';
 import {
@@ -135,11 +136,6 @@ export const routes: Routes = [
             path: 'devices',
             loadComponent: () =>
               import('./pages/devices/devices.component').then((m) => m.DevicesComponent),
-          },
-          {
-            path: 'about-me',
-            loadComponent: () =>
-              import('./pages/about-me/about-me.component').then((m) => m.AboutMeComponent),
           },
         ],
       },
@@ -295,6 +291,15 @@ export const routes: Routes = [
             loadComponent: () =>
               import('./pages/health-view/health-view.component').then(
                 (m) => m.HealthViewComponent,
+              ),
+          },
+          // About me page - what bots know about each member (each sees only their own)
+          {
+            path: ':id',
+            canMatch: [AboutMePageGuard],
+            loadComponent: () =>
+              import('./pages/about-me-view/about-me-view.component').then(
+                (m) => m.AboutMeViewComponent,
               ),
           },
           // Memo-type page - shows collaborative notebook editor (default for pages)

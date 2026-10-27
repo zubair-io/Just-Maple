@@ -1337,6 +1337,17 @@ export async function findDeviceDataPages(
     return docs.map(toPageResponse);
 }
 
+/** The notebook's About me page, if it has one (there is at most one per notebook). */
+export async function findAboutMePage(notebookId: string): Promise<Page | null> {
+    if (!ObjectId.isValid(notebookId)) return null;
+    const doc = await getCollection().findOne({
+        type: 'aboutme',
+        notebookId: new ObjectId(notebookId),
+        isTrashed: { $ne: true },
+    });
+    return doc ? toPageResponse(doc) : null;
+}
+
 /** Every device data page in a notebook, whoever created it. */
 export async function findDeviceDataPagesInNotebook(notebookId: string): Promise<Page[]> {
     if (!ObjectId.isValid(notebookId)) return [];

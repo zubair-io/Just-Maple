@@ -1,9 +1,17 @@
 import type { MacDataSource, ProfileFactSource } from '@maple/shared';
-import { aboutMeSummary, recallAboutMe, rememberAboutMe, updateAboutMe } from './about-me.service';
+import {
+    aboutMeSummary,
+    currentPlace,
+    loadNotebookAboutMe,
+    recallAboutMe,
+    rememberAboutMe,
+    updateAboutMe,
+    type NotebookAboutMe,
+} from './about-me.service';
 import { collectorTimeZone } from '../repositories/collector.repo';
 import { findDeviceItem } from '../repositories/device-item.repo';
+import { findAboutMePage } from '../repositories/page.repo';
 import { dataPageSlicesFor, isMemberOf, type DataPageSlice } from './device-data-access.service';
-import { findNotebookByIdWithAccess } from '../repositories/notebook.repo';
 import { macDataRelay } from './mac-data-relay.service';
 import { searchDeviceData } from './device-search.service';
 import { formatInZone, toEpochSeconds } from '../utils/time-zone';
@@ -38,8 +46,12 @@ export interface MacDataToolContext {
     now: string;
     /** Set when the bot may append to a proactive page's instructions. */
     rememberInstruction?: (instruction: string) => Promise<void>;
-    /** The user's About me profile, only for bots that belong to that user. */
+    /**
+     * Every member's About me, in notebooks that have an About me page, only for bots
+     * that belong to the user.
+     */
     aboutMe?: {
+        notebook: NotebookAboutMe;
         summary: string;
         source: ProfileFactSource;
         /**
@@ -84,11 +96,8 @@ export async function getMacDataToolContext(
     const pages = await dataPageSlicesFor(userId, notebookId).catch(() => []);
     const sources = [...new Set(pages.map((page) => page.source))];
     const timeZone = (await collectorTimeZone(userId).catch(() => undefined)) ?? 'UTC';
-    // About me stays out of notebooks shared with other people: replies there are read by everyone.
-    const summary = (await isSharedNotebook(notebookId, userId))
-        ? null
-        : await aboutMeSummary(userId, timeZone).catch(() => null);
-    if (sources.length === 0 && !summary) return null;
+    const about = await notebookAboutMe(notebookId, userId, timeZone);
+    if (sources.length === 0 && !about) return null;
     return {
         userId,
         notebookId,
@@ -97,10 +106,10 @@ export async function getMacDataToolContext(
         timeZone,
         botId: bot.id,
         now: formatInZone(new Date(), timeZone),
-        ...(summary
+        ...(about
             ? {
                   aboutMe: {
-                      summary,
+                      ...about,
                       source: { type: 'bot', botId: bot.id, botName: bot.name },
                       ...(options.proactive ? { pendingWrites: true } : {}),
                   },
@@ -109,9 +118,22 @@ export async function getMacDataToolContext(
     };
 }
 
-async function isSharedNotebook(notebookId: string, userId: string): Promise<boolean> {
-    const notebook = await findNotebookByIdWithAccess(notebookId, userId, 'read').catch(() => null);
-    return !notebook || (notebook.sharing?.sharedWith?.length ?? 0) > 0;
+/** The notebook's About me for bots: only when it has an About me page (the opt-in). */
+async function notebookAboutMe(
+    notebookId: string,
+    userId: string,
+    timeZone: string,
+): Promise<{ notebook: NotebookAboutMe; summary: string } | null> {
+    try {
+        if (!(await findAboutMePage(notebookId))) return null;
+        const notebook = await loadNotebookAboutMe(notebookId, userId);
+        if (!notebook) return null;
+        // Where the user is now stays out of shared notebooks: everyone reads the replies.
+        const place = notebook.shared ? null : await currentPlace(userId).catch(() => null);
+        return { notebook, summary: aboutMeSummary(notebook, userId, timeZone, place) };
+    } catch {
+        return null;
+    }
 }
 
 /**
@@ -181,7 +203,7 @@ export function macDataToolDefinitions(ctx: MacDataToolContext): ToolDefinition[
                 },
             },
         );
-    if (ctx.aboutMe) tools.push(...aboutMeToolDefinitions());
+    if (ctx.aboutMe) tools.push(...aboutMeToolDefinitions(ctx.aboutMe.notebook, ctx.userId));
     if (canProposeEvents(ctx)) tools.push(proposeEventTool);
     if (ctx.rememberInstruction) {
         tools.push({
@@ -225,12 +247,15 @@ export function macDataSystemPrompt(ctx: MacDataToolContext): string {
     );
 }
 
-function aboutMeToolDefinitions(): ToolDefinition[] {
+function aboutMeToolDefinitions(about: NotebookAboutMe, userId: string): ToolDefinition[] {
+    const others = about.members
+        .filter((member) => member.userId !== userId)
+        .map((member) => member.name);
     return [
         {
             name: 'recall_about_me',
             description:
-                'Look up the user\'s About me profile: their people, relationships, routines and facts (e.g. "Emma\'s coach", "home address", "when do I work out").',
+                'Look up the About me of the people in this notebook: their people, relationships, routines and facts (e.g. "Emma\'s coach", "home address", "when do I work out"). Each result says whose About me it is in.',
             parameters: {
                 type: 'object',
                 properties: { query: { type: 'string', maxLength: 200 } },
@@ -241,17 +266,36 @@ function aboutMeToolDefinitions(): ToolDefinition[] {
         {
             name: 'remember_about_me',
             description:
-                'Save something lasting about the user or their people, or a change in their current situation, to their About me profile. ' +
-                'Use kind "current" with an "until" date for temporary things (traveling until Friday, sick today). ' +
-                'Set sensitive for health, money, legal or relationship-trouble facts: they are only suggested until the user approves. ' +
-                'Do not save things already in the profile or trivia from a single message.',
+                'Save something lasting about the user or their people to their About me. ' +
+                (others.length
+                    ? 'For another member of this notebook or their people, set "whose" to that member: it waits for them to approve it. '
+                    : '') +
+                (about.shared
+                    ? 'Use kind "current" with an "until" date for temporary things (a school break until Friday). '
+                    : 'Use kind "current" with an "until" date for temporary things (traveling until Friday). ') +
+                'Set sensitive for health, money, legal or relationship-trouble facts' +
+                (about.shared
+                    ? '. This notebook is shared with other people, so those are never saved here, and neither is where anyone is or is traveling. '
+                    : ': they are only suggested until the user approves. ') +
+                'Do not save things already in About me or trivia from a single message.',
             parameters: {
                 type: 'object',
                 properties: {
                     about: {
                         type: 'string',
-                        description: '"me" or the person, pet or place it is about, e.g. "Emma".',
+                        description:
+                            '"me" or the person, pet or place it is about, e.g. "Emma". A name here is always one of the user\'s own people; use "whose" for another member\'s About me.',
                     },
+                    ...(others.length
+                        ? {
+                              whose: {
+                                  type: 'string',
+                                  enum: others,
+                                  description:
+                                      "Another member of this notebook whose About me it goes in. Omit for the user's own.",
+                              },
+                          }
+                        : {}),
                     relation: {
                         type: 'string',
                         description:
@@ -259,8 +303,7 @@ function aboutMeToolDefinitions(): ToolDefinition[] {
                     },
                     key: {
                         type: 'string',
-                        description:
-                            'Short label, e.g. "school", "workout_time", "travel", "allergy".',
+                        description: 'Short label, e.g. "school", "team", "workout_time".',
                     },
                     value: { type: 'string', maxLength: 500 },
                     kind: { type: 'string', enum: ['lasting', 'current'] },
@@ -268,7 +311,10 @@ function aboutMeToolDefinitions(): ToolDefinition[] {
                         type: 'string',
                         description: 'For current facts: when it ends, ISO 8601.',
                     },
-                    sensitive: { type: 'boolean' },
+                    sensitive: {
+                        type: 'boolean',
+                        description: 'True for health, money, legal or relationship-trouble facts.',
+                    },
                 },
                 required: ['about', 'key', 'value', 'kind'],
                 additionalProperties: false,
@@ -277,7 +323,7 @@ function aboutMeToolDefinitions(): ToolDefinition[] {
         {
             name: 'update_about_me',
             description:
-                'Change or end a fact in the profile by its id (shown in [brackets] in the profile and returned by recall_about_me), e.g. when a trip ends early or something was wrong.',
+                "Change or end a fact in About me by its id (shown in [brackets] in About me and returned by recall_about_me), e.g. when plans end early or something was wrong. A change to another member's fact waits for them to approve it, and only they can remove it.",
             parameters: {
                 type: 'object',
                 properties: {
@@ -334,25 +380,25 @@ export async function executeMacDataTool(
             }
             case 'recall_about_me':
                 if (!ctx.aboutMe) return 'Unknown tool: recall_about_me';
-                return clip(await recallAboutMe(ctx.userId, String(input.query ?? '')));
+                return clip(recallAboutMe(ctx.aboutMe.notebook, String(input.query ?? '')));
             case 'remember_about_me': {
                 if (!ctx.aboutMe) return 'Unknown tool: remember_about_me';
                 const kind = input.kind === 'current' ? 'current' : 'lasting';
                 return rememberAboutMe(
+                    ctx.aboutMe.notebook,
                     ctx.userId,
                     {
                         about: String(input.about ?? 'me'),
+                        ...(typeof input.whose === 'string' ? { whose: input.whose } : {}),
                         ...(typeof input.relation === 'string' ? { relation: input.relation } : {}),
                         key: String(input.key ?? ''),
                         value: String(input.value ?? ''),
                         kind,
                         ...(typeof input.until === 'string' ? { until: input.until } : {}),
+                        sensitive: input.sensitive === true,
                         // After reading messages or mail, a save could be planted by
                         // someone else's text: hold it for the user's approval.
-                        sensitive:
-                            input.sensitive === true ||
-                            !!ctx.aboutMe.pendingWrites ||
-                            !!ctx.readThirdPartyText,
+                        pending: !!ctx.aboutMe.pendingWrites || !!ctx.readThirdPartyText,
                     },
                     ctx.aboutMe.source,
                     ctx.timeZone,
@@ -361,6 +407,7 @@ export async function executeMacDataTool(
             case 'update_about_me':
                 if (!ctx.aboutMe) return 'Unknown tool: update_about_me';
                 return updateAboutMe(
+                    ctx.aboutMe.notebook,
                     ctx.userId,
                     {
                         factId: String(input.fact_id ?? ''),

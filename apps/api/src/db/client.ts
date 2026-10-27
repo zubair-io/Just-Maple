@@ -66,7 +66,7 @@ async function createUniqueIndex(
     }
 }
 
-async function createIndexes(database: Db): Promise<void> {
+export async function createIndexes(database: Db): Promise<void> {
     await ensurePasskeyIndexes(database);
 
     // Passkeys collection
@@ -103,6 +103,12 @@ async function createIndexes(database: Db): Promise<void> {
     await database.collection('profile_entities').createIndex({ userId: 1 });
     await database.collection('profile_relations').createIndex({ userId: 1 });
     await database.collection('profile_facts').createIndex({ userId: 1 });
+    // About me lives in notebooks: who has one there, and a fact by id within a notebook.
+    await database.collection('profile_entities').createIndex({ notebookId: 1, isMe: 1 });
+    await database.collection('profile_entities').createIndex({ userId: 1, notebookId: 1 });
+    await database.collection('profile_relations').createIndex({ userId: 1, notebookId: 1 });
+    await database.collection('profile_facts').createIndex({ notebookId: 1 });
+    await database.collection('profile_facts').createIndex({ userId: 1, notebookId: 1 });
     await database.collection('travel_estimates').createIndex({ userId: 1 });
     await database.collection('travel_estimates').createIndex({ savedAt: 1 }); // Cleanup
     await database.collection('scheduled_sends').createIndex({ sentAt: 1 }); // Cleanup

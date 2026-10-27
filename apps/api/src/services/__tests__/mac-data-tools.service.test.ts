@@ -3,6 +3,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../mac-data-relay.service', () => ({
     macDataRelay: { isOnline: vi.fn().mockResolvedValue(false), request: vi.fn() },
 }));
+vi.mock('../../repositories/page.repo', () => ({
+    findAboutMePage: vi.fn().mockResolvedValue({ id: 'about-page', type: 'aboutme' }),
+}));
 vi.mock('../device-data-access.service', () => ({
     dataPageSlicesFor: vi.fn(),
     isMemberOf: vi.fn().mockResolvedValue(true),
@@ -11,16 +14,15 @@ vi.mock('../../repositories/collector.repo', () => ({
     collectorTimeZone: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock('../about-me.service', () => ({
-    aboutMeSummary: vi.fn().mockResolvedValue('## About the user\nName: Zubair'),
-    recallAboutMe: vi.fn().mockResolvedValue('{"facts":[]}'),
+    loadNotebookAboutMe: vi.fn(),
+    currentPlace: vi.fn().mockResolvedValue(null),
+    aboutMeSummary: vi.fn().mockReturnValue('## About the people in this notebook\n### Zubair'),
+    recallAboutMe: vi.fn().mockReturnValue('{"facts":[]}'),
     rememberAboutMe: vi.fn().mockResolvedValue('Saved (f1).'),
     updateAboutMe: vi.fn().mockResolvedValue('Updated.'),
 }));
 vi.mock('../../repositories/device-item.repo', () => ({ findDeviceItem: vi.fn() }));
 vi.mock('../device-search.service', () => ({ searchDeviceData: vi.fn() }));
-vi.mock('../../repositories/notebook.repo', () => ({
-    findNotebookByIdWithAccess: vi.fn().mockResolvedValue({ sharing: { sharedWith: [] } }),
-}));
 
 import {
     executeMacDataTool,
@@ -32,13 +34,24 @@ import {
     type MacDataToolContext,
 } from '../mac-data-tools.service';
 import { macDataRelay } from '../mac-data-relay.service';
+import { findAboutMePage } from '../../repositories/page.repo';
 import { dataPageSlicesFor } from '../device-data-access.service';
 import { collectorTimeZone } from '../../repositories/collector.repo';
 import { findDeviceItem } from '../../repositories/device-item.repo';
 import { searchDeviceData } from '../device-search.service';
-import { findNotebookByIdWithAccess } from '../../repositories/notebook.repo';
+import { currentPlace, loadNotebookAboutMe, type NotebookAboutMe } from '../about-me.service';
 
 const ownBot = { id: 'b1', name: 'Maple', ownerId: 'u1' };
+
+const notebook = (shared = false): NotebookAboutMe => ({
+    notebookId: 'n1',
+    shared,
+    people: [],
+    members: [
+        { userId: 'u1', name: 'Zubair' },
+        { userId: 'u2', name: 'Julia' },
+    ],
+});
 
 const ctx: MacDataToolContext = {
     userId: 'u1',
@@ -49,12 +62,14 @@ const ctx: MacDataToolContext = {
 };
 
 describe('getMacDataToolContext', () => {
-    beforeEach(() => vi.clearAllMocks());
+    beforeEach(() => {
+        vi.clearAllMocks();
+        vi.mocked(loadNotebookAboutMe).mockResolvedValue(notebook());
+    });
 
     it("is null when the notebook has none of the user's device data pages", async () => {
         vi.mocked(dataPageSlicesFor).mockResolvedValue([]);
-        const { aboutMeSummary } = await import('../about-me.service');
-        vi.mocked(aboutMeSummary).mockResolvedValueOnce(null); // and no About me profile yet
+        vi.mocked(findAboutMePage).mockResolvedValueOnce(null); // and no About me page
         expect(await getMacDataToolContext('u1', 'n1', ownBot)).toBeNull();
     });
 
@@ -77,9 +92,12 @@ describe('getMacDataToolContext', () => {
 });
 
 describe('About me in bot context', () => {
-    beforeEach(() => vi.clearAllMocks());
+    beforeEach(() => {
+        vi.clearAllMocks();
+        vi.mocked(loadNotebookAboutMe).mockResolvedValue(notebook());
+    });
 
-    it("gives the profile only to the user's own bots", async () => {
+    it("gives About me only to the user's own bots, in notebooks with an About me page", async () => {
         vi.mocked(dataPageSlicesFor).mockResolvedValue([]);
         const own = await getMacDataToolContext('u1', 'n1', ownBot);
         expect(own?.sources).toEqual([]);
@@ -88,7 +106,13 @@ describe('About me in bot context', () => {
             'remember_about_me',
             'update_about_me',
         ]);
-        expect(macDataSystemPrompt(own!)).toContain('Name: Zubair');
+        expect(macDataSystemPrompt(own!)).toContain('### Zubair');
+        // Another member's About me can be written to by name.
+        const remember = macDataToolDefinitions(own!).find((t) => t.name === 'remember_about_me')!;
+        expect(
+            (remember.parameters as { properties: { whose: { enum: string[] } } }).properties.whose
+                .enum,
+        ).toEqual(['Julia']);
         // A bot someone else shared into the notebook: no data, no profile, no tools,
         // even when the user has device data pages there.
         vi.mocked(dataPageSlicesFor).mockResolvedValue([{ source: 'imessage' }] as never);
@@ -97,14 +121,34 @@ describe('About me in bot context', () => {
         ).toBeNull();
     });
 
-    it('keeps the profile out of notebooks shared with other people', async () => {
+    it('keeps About me out of notebooks without an About me page', async () => {
         vi.mocked(dataPageSlicesFor).mockResolvedValue([{ source: 'imessage' }] as never);
-        vi.mocked(findNotebookByIdWithAccess).mockResolvedValueOnce({
-            sharing: { sharedWith: [{ userId: 'u2' }] },
-        } as never);
+        vi.mocked(findAboutMePage).mockResolvedValueOnce(null);
+        const context = await getMacDataToolContext('u1', 'n1', ownBot);
+        expect(context?.sources).toEqual(['imessage']);
+        expect(context?.aboutMe).toBeUndefined();
+    });
+
+    it('leaves where the user is out of shared notebooks', async () => {
+        vi.mocked(dataPageSlicesFor).mockResolvedValue([]);
+        vi.mocked(loadNotebookAboutMe).mockResolvedValueOnce(notebook(true));
         const shared = await getMacDataToolContext('u1', 'n1', ownBot);
-        expect(shared?.sources).toEqual(['imessage']);
-        expect(shared?.aboutMe).toBeUndefined();
+        expect(shared?.aboutMe?.notebook.shared).toBe(true);
+        expect(currentPlace).not.toHaveBeenCalled();
+        const remember = macDataToolDefinitions(shared!).find(
+            (t) => t.name === 'remember_about_me',
+        )!;
+        // `sensitive` is described in every mode; shared ones say those aren't kept, and
+        // no example suggests saving health or whereabouts.
+        expect(remember.description).toContain('Set sensitive for health');
+        expect(remember.description).toContain('never saved here');
+        expect(remember.description).not.toMatch(/sick|traveling until/i);
+        const own = await getMacDataToolContext('u1', 'n1', ownBot);
+        const privateRemember = macDataToolDefinitions(own!).find(
+            (t) => t.name === 'remember_about_me',
+        )!;
+        expect(privateRemember.description).toContain('Set sensitive for health');
+        expect(privateRemember.description).not.toMatch(/sick/i);
     });
 
     it('holds what a bot saves for approval once it has read messages or mail', async () => {
@@ -112,7 +156,7 @@ describe('About me in bot context', () => {
         vi.mocked(searchDeviceData).mockResolvedValue([]);
         const context: MacDataToolContext = {
             ...ctx,
-            aboutMe: { summary: '', source: { type: 'bot', botId: 'b1' } },
+            aboutMe: { notebook: notebook(), summary: '', source: { type: 'bot', botId: 'b1' } },
         };
         await executeMacDataTool(context, 'search_local_data', { query: 'new address' });
         await executeMacDataTool(context, 'remember_about_me', {
@@ -121,14 +165,19 @@ describe('About me in bot context', () => {
             value: '1 Phish Way',
             kind: 'lasting',
         });
-        expect(vi.mocked(rememberAboutMe).mock.calls.at(-1)![1].sensitive).toBe(true);
+        const input = vi.mocked(rememberAboutMe).mock.calls.at(-1)![2];
+        expect(input).toMatchObject({ pending: true, sensitive: false });
     });
 
     it('saves what the bot learned with the bot as its source', async () => {
         const { rememberAboutMe } = await import('../about-me.service');
         const context = {
             ...ctx,
-            aboutMe: { summary: '', source: { type: 'bot' as const, botId: 'b1' } },
+            aboutMe: {
+                notebook: notebook(),
+                summary: '',
+                source: { type: 'bot' as const, botId: 'b1' },
+            },
         };
         await executeMacDataTool(context, 'remember_about_me', {
             about: 'me',
@@ -138,12 +187,14 @@ describe('About me in bot context', () => {
             until: '2026-10-30',
         });
         expect(rememberAboutMe).toHaveBeenCalledWith(
+            context.aboutMe.notebook,
             'u1',
             expect.objectContaining({
                 key: 'travel',
                 kind: 'current',
                 until: '2026-10-30',
                 sensitive: false,
+                pending: false,
             }),
             { type: 'bot', botId: 'b1' },
             'America/New_York',
