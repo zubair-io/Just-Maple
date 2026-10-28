@@ -1,18 +1,63 @@
 import { getDb } from '../db/client';
-import type { DataGraphLinkKind, DataGraphNodeKind } from '@maple/shared';
+import {
+    parseDataGraphItemNodeId,
+    type DataGraphLinkKind,
+    type DataGraphMadeBy,
+    type DataGraphNodeKind,
+    type DataGraphRelationKind,
+} from '@maple/shared';
 
 // The connected-data graph, stored per notebook: every document carries its notebookId
-// and every lookup is by it, so one notebook's links, people, places and topics never
+// and every lookup is by it, so one notebook's relations, people, places and topics never
 // reach another's. Items themselves aren't stored here, only their node ids
 // (`item:<ownerId>:<itemId>`); what a reader sees is checked against the notebook's data
 // pages when the graph is read.
+//
+// A pair of nodes can have many relations (reasons): one document per relation in
+// `graph_relations`, keyed `${notebookId}|${a}|${b}|${key}`. The older `graph_links`
+// collection (one link per pair) is only read once, by the migration, and kept as it was.
 
 /** `active` is shown; `removed` was taken out by someone and is never added again;
- * `rejected` is a pair the model judged unrelated, so it isn't asked again. */
-export type GraphLinkStatus = 'active' | 'removed' | 'rejected';
+ * `rejected` is a pair the model judged unrelated (or already joined by a happening), so
+ * it isn't asked again. */
+export type GraphRelationStatus = 'active' | 'removed' | 'rejected';
 
-export interface GraphLinkDocument {
-    _id: string; // `${notebookId}|${a}|${b}`, a < b
+export interface GraphRelationDocument {
+    _id: string; // `${pair}|${key}`
+    notebookId: string;
+    /** `${notebookId}|${a}|${b}`, a < b: the line it belongs to. */
+    pair: string;
+    a: string;
+    b: string;
+    kind: DataGraphRelationKind;
+    /** Tells this relation from others of its kind on the pair (`relationship:spouse`). */
+    key: string;
+    type?: string;
+    /** Relationships: `to` is `from`'s `type`. Interactions: from the data's owner. */
+    from?: string;
+    to?: string;
+    confidence: number;
+    evidence: string;
+    madeBy: DataGraphMadeBy;
+    /** A few item node ids it rests on, newest first. */
+    items?: string[];
+    count?: number;
+    firstAt?: number;
+    lastAt?: number;
+    status: GraphRelationStatus;
+    /** A removal kept from the one-link-per-pair graph: nothing joins this pair again. */
+    blocksPair?: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+    removedBy?: string;
+    /** Model relations: when their items were last looked up, and since when one is missing. */
+    checkedAt?: Date;
+    goneSince?: Date;
+}
+
+/** The older one-link-per-pair document, read only by the migration. */
+export interface LegacyGraphLinkDocument {
+    _id: string; // `${notebookId}|${a}|${b}`
     notebookId: string;
     a: string;
     b: string;
@@ -20,13 +65,14 @@ export interface GraphLinkDocument {
     confidence: number;
     evidence: string;
     madeBy: 'rule' | 'model';
-    status: GraphLinkStatus;
+    status: GraphRelationStatus;
     createdAt: Date;
     updatedAt: Date;
     removedBy?: string;
-    /** Model links: when their items were last looked up, and since when one is missing. */
     checkedAt?: Date;
     goneSince?: Date;
+    /** Copied into graph_relations. */
+    migratedAt?: Date;
 }
 
 export interface GraphNodeDocument {
@@ -43,6 +89,12 @@ export interface GraphNodeDocument {
     handles?: string[];
     /** Earlier ids of this node (two people merged into one), so removals still hold. */
     aliases?: string[];
+    /** People: their contact cards' item node ids (the card's details are the person's). */
+    contactIds?: string[];
+    /** People: the member whose own data this is ("me" on their pages). */
+    ownerId?: string;
+    /** Events the model found: when. */
+    at?: number;
     updatedAt: Date;
 }
 
@@ -60,6 +112,8 @@ export interface GraphStateDocument {
     fullPassRequested?: boolean;
     /** Text saved while the notebook was private has been cleaned for sharing. */
     scrubbedShared?: boolean;
+    /** The one-link-per-pair links were copied into relations. */
+    relationsMigratedAt?: Date;
     /** Another instance is linking this notebook until then. */
     leaseUntil?: Date;
 }
@@ -78,96 +132,298 @@ export interface GraphUsageDocument {
     calls: number;
 }
 
-/** A link to save: its two ends and why. */
-export interface GraphLinkInput {
+/** A relation to save: its two ends, what it is and why. */
+export interface GraphRelationInput {
     a: string;
     b: string;
-    kind: DataGraphLinkKind;
+    kind: DataGraphRelationKind;
+    type?: string;
+    from?: string;
+    to?: string;
     confidence: number;
     evidence: string;
-    madeBy: 'rule' | 'model';
+    madeBy: DataGraphMadeBy;
+    items?: string[];
+    count?: number;
+    firstAt?: number;
+    lastAt?: number;
 }
 
-const links = () => getDb().collection<GraphLinkDocument>('graph_links');
+/** New messages, emails or events between the data's owner and a person. */
+export interface InteractionTally {
+    /** The owner's person node. */
+    a: string;
+    /** The other person. */
+    b: string;
+    kind: 'messages_with' | 'emails_with' | 'met_with';
+    items: Array<{ id: string; at: number }>;
+}
+
+/** Most example items kept on a relation. */
+export const MAX_RELATION_ITEMS = 5;
+
+const relations = () => getDb().collection<GraphRelationDocument>('graph_relations');
+const legacyLinks = () => getDb().collection<LegacyGraphLinkDocument>('graph_links');
 const nodes = () => getDb().collection<GraphNodeDocument>('graph_nodes');
 const states = () => getDb().collection<GraphStateDocument>('graph_state');
 const judged = () => getDb().collection<GraphJudgedDocument>('graph_judged');
 const usage = () => getDb().collection<GraphUsageDocument>('graph_usage');
 
-/** One link per pair of nodes, whichever way round it's given. */
+/** One line per pair of nodes, whichever way round it's given. */
 export function linkKey(notebookId: string, x: string, y: string): string {
     const [a, b] = x < y ? [x, y] : [y, x];
     return `${notebookId}|${a}|${b}`;
 }
 
-/** Rules are certain; a model link never replaces one. Higher confidence wins otherwise. */
-function outranks(next: GraphLinkInput, current: GraphLinkDocument): boolean {
-    if (current.madeBy === 'rule' && next.madeBy === 'model') return false;
-    if (next.madeBy === 'rule' && current.madeBy === 'model') return true;
+/** Relations whose meaning doesn't depend on which way round they are. */
+const SYMMETRIC = new Set([
+    'spouse',
+    'partner',
+    'husband',
+    'wife',
+    'sibling',
+    'brother',
+    'sister',
+    'friend',
+    'coworker',
+    'colleague',
+    'cousin',
+    'related',
+]);
+
+/** What tells a relation from the pair's others: its kind, and for relationships the type. */
+export function relationKey(input: Pick<GraphRelationInput, 'kind' | 'type' | 'from' | 'a' | 'b'>) {
+    if (input.kind !== 'relationship') return input.kind;
+    const type = input.type ?? 'related';
+    if (SYMMETRIC.has(type)) return `relationship:${type}`;
+    const [a] = input.a < input.b ? [input.a] : [input.b];
+    return `relationship:${type}:${input.from === a ? 'ab' : 'ba'}`;
+}
+
+export function relationId(notebookId: string, input: GraphRelationInput): string {
+    return `${linkKey(notebookId, input.a, input.b)}|${relationKey(input)}`;
+}
+
+const madeByRank: Record<DataGraphMadeBy, number> = { model: 0, rule: 1, user: 2 };
+
+/** A model relation never replaces a rule's or the user's; higher confidence wins otherwise. */
+function outranks(
+    next: GraphRelationInput,
+    current: Pick<GraphRelationDocument, 'madeBy' | 'confidence'>,
+): boolean {
+    if (madeByRank[next.madeBy] !== madeByRank[current.madeBy])
+        return madeByRank[next.madeBy] > madeByRank[current.madeBy];
+    // Rules and the user restate the truth each pass (an interaction's count changes).
+    if (next.madeBy !== 'model') return true;
     return next.confidence > current.confidence;
 }
 
+const round = (n: number) => Math.round(n * 100) / 100;
+
+function relationFields(notebookId: string, input: GraphRelationInput) {
+    const [a, b] = input.a < input.b ? [input.a, input.b] : [input.b, input.a];
+    return {
+        notebookId,
+        pair: linkKey(notebookId, a, b),
+        a,
+        b,
+        kind: input.kind,
+        key: relationKey(input),
+        ...(input.type ? { type: input.type } : {}),
+        ...(input.from ? { from: input.from } : {}),
+        ...(input.to ? { to: input.to } : {}),
+        confidence: round(input.confidence),
+        evidence: input.evidence.slice(0, 200),
+        madeBy: input.madeBy,
+        ...(input.items?.length ? { items: input.items.slice(0, MAX_RELATION_ITEMS) } : {}),
+        ...(input.count !== undefined ? { count: input.count } : {}),
+        ...(input.firstAt !== undefined ? { firstAt: input.firstAt } : {}),
+        ...(input.lastAt !== undefined ? { lastAt: input.lastAt } : {}),
+        status: 'active' as const,
+    };
+}
+
+/** Whether saving would change anything someone could see. */
+function differs(current: GraphRelationDocument, next: ReturnType<typeof relationFields>) {
+    return (
+        current.status !== 'active' ||
+        current.confidence !== next.confidence ||
+        current.evidence !== next.evidence ||
+        current.madeBy !== next.madeBy ||
+        current.from !== next.from ||
+        current.count !== next.count ||
+        current.firstAt !== next.firstAt ||
+        current.lastAt !== next.lastAt ||
+        (current.items ?? []).join(',') !== (next.items ?? []).join(',')
+    );
+}
+
+async function findByIds(notebookId: string, ids: string[]) {
+    const found = new Map<string, GraphRelationDocument>();
+    for (let i = 0; i < ids.length; i += 500) {
+        for (const doc of await relations()
+            .find({ _id: { $in: ids.slice(i, i + 500) }, notebookId })
+            .toArray())
+            found.set(doc._id, doc);
+    }
+    return found;
+}
+
+type RelationWrite = {
+    updateOne: {
+        filter: Record<string, unknown>;
+        update: Record<string, unknown>;
+        upsert: boolean;
+    };
+};
+
+async function writeRelations(writes: RelationWrite[]): Promise<number> {
+    if (writes.length === 0) return 0;
+    for (let i = 0; i < writes.length; i += 1000) {
+        try {
+            await relations().bulkWrite(writes.slice(i, i + 1000) as never, { ordered: false });
+        } catch (error) {
+            // A racing insert of the same relation: the other one stands.
+            if ((error as { code?: number }).code !== 11000) throw error;
+        }
+    }
+    return writes.length;
+}
+
 /**
- * Saves links. A pair someone removed stays removed; a pair the model rejected can still
- * be linked by a rule (or the model, if it changes its mind). Returns how many changed.
+ * Saves relations. One someone removed stays removed; a pair the model rejected can still
+ * be related by a rule (or the model, if it changes its mind). Returns how many changed.
  */
-export async function saveGraphLinks(
+export async function saveGraphRelations(
     notebookId: string,
-    inputs: GraphLinkInput[],
+    inputs: GraphRelationInput[],
 ): Promise<number> {
-    const byKey = new Map<string, GraphLinkInput>();
+    const byId = new Map<string, GraphRelationInput>();
     for (const input of inputs) {
         if (input.a === input.b) continue;
-        const key = linkKey(notebookId, input.a, input.b);
-        const earlier = byKey.get(key);
-        if (!earlier || outranks(input, { ...earlier, status: 'active' } as GraphLinkDocument))
-            byKey.set(key, input);
+        const id = relationId(notebookId, input);
+        const earlier = byId.get(id);
+        if (!earlier || outranks(input, earlier)) byId.set(id, input);
     }
-    if (byKey.size === 0) return 0;
-    const existing = new Map<string, GraphLinkDocument>();
-    const keys = [...byKey.keys()];
-    for (let i = 0; i < keys.length; i += 500) {
-        for (const doc of await links()
-            .find({ _id: { $in: keys.slice(i, i + 500) }, notebookId })
-            .toArray())
-            existing.set(doc._id, doc);
-    }
+    if (byId.size === 0) return 0;
+    const existing = await findByIds(notebookId, [...byId.keys()]);
     const now = new Date();
-    const writes = [];
-    for (const [key, input] of byKey) {
-        const current = existing.get(key);
+    const writes: RelationWrite[] = [];
+    for (const [id, input] of byId) {
+        const current = existing.get(id);
         if (current?.status === 'removed') continue;
         if (current?.status === 'active' && !outranks(input, current)) continue;
-        const [a, b] = input.a < input.b ? [input.a, input.b] : [input.b, input.a];
+        const fields = relationFields(notebookId, input);
+        if (current && !differs(current, fields)) continue;
+        const unset: Record<string, ''> = {};
+        for (const key of ['items', 'count', 'firstAt', 'lastAt'] as const)
+            if (current?.[key] !== undefined && fields[key as keyof typeof fields] === undefined)
+                unset[key] = '';
         writes.push({
             updateOne: {
-                filter: { _id: key, notebookId, status: { $ne: 'removed' as const } },
+                filter: { _id: id, notebookId, status: { $ne: 'removed' } },
                 update: {
-                    $set: {
-                        notebookId,
-                        a,
-                        b,
-                        kind: input.kind,
-                        confidence: Math.round(input.confidence * 100) / 100,
-                        evidence: input.evidence.slice(0, 200),
-                        madeBy: input.madeBy,
-                        status: 'active' as const,
-                        updatedAt: now,
-                    },
+                    $set: { ...fields, updatedAt: now },
+                    ...(Object.keys(unset).length ? { $unset: unset } : {}),
                     $setOnInsert: { createdAt: now, checkedAt: now },
                 },
                 upsert: !current,
             },
         });
     }
-    if (writes.length === 0) return 0;
-    try {
-        await links().bulkWrite(writes, { ordered: false });
-    } catch (error) {
-        // A racing insert of the same pair: the other one stands.
-        if ((error as { code?: number }).code !== 11000) throw error;
+    return writeRelations(writes);
+}
+
+export function interactionEvidence(kind: InteractionTally['kind'], count: number): string {
+    const noun = kind === 'messages_with' ? 'message' : kind === 'emails_with' ? 'email' : 'event';
+    return `${count} ${noun}${count === 1 ? '' : 's'}${kind === 'met_with' ? ' together' : ''}`;
+}
+
+/** A tally of a whole window as a relation: the count is the tally's. */
+export function interactionInput(tally: InteractionTally): GraphRelationInput {
+    const sorted = [...tally.items].sort((x, y) => y.at - x.at);
+    return {
+        a: tally.a,
+        b: tally.b,
+        kind: tally.kind,
+        from: tally.a,
+        confidence: 1,
+        evidence: interactionEvidence(tally.kind, sorted.length),
+        madeBy: 'rule',
+        items: sorted.slice(0, MAX_RELATION_ITEMS).map((item) => item.id),
+        count: sorted.length,
+        firstAt: sorted[sorted.length - 1]?.at,
+        lastAt: sorted[0]?.at,
+    };
+}
+
+/**
+ * Adds new messages, emails or events to the pairs' interactions, one relation per pair:
+ * only items newer than the last one counted (an item uploaded again isn't counted twice;
+ * the next full pass counts the window exactly). Removed interactions stay removed.
+ */
+export async function addInteractions(
+    notebookId: string,
+    tallies: InteractionTally[],
+): Promise<number> {
+    const byId = new Map<string, InteractionTally>();
+    for (const tally of tallies) {
+        if (tally.a === tally.b || tally.items.length === 0) continue;
+        const id = relationId(notebookId, {
+            a: tally.a,
+            b: tally.b,
+            kind: tally.kind,
+            confidence: 1,
+            evidence: '',
+            madeBy: 'rule',
+        });
+        const earlier = byId.get(id);
+        byId.set(id, earlier ? { ...earlier, items: [...earlier.items, ...tally.items] } : tally);
     }
-    return writes.length;
+    if (byId.size === 0) return 0;
+    const existing = await findByIds(notebookId, [...byId.keys()]);
+    const now = new Date();
+    const writes: RelationWrite[] = [];
+    for (const [id, tally] of byId) {
+        const current = existing.get(id);
+        if (current?.status === 'removed') continue;
+        const base = current?.status === 'active' ? current : null;
+        const known = new Set(base?.items ?? []);
+        const fresh = new Map<string, number>();
+        for (const item of tally.items) {
+            if (known.has(item.id)) continue;
+            if (base?.lastAt !== undefined && item.at <= base.lastAt) continue;
+            fresh.set(item.id, item.at);
+        }
+        if (fresh.size === 0) continue;
+        const ats = [...fresh.values()];
+        const count = (base?.count ?? 0) + fresh.size;
+        const items = [
+            ...[...fresh].sort((x, y) => y[1] - x[1]).map(([itemId]) => itemId),
+            ...(base?.items ?? []),
+        ].slice(0, MAX_RELATION_ITEMS);
+        const fields = relationFields(notebookId, {
+            a: tally.a,
+            b: tally.b,
+            kind: tally.kind,
+            from: tally.a,
+            confidence: 1,
+            evidence: interactionEvidence(tally.kind, count),
+            madeBy: 'rule',
+            items,
+            count,
+            firstAt: Math.min(base?.firstAt ?? Infinity, ...ats),
+            lastAt: Math.max(base?.lastAt ?? -Infinity, ...ats),
+        });
+        writes.push({
+            updateOne: {
+                filter: { _id: id, notebookId, status: { $ne: 'removed' } },
+                update: { $set: { ...fields, updatedAt: now }, $setOnInsert: { createdAt: now } },
+                upsert: !current,
+            },
+        });
+    }
+    return writeRelations(writes);
 }
 
 /** Records pairs the model judged unrelated, so they aren't sent to it again. */
@@ -176,210 +432,365 @@ export async function rejectGraphPairs(
     pairs: Array<[string, string]>,
 ): Promise<void> {
     const now = new Date();
-    for (const [x, y] of pairs) {
-        const [a, b] = x < y ? [x, y] : [y, x];
-        await links()
-            .updateOne(
-                { _id: linkKey(notebookId, x, y), notebookId },
-                {
-                    $setOnInsert: {
-                        notebookId,
-                        a,
-                        b,
-                        kind: 'related',
-                        confidence: 0,
-                        evidence: '',
-                        madeBy: 'model',
-                        status: 'rejected',
-                        createdAt: now,
-                        updatedAt: now,
+    const writes: RelationWrite[] = pairs
+        .filter(([x, y]) => x !== y)
+        .map(([x, y]) => {
+            const input: GraphRelationInput = {
+                a: x,
+                b: y,
+                kind: 'related',
+                confidence: 0,
+                evidence: '',
+                madeBy: 'model',
+            };
+            return {
+                updateOne: {
+                    filter: { _id: relationId(notebookId, input), notebookId },
+                    update: {
+                        $setOnInsert: {
+                            ...relationFields(notebookId, input),
+                            status: 'rejected',
+                            createdAt: now,
+                            updatedAt: now,
+                        },
                     },
+                    upsert: true,
                 },
-                { upsert: true },
-            )
-            .catch((error) => {
-                if ((error as { code?: number }).code !== 11000) throw error;
-            });
-    }
+            };
+        });
+    await writeRelations(writes);
 }
 
-/** The notebook's links with these statuses (active by default), most recently changed first. */
-export async function findGraphLinks(
+/** The notebook's relations with these statuses (active by default), most recently changed first. */
+export async function findGraphRelations(
     notebookId: string,
-    statuses: GraphLinkStatus[] = ['active'],
+    statuses: GraphRelationStatus[] = ['active'],
     limit = 10_000,
-): Promise<GraphLinkDocument[]> {
-    return links()
+): Promise<GraphRelationDocument[]> {
+    return relations()
         .find({ notebookId, status: { $in: statuses } })
         .sort({ updatedAt: -1 })
         .limit(limit)
         .toArray();
 }
 
-/** Which of these pairs (link keys) are already decided: linked, removed or rejected. */
+/** Which of these pairs (link keys) are already decided: related, removed or rejected. */
 export async function findDecidedPairs(notebookId: string, keys: string[]): Promise<Set<string>> {
     const decided = new Set<string>();
     for (let i = 0; i < keys.length; i += 500) {
-        const docs = await links()
-            .find({ _id: { $in: keys.slice(i, i + 500) }, notebookId }, { projection: { _id: 1 } })
+        const docs = await relations()
+            .find(
+                { notebookId, pair: { $in: keys.slice(i, i + 500) } },
+                { projection: { pair: 1 } },
+            )
             .toArray();
-        for (const doc of docs) decided.add(doc._id);
+        for (const doc of docs) decided.add(doc.pair);
     }
     return decided;
 }
 
 /** Rejected pairs this old are out of the window by now: forget them. */
 export async function pruneRejectedPairs(notebookId: string, before: Date): Promise<void> {
-    await links().deleteMany({ notebookId, status: 'rejected', updatedAt: { $lt: before } });
+    await relations().deleteMany({ notebookId, status: 'rejected', updatedAt: { $lt: before } });
 }
 
-/** Replaces the reason on these links (cleaning text for a shared notebook). */
-export async function setGraphLinkEvidence(
+/** Replaces the reason on these relations (cleaning text for a shared notebook). */
+export async function setGraphRelationEvidence(
     notebookId: string,
     ids: string[],
     evidence: string,
 ): Promise<void> {
     if (ids.length === 0) return;
-    await links().updateMany({ _id: { $in: ids }, notebookId }, { $set: { evidence } });
+    await relations().updateMany({ _id: { $in: ids }, notebookId }, { $set: { evidence } });
 }
 
-/** Drops the active links touching these nodes (removed ones stay, so they stay removed). */
-export async function deleteGraphLinksTouching(notebookId: string, ids: string[]): Promise<void> {
+/** Drops the active relations touching these nodes (removed ones stay, so they stay removed). */
+export async function deleteGraphRelationsTouching(
+    notebookId: string,
+    ids: string[],
+): Promise<void> {
     if (ids.length === 0) return;
-    await links().deleteMany({
-        notebookId,
-        status: { $ne: 'removed' },
-        $or: [{ a: { $in: ids } }, { b: { $in: ids } }],
-    });
+    await relations().deleteMany({ notebookId, status: { $ne: 'removed' }, a: { $in: ids } });
+    await relations().deleteMany({ notebookId, status: { $ne: 'removed' }, b: { $in: ids } });
+}
+
+/** Drops active relations of these kinds (relationships, once a notebook is shared). */
+export async function deleteActiveRelationsOfKind(
+    notebookId: string,
+    kinds: DataGraphRelationKind[],
+): Promise<void> {
+    await relations().deleteMany({ notebookId, status: 'active', kind: { $in: kinds } });
 }
 
 // MARK: - Items gone for good
 
-/** Active model links whose items were looked up longest ago. */
-export async function findGraphLinksToCheck(
+/** Active model relations whose items were looked up longest ago. */
+export async function findGraphRelationsToCheck(
     notebookId: string,
     limit: number,
-): Promise<GraphLinkDocument[]> {
-    return links()
+): Promise<GraphRelationDocument[]> {
+    return relations()
         .find({ notebookId, status: 'active', madeBy: 'model' })
         .sort({ checkedAt: 1 })
         .limit(limit)
         .toArray();
 }
 
-/** Notes which links have an item missing (and since when) and which are whole again. */
-export async function markGraphLinksChecked(
+/** Notes which relations have an item missing (and since when) and which are whole again. */
+export async function markGraphRelationsChecked(
     notebookId: string,
     present: string[],
     missing: string[],
     now: Date,
 ): Promise<void> {
     if (present.length)
-        await links().updateMany(
+        await relations().updateMany(
             { _id: { $in: present }, notebookId },
             { $set: { checkedAt: now }, $unset: { goneSince: '' } },
         );
     if (missing.length) {
-        await links().updateMany(
+        await relations().updateMany(
             { _id: { $in: missing }, notebookId, goneSince: { $exists: false } },
             { $set: { goneSince: now } },
         );
-        await links().updateMany(
+        await relations().updateMany(
             { _id: { $in: missing }, notebookId },
             { $set: { checkedAt: now } },
         );
     }
 }
 
-/** Drops links whose item has been missing since before `before`. */
-export async function deleteGraphLinksGoneBefore(notebookId: string, before: Date): Promise<void> {
-    await links().deleteMany({ notebookId, status: 'active', goneSince: { $lt: before } });
+/** Drops relations whose item has been missing since before `before`. */
+export async function deleteGraphRelationsGoneBefore(
+    notebookId: string,
+    before: Date,
+): Promise<void> {
+    await relations().deleteMany({ notebookId, status: 'active', goneSince: { $lt: before } });
 }
 
-/** Active links touching one node. */
-export async function findGraphLinksOf(
+/** Active relations touching one node. */
+export async function findGraphRelationsOf(
     notebookId: string,
     nodeId: string,
     limit = 50,
-): Promise<GraphLinkDocument[]> {
+): Promise<GraphRelationDocument[]> {
     const [asA, asB] = await Promise.all([
-        links().find({ notebookId, a: nodeId, status: 'active' }).limit(limit).toArray(),
-        links().find({ notebookId, b: nodeId, status: 'active' }).limit(limit).toArray(),
+        relations().find({ notebookId, a: nodeId, status: 'active' }).limit(limit).toArray(),
+        relations().find({ notebookId, b: nodeId, status: 'active' }).limit(limit).toArray(),
     ]);
     return [...asA, ...asB];
 }
 
-/** Takes a link out for good: it's never added again for the same pair. */
-export async function removeGraphLink(
+/** Active relations on these lines (link keys). */
+export async function findGraphRelationsForPairs(
+    notebookId: string,
+    pairs: string[],
+): Promise<GraphRelationDocument[]> {
+    if (pairs.length === 0) return [];
+    return relations()
+        .find({ notebookId, pair: { $in: pairs.slice(0, 500) }, status: 'active' })
+        .limit(2_000)
+        .toArray();
+}
+
+/** Takes one relation out for good: it's never added again for the same pair. */
+export async function removeGraphRelation(
     notebookId: string,
     id: string,
     userId: string,
 ): Promise<boolean> {
-    const result = await links().updateOne(
+    const result = await relations().updateOne(
         { _id: id, notebookId, status: 'active' },
         { $set: { status: 'removed', removedBy: userId, updatedAt: new Date() } },
     );
     return result.matchedCount > 0;
 }
 
-/** Drops rule links the latest pass didn't make again (their items changed or left). */
-export async function deleteStaleRuleLinks(notebookId: string, keep: Set<string>): Promise<number> {
-    const current = await links()
-        .find({ notebookId, madeBy: 'rule', status: 'active' }, { projection: { _id: 1 } })
+/** Takes out every reason on one line, for good. */
+export async function removeGraphPair(
+    notebookId: string,
+    pair: string,
+    userId: string,
+): Promise<boolean> {
+    const result = await relations().updateMany(
+        { notebookId, pair, status: 'active' },
+        { $set: { status: 'removed', removedBy: userId, updatedAt: new Date() } },
+    );
+    return result.matchedCount > 0;
+}
+
+/**
+ * Drops relations the rules or About me made that the latest pass didn't make again
+ * (their items changed or left, a relation was taken out of About me).
+ */
+export async function deleteStaleRuleRelations(
+    notebookId: string,
+    keep: Set<string>,
+): Promise<number> {
+    const current = await relations()
+        .find(
+            { notebookId, madeBy: { $in: ['rule', 'user'] }, status: 'active' },
+            { projection: { _id: 1 } },
+        )
         .limit(50_000)
         .toArray();
-    return deleteGraphLinks(
+    return deleteGraphRelations(
         notebookId,
         current.map((doc) => doc._id).filter((id) => !keep.has(id)),
     );
 }
 
-/** Drops these links unless someone removed them (removed ones must stay removed). */
-export async function deleteGraphLinks(notebookId: string, ids: string[]): Promise<number> {
+/** Drops these relations unless someone removed them (removed ones must stay removed). */
+export async function deleteGraphRelations(notebookId: string, ids: string[]): Promise<number> {
     if (ids.length === 0) return 0;
-    const result = await links().deleteMany({
-        _id: { $in: ids },
-        notebookId,
-        status: { $ne: 'removed' },
-    });
-    return result.deletedCount;
+    let deleted = 0;
+    for (let i = 0; i < ids.length; i += 500) {
+        const result = await relations().deleteMany({
+            _id: { $in: ids.slice(i, i + 500) },
+            notebookId,
+            status: { $ne: 'removed' },
+        });
+        deleted += result.deletedCount;
+    }
+    return deleted;
 }
 
-// MARK: - Nodes (people, places, topics)
+// MARK: - Migration from one link per pair
 
-export async function saveGraphNodes(
-    notebookId: string,
-    inputs: Array<
-        Pick<
-            GraphNodeDocument,
-            'id' | 'kind' | 'label' | 'addresses' | 'keys' | 'handles' | 'aliases'
-        >
-    >,
-): Promise<void> {
-    if (inputs.length === 0) return;
-    const now = new Date();
-    await nodes().bulkWrite(
-        inputs.map((input) => ({
+/** A legacy link between a contact card and a person. */
+const isCardLink = (link: Pick<LegacyGraphLinkDocument, 'a' | 'b'>) =>
+    [link.a, link.b].some((end) => parseDataGraphItemNodeId(end)?.itemId.startsWith('contacts:'));
+const isEventLink = (link: Pick<LegacyGraphLinkDocument, 'a' | 'b'>) =>
+    [link.a, link.b].some((end) => parseDataGraphItemNodeId(end)?.itemId.startsWith('calendar:'));
+
+/**
+ * The relation an older link becomes, or null when it has none of its own now: a contact
+ * card is its person's details, and messages and emails are counted in the person's
+ * interactions. Removals always stay, and keep the whole pair apart, as they did.
+ */
+export function legacyLinkToRelation(
+    link: LegacyGraphLinkDocument,
+): (GraphRelationInput & { status: GraphRelationStatus }) | null {
+    const removed = link.status === 'removed';
+    let kind: DataGraphRelationKind = link.status === 'rejected' ? 'related' : link.kind;
+    if (link.kind === 'person' && link.status !== 'rejected') {
+        if (isEventLink(link) && !isCardLink(link)) kind = 'attendee';
+        else if (!removed) return null;
+    }
+    return {
+        a: link.a,
+        b: link.b,
+        kind,
+        confidence: link.confidence,
+        evidence: link.evidence,
+        madeBy: link.madeBy,
+        status: link.status,
+    };
+}
+
+/**
+ * Copies the notebook's one-link-per-pair links into relations, a batch at a time.
+ * Nothing is deleted: the old documents are only marked as copied, and a relation already
+ * there is never overwritten. True once every link is copied.
+ */
+export async function migrateLegacyGraphLinks(notebookId: string, batch = 5_000): Promise<boolean> {
+    const legacy = await legacyLinks()
+        .find({ notebookId, migratedAt: { $exists: false } })
+        .limit(batch)
+        .toArray();
+    const writes: RelationWrite[] = [];
+    for (const link of legacy) {
+        const relation = legacyLinkToRelation(link);
+        if (!relation) continue;
+        const fields = relationFields(notebookId, relation);
+        writes.push({
             updateOne: {
-                filter: { _id: `${notebookId}|${input.id}`, notebookId },
+                filter: { _id: relationId(notebookId, relation), notebookId },
                 update: {
-                    $set: {
-                        notebookId,
-                        id: input.id,
-                        kind: input.kind,
-                        label: input.label.slice(0, 120),
-                        ...(input.addresses ? { addresses: input.addresses.slice(0, 20) } : {}),
-                        ...(input.keys ? { keys: input.keys.slice(0, 40) } : {}),
-                        ...(input.handles ? { handles: input.handles.slice(0, 40) } : {}),
-                        ...(input.aliases?.length ? { aliases: input.aliases.slice(0, 40) } : {}),
-                        updatedAt: now,
+                    $setOnInsert: {
+                        ...fields,
+                        status: relation.status,
+                        ...(relation.status === 'removed' ? { blocksPair: true } : {}),
+                        ...(link.removedBy ? { removedBy: link.removedBy } : {}),
+                        ...(link.checkedAt ? { checkedAt: link.checkedAt } : {}),
+                        ...(link.goneSince ? { goneSince: link.goneSince } : {}),
+                        createdAt: link.createdAt,
+                        updatedAt: link.updatedAt,
                     },
                 },
                 upsert: true,
             },
-        })),
-        { ordered: false },
-    );
+        });
+    }
+    await writeRelations(writes);
+    if (legacy.length)
+        await legacyLinks().updateMany(
+            { _id: { $in: legacy.map((link) => link._id) }, notebookId },
+            { $set: { migratedAt: new Date() } },
+        );
+    return legacy.length < batch;
+}
+
+// MARK: - Nodes (people, places, topics, events)
+
+export type GraphNodeInput = Pick<
+    GraphNodeDocument,
+    | 'id'
+    | 'kind'
+    | 'label'
+    | 'addresses'
+    | 'keys'
+    | 'handles'
+    | 'aliases'
+    | 'contactIds'
+    | 'ownerId'
+    | 'at'
+>;
+
+export async function saveGraphNodes(notebookId: string, inputs: GraphNodeInput[]): Promise<void> {
+    if (inputs.length === 0) return;
+    const now = new Date();
+    for (let i = 0; i < inputs.length; i += 1000) {
+        await nodes().bulkWrite(
+            inputs.slice(i, i + 1000).map((input) => {
+                const unset: Record<string, ''> = {};
+                if (input.kind === 'person') {
+                    if (!input.contactIds?.length) unset['contactIds'] = '';
+                    if (!input.ownerId) unset['ownerId'] = '';
+                }
+                return {
+                    updateOne: {
+                        filter: { _id: `${notebookId}|${input.id}`, notebookId },
+                        update: {
+                            $set: {
+                                notebookId,
+                                id: input.id,
+                                kind: input.kind,
+                                label: input.label.slice(0, 120),
+                                ...(input.addresses
+                                    ? { addresses: input.addresses.slice(0, 20) }
+                                    : {}),
+                                ...(input.keys ? { keys: input.keys.slice(0, 40) } : {}),
+                                ...(input.handles ? { handles: input.handles.slice(0, 40) } : {}),
+                                ...(input.aliases?.length
+                                    ? { aliases: input.aliases.slice(0, 40) }
+                                    : {}),
+                                ...(input.contactIds?.length
+                                    ? { contactIds: input.contactIds.slice(0, 10) }
+                                    : {}),
+                                ...(input.ownerId ? { ownerId: input.ownerId } : {}),
+                                ...(input.at !== undefined ? { at: input.at } : {}),
+                                updatedAt: now,
+                            },
+                            ...(Object.keys(unset).length ? { $unset: unset } : {}),
+                        },
+                        upsert: true,
+                    },
+                };
+            }),
+            { ordered: false },
+        );
+    }
 }
 
 export async function findGraphNodes(
@@ -436,6 +847,7 @@ export async function finishGraphPass(
         | 'lastFullRunAt'
         | 'pendingItems'
         | 'scrubbedShared'
+        | 'relationsMigratedAt'
     >,
     options: { full?: boolean } = {},
 ): Promise<void> {

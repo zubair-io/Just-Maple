@@ -44,7 +44,8 @@ import {
     runIncrementalGraphPass,
     USER_DAILY_CALLS,
 } from '../../services/graph.service';
-import { findDecidedPairs, findGraphLinks } from '../../repositories/graph.repo';
+import { findDecidedPairs, findGraphRelations } from '../../repositories/graph.repo';
+import { addRelation, createEntity } from '../../repositories/profile.repo';
 import { executeMacDataTool, getMacDataToolContext } from '../../services/mac-data-tools.service';
 import { saveTravelEstimates } from '../../repositories/travel-estimate.repo';
 
@@ -276,7 +277,7 @@ describe.runIf(mongoAvailable)('connected-data graph', () => {
         expect(inB.links.every((l) => l.id.startsWith(`${b.notebookId}|`))).toBe(true);
 
         // Every stored document carries its own notebook.
-        const stored = await testDb!.collection('graph_links').find({}).toArray();
+        const stored = await testDb!.collection('graph_relations').find({}).toArray();
         for (const doc of stored)
             expect(String(doc._id).startsWith(`${doc.notebookId}|`)).toBe(true);
 
@@ -302,7 +303,7 @@ describe.runIf(mongoAvailable)('connected-data graph', () => {
         agreeableModel('Soccer');
         await testDb!.collection('graph_judged').deleteMany({ notebookId: b.notebookId });
         await testDb!
-            .collection('graph_links')
+            .collection('graph_relations')
             .deleteMany({ notebookId: b.notebookId, status: 'rejected' });
         await runGraphPass(b.notebookId);
         const later = (await graphOf(alex, b.notebookId)).graph;
@@ -350,7 +351,7 @@ describe.runIf(mongoAvailable)('connected-data graph', () => {
         const event = node(alex.id, partyEvent.id);
         const stored = async () =>
             testDb!
-                .collection('graph_links')
+                .collection('graph_relations')
                 .countDocuments({ notebookId, $or: [{ a: event }, { b: event }] });
         const before = await stored();
         expect(before).toBeGreaterThan(0);
@@ -377,29 +378,33 @@ describe.runIf(mongoAvailable)('connected-data graph', () => {
         const { notebookId } = await notebook(['calendar', 'mail']);
         agreeableModel();
         await runGraphPass(notebookId);
-        const linkId = (await findGraphLinks(notebookId)).find((l) => l.kind === 'related')!._id;
+        const linkId = (await findGraphRelations(notebookId)).find(
+            (l) => l.kind === 'related',
+        )!._id;
         const pass = (days: number) =>
             runGraphPass(notebookId, new Date(Date.now() + days * 24 * HOUR * 1000));
 
         // Still in the device data: not gone.
         await pass(1);
         expect(
-            await testDb!.collection('graph_links').findOne({ _id: linkId as never }),
+            await testDb!.collection('graph_relations').findOne({ _id: linkId as never }),
         ).not.toHaveProperty('goneSince');
 
         await testDb!
             .collection('device_items')
             .deleteOne({ userId: alex.id, 'item.id': partyEvent.id });
         await pass(2);
-        const missing = await testDb!.collection('graph_links').findOne({ _id: linkId as never });
+        const missing = await testDb!
+            .collection('graph_relations')
+            .findOne({ _id: linkId as never });
         expect(missing?.goneSince).toBeInstanceOf(Date);
         await pass(20);
         expect(
-            await testDb!.collection('graph_links').countDocuments({ _id: linkId as never }),
+            await testDb!.collection('graph_relations').countDocuments({ _id: linkId as never }),
         ).toBe(1);
         await pass(33);
         expect(
-            await testDb!.collection('graph_links').countDocuments({ _id: linkId as never }),
+            await testDb!.collection('graph_relations').countDocuments({ _id: linkId as never }),
         ).toBe(0);
     });
 
@@ -488,8 +493,8 @@ describe.runIf(mongoAvailable)('connected-data graph', () => {
         expect(after.links.some((l) => l.id === rule.id || l.id === model.id)).toBe(false);
         expect(
             await testDb!
-                .collection('graph_links')
-                .countDocuments({ _id: { $in: [rule.id, model.id] } as never, status: 'removed' }),
+                .collection('graph_relations')
+                .countDocuments({ pair: { $in: [rule.id, model.id] }, status: 'removed' }),
         ).toBe(2);
         // The model wasn't asked about the removed pair.
         const asked = judge.mock.calls.flatMap(([request]) =>
@@ -713,7 +718,7 @@ describe.runIf(mongoAvailable)('connected-data graph', () => {
                 .countDocuments({ notebookId, label: 'Divorce' }),
         ).toBe(0);
         expect(
-            await testDb!.collection('graph_links').countDocuments({
+            await testDb!.collection('graph_relations').countDocuments({
                 notebookId,
                 $or: [{ evidence: /lawyer|Divorce|Home/ }, { kind: 'travel', status: 'active' }],
             }),
@@ -763,7 +768,7 @@ describe.runIf(mongoAvailable)('connected-data graph', () => {
         expect(new Set(judgedTitles()).size).toBe(200);
     });
 
-    it('keeps a removed person link removed when two people merge into one', async () => {
+    it('keeps a removed reason removed when two people merge into one', async () => {
         const coach = item('imessage:coach', 'imessage', {
             sender: 'Coach Dana',
             participants: ['+15185550199'],
@@ -774,26 +779,39 @@ describe.runIf(mongoAvailable)('connected-data graph', () => {
             participants: ['+15185550142'],
             body: 'See you there',
         });
-        await upload(['imessage', 'contacts'], [coach, smith]);
-        const { notebookId } = await notebook(['imessage', 'contacts']);
+        const practice = item('calendar:practice@1', 'calendar', {
+            title: 'Practice',
+            participants: ['+15185550142'],
+            occurredAt: now + HOUR,
+        });
+        await upload(['imessage', 'contacts', 'calendar'], [coach, smith, practice]);
+        const { notebookId } = await notebook(['imessage', 'contacts', 'calendar']);
         await runGraphPass(notebookId);
         const graph = (await graphOf(alex, notebookId)).graph;
-        const coachLink = graph.links.find(
-            (l) => l.kind === 'person' && [l.source, l.target].includes(node(alex.id, coach.id)),
+        const me = graph.nodes.find((n) => n.isOwner)!.id;
+        const ids = graph.nodes
+            .filter((n) => n.kind === 'person' && !n.isOwner)
+            .map((n) => n.id)
+            .sort();
+        expect(ids).toHaveLength(2);
+        const coachPerson = graph.nodes.find((n) => n.label === 'Coach Dana')!.id;
+        const texts = between(graph, me, coachPerson)!.reasons.find(
+            (r) => r.kind === 'messages_with',
         )!;
+        expect(texts).toMatchObject({ count: 1, evidence: '1 message' });
         expect(
             (
                 await call(
                     alex,
-                    `/api/graph/${notebookId}/links/${encodeURIComponent(coachLink.id)}`,
+                    `/api/graph/${notebookId}/links/${encodeURIComponent(texts.id)}`,
                     'DELETE',
                 )
             ).status,
         ).toBe(200);
 
-        // One contact card with both numbers: they're one person now, under one of the ids.
+        // One contact card with both numbers: they're one person now, under the older id.
         await upload(
-            ['imessage', 'contacts'],
+            ['imessage', 'contacts', 'calendar'],
             [
                 item('contacts:dana', 'contacts', {
                     title: 'Dana Smith',
@@ -808,22 +826,19 @@ describe.runIf(mongoAvailable)('connected-data graph', () => {
         );
         await runGraphPass(notebookId);
         const after = (await graphOf(alex, notebookId)).graph;
-        const people = after.nodes.filter((n) => n.kind === 'person');
-        expect(people).toHaveLength(1);
+        const people = after.nodes.filter((n) => n.kind === 'person' && !n.isOwner);
+        expect(people.map((p) => p.id)).toEqual([ids[0]]);
         expect(
-            after.links.some(
-                (l) =>
-                    l.kind === 'person' && [l.source, l.target].includes(node(alex.id, coach.id)),
-            ),
-        ).toBe(false);
-        expect(
-            after.links.some(
-                (l) =>
-                    l.kind === 'person' && [l.source, l.target].includes(node(alex.id, smith.id)),
-            ),
-        ).toBe(true);
+            await testDb!
+                .collection('graph_nodes')
+                .findOne({ _id: `${notebookId}|${ids[0]}` as never }),
+        ).toMatchObject({ aliases: [ids[1]] });
+        // Their messages are one interaction now, and the removal still holds; the
+        // practice they're both in still joins them.
+        const reasons = between(after, me, ids[0]!)!.reasons.map((r) => r.kind);
+        expect(reasons).not.toContain('messages_with');
+        expect(reasons).toContain('met_with');
     });
-
     it('caps model calls a day, and runs full passes at most every 15 minutes', async () => {
         const many = Array.from({ length: 200 }, (_, i) =>
             item(`mail:m${i}`, 'mail', { occurredAt: now - i * 60, title: `Mail ${i}` }),
@@ -886,11 +901,13 @@ describe.runIf(mongoAvailable)('connected-data graph', () => {
     it('asks only about the pairs at hand, forgets old rejections, and reads newest first', async () => {
         await upload(['calendar', 'mail'], [partyMail, partyEvent]);
         const { notebookId } = await notebook(['calendar', 'mail']);
-        const links = testDb!.collection('graph_links');
+        const links = testDb!.collection('graph_relations');
         const old = new Date(Date.now() - 100 * 24 * HOUR * 1000);
         await links.insertMany(
             Array.from({ length: 5 }, (_, i) => ({
-                _id: `${notebookId}|item:x:${i}|item:y:${i}` as never,
+                _id: `${notebookId}|item:x:${i}|item:y:${i}|related` as never,
+                pair: `${notebookId}|item:x:${i}|item:y:${i}`,
+                key: 'related',
                 notebookId,
                 a: `item:x:${i}`,
                 b: `item:y:${i}`,
@@ -914,8 +931,8 @@ describe.runIf(mongoAvailable)('connected-data graph', () => {
         // Old rejections go; removals and links stay.
         expect(left.sort()).toEqual(['active', 'rejected', 'removed']);
 
-        const newest = await findGraphLinks(notebookId, ['active', 'rejected', 'removed'], 1);
-        expect(newest[0]!._id).toBe(`${notebookId}|item:x:4|item:y:4`);
+        const newest = await findGraphRelations(notebookId, ['active', 'rejected', 'removed'], 1);
+        expect(newest[0]!._id).toBe(`${notebookId}|item:x:4|item:y:4|related`);
     });
 
     it('removes a link whose id has a % in it', async () => {
@@ -928,7 +945,7 @@ describe.runIf(mongoAvailable)('connected-data graph', () => {
         const { notebookId } = await notebook(['calendar', 'mail']);
         agreeableModel();
         await runGraphPass(notebookId);
-        const link = (await findGraphLinks(notebookId)).find((l) => l._id.includes('%'))!;
+        const link = (await findGraphRelations(notebookId)).find((l) => l._id.includes('%'))!;
         expect(link).toBeDefined();
         const response = await call(
             alex,
@@ -937,7 +954,454 @@ describe.runIf(mongoAvailable)('connected-data graph', () => {
         );
         expect(response.status).toBe(200);
         expect(
-            await testDb!.collection('graph_links').findOne({ _id: link._id as never }),
+            await testDb!.collection('graph_relations').findOne({ _id: link._id as never }),
         ).toMatchObject({ status: 'removed' });
+    });
+    // MARK: - People and their reasons
+
+    // Alex's own card, Jen's card, three texts and a dinner Jen is invited to.
+    const meCard = item('contacts:me', 'contacts', {
+        title: 'Alex Lawrence',
+        extra: {
+            isMe: true,
+            phones: [{ label: 'mobile', value: '(518) 555-0100' }],
+            relations: [{ label: 'wife', name: 'Jen' }],
+        },
+    });
+    const jenCard = item('contacts:jen', 'contacts', {
+        title: 'Jen Lawrence',
+        extra: {
+            phones: [{ label: 'mobile', value: '(518) 555-0123' }],
+            emails: [{ label: 'home', value: 'jen@example.com' }],
+            birthday: '1986-02-03',
+            organization: 'Albany Med',
+            relations: [{ label: 'husband', name: 'Alex' }],
+        },
+    });
+    const texts = [3, 2, 1].map((hours, i) =>
+        item(`imessage:t${i + 1}`, 'imessage', {
+            participants: ['+15185550123'],
+            sender: 'Jen Lawrence',
+            body: `Text ${i + 1}`,
+            occurredAt: now - hours * HOUR,
+        }),
+    );
+    const dinner = item('calendar:dinner@1', 'calendar', {
+        title: 'Dinner',
+        calendar: 'Family',
+        participants: ['jen@example.com'],
+        occurredAt: now - 5 * HOUR,
+    });
+    const family = [meCard, jenCard, ...texts, dinner];
+    const familySources: MacDataSource[] = ['contacts', 'imessage', 'calendar'];
+    const meAndJen = (graph: DataGraph) => {
+        const me = graph.nodes.find((n) => n.isOwner)!;
+        const jen = graph.nodes.find((n) => n.kind === 'person' && n.label === 'Jen Lawrence')!;
+        return { me, jen, line: between(graph, me.id, jen.id) };
+    };
+    const remove = (notebookId: string, id: string) =>
+        call(alex, `/api/graph/${notebookId}/links/${encodeURIComponent(id)}`, 'DELETE');
+
+    it('makes a contact card its person, and holds every reason a pair is connected on one line', async () => {
+        await upload(familySources, family);
+        const { notebookId } = await notebook(familySources);
+        await runGraphPass(notebookId);
+        const graph = (await graphOf(alex, notebookId)).graph;
+        const { me, jen, line } = meAndJen(graph);
+
+        // Contacts aren't nodes of their own: the card's details are Jen's.
+        expect(graph.nodes.some((n) => n.source === 'contacts')).toBe(false);
+        expect(me.label).toBe('Alex Lawrence');
+        expect(jen).toMatchObject({
+            kind: 'person',
+            itemId: jenCard.id,
+            birthday: '1986-02-03',
+            organization: 'Albany Med',
+            relations: [{ label: 'husband', name: 'Alex' }],
+        });
+        expect(jen.pageId).toBeTruthy();
+        expect(jen.handles).toEqual(expect.arrayContaining(['(518) 555-0123', 'jen@example.com']));
+
+        // One line, many reasons: both cards' relationships first, then what they share.
+        const lines = graph.links.filter(
+            (l) => [l.source, l.target].sort().join() === [me.id, jen.id].sort().join(),
+        );
+        expect(lines).toHaveLength(1);
+        const kinds = line!.reasons.map((r) => (r.type ? `${r.kind}:${r.type}` : r.kind));
+        expect(kinds.slice(0, 2).sort()).toEqual(['relationship:husband', 'relationship:wife']);
+        expect(kinds.slice(2).sort()).toEqual(['messages_with', 'met_with']);
+        expect(line!.kind).toBe('relationship');
+        const wife = line!.reasons.find((r) => r.type === 'wife')!;
+        expect(wife).toMatchObject({ from: me.id, to: jen.id, madeBy: 'rule' });
+        expect(wife.evidence).toBe("Jen Lawrence is Alex Lawrence's wife");
+        const messages = line!.reasons.find((r) => r.kind === 'messages_with')!;
+        expect(messages).toMatchObject({
+            count: 3,
+            evidence: '3 messages',
+            firstAt: now - 3 * HOUR,
+            lastAt: now - HOUR,
+            madeBy: 'rule',
+        });
+        expect(messages.examples!.map((e) => e.itemId)).toEqual([
+            'imessage:t3',
+            'imessage:t2',
+            'imessage:t1',
+        ]);
+        expect(line!.weight).toBeGreaterThan(4);
+        // Texts aren't a line each.
+        expect(graph.nodes.some((n) => n.source === 'imessage')).toBe(false);
+        // The dinner is a hub Jen is invited to.
+        expect(between(graph, node(alex.id, dinner.id), jen.id)?.kind).toBe('attendee');
+
+        // One reason goes on its own, and stays gone.
+        expect((await remove(notebookId, messages.id)).status).toBe(200);
+        await runGraphPass(notebookId);
+        const after = meAndJen((await graphOf(alex, notebookId)).graph).line!;
+        expect(after.reasons.map((r) => r.kind)).not.toContain('messages_with');
+        expect(after.reasons.map((r) => r.kind)).toEqual(
+            expect.arrayContaining(['relationship', 'met_with']),
+        );
+        expect(
+            await testDb!.collection('graph_relations').findOne({ _id: messages.id as never }),
+        ).toMatchObject({ status: 'removed', removedBy: alex.id });
+    });
+
+    it('adds new messages to the interaction between full passes, counting none twice', async () => {
+        await upload(['contacts', 'imessage'], [meCard, jenCard, ...texts]);
+        const { notebookId } = await notebook(['contacts', 'imessage']);
+        await runGraphPass(notebookId);
+        const interaction = async () =>
+            (await testDb!
+                .collection('graph_relations')
+                .findOne({ notebookId, kind: 'messages_with' }))!;
+        expect((await interaction()).count).toBe(3);
+
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        const newer = [
+            item('imessage:t4', 'imessage', {
+                participants: ['+15185550123'],
+                body: 'On my way',
+                occurredAt: now - 30 * 60,
+            }),
+            item('imessage:t5', 'imessage', {
+                participants: ['+15185550123'],
+                body: 'Here',
+                occurredAt: now - 10 * 60,
+            }),
+        ];
+        await upload(['contacts', 'imessage'], newer);
+        expect(await runIncrementalGraphPass(notebookId)).toMatchObject({ items: 2 });
+        const updated = await interaction();
+        expect(updated).toMatchObject({
+            count: 5,
+            evidence: '5 messages',
+            firstAt: now - 3 * HOUR,
+            lastAt: now - 10 * 60,
+        });
+        expect(updated.items).toEqual([
+            node(alex.id, 'imessage:t5'),
+            node(alex.id, 'imessage:t4'),
+            node(alex.id, 'imessage:t3'),
+            node(alex.id, 'imessage:t2'),
+            node(alex.id, 'imessage:t1'),
+        ]);
+
+        // The same message uploaded again (a new revision) isn't counted again.
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        await upload(['contacts', 'imessage'], [{ ...newer[1]!, revision: '2', body: 'Here!' }]);
+        await runIncrementalGraphPass(notebookId);
+        expect((await interaction()).count).toBe(5);
+        // One document for the pair, however many messages.
+        expect(
+            await testDb!
+                .collection('graph_relations')
+                .countDocuments({ notebookId, kind: 'messages_with' }),
+        ).toBe(1);
+        // A full pass counts the window exactly.
+        await runGraphPass(notebookId);
+        expect((await interaction()).count).toBe(5);
+    });
+
+    it('hides relationships in shared notebooks, even ones saved while private, then scrubs them', async () => {
+        await upload(familySources, family);
+        const { notebookId, pages } = await notebook(familySources);
+        await runGraphPass(notebookId);
+        const relationships = () =>
+            testDb!
+                .collection('graph_relations')
+                .countDocuments({ notebookId, kind: 'relationship', status: 'active' });
+        expect(await relationships()).toBe(2);
+
+        await testDb!.collection('notebooks').updateOne(
+            { _id: new ObjectId(notebookId) },
+            {
+                $push: {
+                    'sharing.sharedWith': { userId: sam.id, accessLevel: 'write' },
+                } as never,
+            },
+        );
+        for (const source of familySources) await setFilter(pages[source]!, { includeAll: true });
+        for (const who of [alex, sam]) {
+            const graph = (await graphOf(who, notebookId)).graph;
+            const { jen, line } = meAndJen(graph);
+            expect(line!.reasons.map((r) => r.kind).sort()).toEqual(['messages_with', 'met_with']);
+            expect(jen.relations).toBeUndefined();
+            expect(JSON.stringify(graph)).not.toMatch(/husband|wife/);
+        }
+        const bot = { id: 'bot', name: 'Bot', ownerId: alex.id };
+        const ctx = await getMacDataToolContext(alex.id, notebookId, bot);
+        const read = await executeMacDataTool(ctx!, 'get_local_item', {
+            id: texts[2]!.id,
+        });
+        expect(read).toContain('3 messages');
+        expect(read).not.toMatch(/husband|wife/);
+
+        await runGraphPass(notebookId);
+        expect(await relationships()).toBe(0);
+    });
+
+    it('keeps relations, removals and About me to their own notebook', async () => {
+        await upload(familySources, family);
+        const a = await notebook(familySources);
+        const b = await notebook(familySources);
+        // About me in A: Jen is Alex's best friend too.
+        await createPageFixture({
+            id: `aboutme-${a.notebookId}`,
+            userId: alex.id,
+            notebookId: a.notebookId,
+            // The fixture's types predate About me pages.
+            type: 'aboutme' as never,
+            title: 'About me',
+        });
+        const scope = { userId: alex.id, notebookId: a.notebookId };
+        const me = await createEntity(scope, {
+            kind: 'person',
+            name: 'Alex',
+            isMe: true,
+        });
+        const jen = await createEntity(scope, {
+            kind: 'person',
+            name: 'Jennifer',
+            contactId: jenCard.id,
+        });
+        await addRelation(scope, me.id, jen.id, 'best friend');
+        await runGraphPass(a.notebookId);
+        await runGraphPass(b.notebookId);
+        const reasonsIn = async (notebookId: string) =>
+            meAndJen((await graphOf(alex, notebookId)).graph).line!.reasons;
+
+        expect((await reasonsIn(a.notebookId)).find((r) => r.type === 'best_friend')).toMatchObject(
+            {
+                madeBy: 'user',
+                evidence: "Jen Lawrence is Alex Lawrence's best friend",
+            },
+        );
+        expect((await reasonsIn(b.notebookId)).some((r) => r.type === 'best_friend')).toBe(false);
+
+        // Removing A's message count leaves B's; B's id can't remove anything through A.
+        const messagesA = (await reasonsIn(a.notebookId)).find((r) => r.kind === 'messages_with')!;
+        expect(messagesA.id.startsWith(`${a.notebookId}|`)).toBe(true);
+        expect((await remove(b.notebookId, messagesA.id)).status).toBe(404);
+        expect((await remove(a.notebookId, messagesA.id)).status).toBe(200);
+        expect((await reasonsIn(a.notebookId)).some((r) => r.kind === 'messages_with')).toBe(false);
+        expect((await reasonsIn(b.notebookId)).some((r) => r.kind === 'messages_with')).toBe(true);
+        for (const doc of await testDb!.collection('graph_relations').find({}).toArray())
+            expect(String(doc._id).startsWith(`${doc.notebookId}|`)).toBe(true);
+    });
+
+    it('tells bots every reason a person in an item is connected', async () => {
+        await upload(familySources, family);
+        const { notebookId } = await notebook(familySources);
+        await runGraphPass(notebookId);
+        const bot = { id: 'bot', name: 'Bot', ownerId: alex.id };
+        const ctx = await getMacDataToolContext(alex.id, notebookId, bot);
+        const read = JSON.parse(
+            await executeMacDataTool(ctx!, 'get_local_item', { id: texts[2]!.id }),
+        );
+        const jen = (
+            read.linked as Array<{
+                kind: string;
+                title?: string;
+                link: string;
+                reasons: string[];
+            }>
+        ).find((l) => l.kind === 'person')!;
+        expect(jen.title).toBe('Jen Lawrence');
+        expect(jen.reasons).toContain('wife');
+        expect(jen.link).toMatch(/wife; .*3 messages, last (today|yesterday)/);
+        expect(jen.reasons.some((r) => r.startsWith('1 event together'))).toBe(true);
+    });
+
+    it('joins items about one happening at a hub instead of pair by pair', async () => {
+        const text = item('imessage:party', 'imessage', {
+            participants: ['+15185550123'],
+            sender: 'Jen Lawrence',
+            body: 'Soccer pizza party at the Commons Saturday!',
+            occurredAt: now - 3 * HOUR,
+        });
+        await upload(['contacts', 'imessage', 'mail'], [meCard, jenCard, text, partyMail]);
+        const { notebookId } = await notebook(['contacts', 'imessage', 'mail']);
+        judge.mockImplementation(async (request: GraphJudgeRequest) => ({
+            pairs: request.pairs.map((pair) => ({
+                p: pair.p,
+                related: true,
+                confidence: 0.9,
+                reason: 'Same party',
+            })),
+            topics: [],
+            happenings: [
+                {
+                    name: 'Pizza party',
+                    items: request.items.map((i) => i.n),
+                    people: ['Jen Lawrence', 'Alex Lawrence'],
+                    confidence: 0.9,
+                },
+            ],
+        }));
+        await runGraphPass(notebookId);
+        expect(judge.mock.calls[0]![0].pairs.length).toBeGreaterThan(0);
+        const graph = (await graphOf(alex, notebookId)).graph;
+        const hub = graph.nodes.find((n) => n.kind === 'event')!;
+        expect(hub.label).toBe('Pizza party');
+        for (const id of [text.id, partyMail.id])
+            expect(between(graph, node(alex.id, id), hub.id)?.kind).toBe('part_of');
+        // No pairwise line: the hub joins them.
+        expect(between(graph, node(alex.id, text.id), node(alex.id, partyMail.id))).toBeUndefined();
+        const { me, jen } = meAndJen(graph);
+        expect(between(graph, hub.id, jen.id)).toMatchObject({
+            kind: 'attendee',
+            madeBy: 'model',
+        });
+        expect(between(graph, hub.id, me.id)).toBeUndefined();
+    });
+
+    // MARK: - Migration
+
+    it('moves links from before reasons into relations, keeping removals and person ids', async () => {
+        const dana = item('contacts:dana', 'contacts', {
+            title: 'Coach Dana',
+            extra: { phones: [{ label: 'mobile', value: '(518) 555-0199' }] },
+        });
+        const practice = item('calendar:practice@1', 'calendar', {
+            title: 'Practice',
+            participants: ['+15185550199'],
+            occurredAt: now + 2 * HOUR,
+        });
+        await upload(['calendar', 'location', 'contacts'], [visit, followUp, dana, practice]);
+        const { notebookId } = await notebook(['calendar', 'location', 'contacts']);
+        const n = (id: string) => node(alex.id, id);
+        const pairOf = (x: string, y: string) => `${notebookId}|${[x, y].sort().join('|')}`;
+        // The graph as it was: one link per pair, and Dana's person with an earlier id merged in.
+        await testDb!.collection('graph_nodes').insertOne({
+            _id: `${notebookId}|person:keep` as never,
+            notebookId,
+            id: 'person:keep',
+            kind: 'person',
+            label: 'Coach Dana',
+            handles: ['+15185550199'],
+            aliases: ['person:gone'],
+            updatedAt: new Date(0),
+        });
+        const legacy = (x: string, y: string, fields: Record<string, unknown>) => {
+            const [a, b] = [x, y].sort();
+            return {
+                _id: pairOf(x, y) as never,
+                notebookId,
+                a,
+                b,
+                confidence: 1,
+                evidence: 'Old',
+                madeBy: 'rule',
+                createdAt: new Date(0),
+                updatedAt: new Date(0),
+                ...fields,
+            };
+        };
+        await testDb!.collection('graph_links').insertMany([
+            legacy(n(followUp.id), n(visit.id), {
+                kind: 'created_at',
+                status: 'removed',
+                removedBy: alex.id,
+            }),
+            legacy(n(practice.id), 'person:gone', {
+                kind: 'person',
+                status: 'removed',
+            }),
+            legacy(n(dana.id), 'person:keep', { kind: 'person', status: 'active' }),
+            legacy(n('imessage:x'), 'person:keep', {
+                kind: 'person',
+                status: 'active',
+            }),
+            // Rejections are forgotten after 90 days; this one is recent.
+            legacy(n('mail:a'), n('calendar:b'), {
+                kind: 'related',
+                status: 'rejected',
+                confidence: 0,
+                madeBy: 'model',
+                updatedAt: new Date(),
+            }),
+            legacy(n('mail:c'), 'topic:t', {
+                kind: 'topic',
+                status: 'active',
+                madeBy: 'model',
+                confidence: 0.9,
+            }),
+        ]);
+
+        await runGraphPass(notebookId);
+        const relations = testDb!.collection('graph_relations');
+        // Nothing is deleted: every old link is still there, marked as copied.
+        expect(
+            await testDb!
+                .collection('graph_links')
+                .countDocuments({ notebookId, migratedAt: { $exists: true } }),
+        ).toBe(6);
+        expect(
+            await relations.findOne({
+                _id: `${pairOf(n(followUp.id), n(visit.id))}|created_at` as never,
+            }),
+        ).toMatchObject({ status: 'removed', blocksPair: true, removedBy: alex.id });
+        expect(
+            await relations.findOne({ pair: pairOf(n(practice.id), 'person:gone') }),
+        ).toMatchObject({ kind: 'attendee', status: 'removed', blocksPair: true });
+        expect(
+            await relations.findOne({ pair: pairOf(n('mail:a'), n('calendar:b')) }),
+        ).toMatchObject({ kind: 'related', status: 'rejected' });
+        expect(await relations.findOne({ pair: pairOf(n('mail:c'), 'topic:t') })).toMatchObject({
+            kind: 'topic',
+            status: 'active',
+            madeBy: 'model',
+        });
+        // A card is its person now, and messages are counted: neither is a relation of its own.
+        expect(await relations.countDocuments({ notebookId, kind: 'person' })).toBe(0);
+        expect(
+            await testDb!.collection('graph_state').findOne({ _id: notebookId as never }),
+        ).toMatchObject({ relationsMigratedAt: expect.any(Date) });
+
+        // Removed stays removed: the rules don't bring back the visit link, or Dana at
+        // practice under her current id.
+        const graph = (await graphOf(alex, notebookId)).graph;
+        expect(between(graph, n(followUp.id), n(visit.id))).toBeUndefined();
+        expect(between(graph, n(practice.id), 'person:keep')).toBeUndefined();
+        // Dana keeps her id, and her card is hers.
+        expect(
+            await testDb!
+                .collection('graph_nodes')
+                .findOne({ _id: `${notebookId}|person:keep` as never }),
+        ).toMatchObject({ aliases: ['person:gone'], contactIds: [n(dana.id)] });
+        expect(graph.nodes.find((x) => x.id === 'person:keep')).toMatchObject({
+            itemId: dana.id,
+        });
+
+        // Running it again copies nothing twice.
+        const before = await relations.countDocuments({
+            notebookId,
+            status: 'removed',
+        });
+        await testDb!
+            .collection('graph_state')
+            .updateMany({}, { $unset: { relationsMigratedAt: '' } });
+        await runGraphPass(notebookId);
+        expect(await relations.countDocuments({ notebookId, status: 'removed' })).toBe(before);
     });
 });

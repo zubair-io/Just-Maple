@@ -4,13 +4,13 @@ import { findUserById } from '../repositories/user.repo';
 import { isNotebookMember, type JWTPayload } from '@maple/shared';
 import { findNotebookByIdWithAccess } from '../repositories/notebook.repo';
 import { findGraphPage } from '../repositories/page.repo';
-import { removeGraphLink } from '../repositories/graph.repo';
+import { removeGraphPair, removeGraphRelation } from '../repositories/graph.repo';
 import { getDataGraph } from '../services/graph.service';
 
 /**
  * A notebook's connected-data graph, on its Graph page. Members read it (only what the
- * notebook's data pages show them); members who can edit remove links. Public readers
- * get nothing: data pages are for members.
+ * notebook's data pages show them); members who can edit remove one reason two nodes are
+ * connected, or the whole line. Public readers get nothing: data pages are for members.
  */
 
 const NOT_FOUND = {
@@ -69,7 +69,8 @@ export const graphRoutes = new Elysia({ prefix: '/api/graph' })
         },
     )
 
-    // Removes a link for everyone in the notebook; it's never made again for that pair.
+    // Removes a reason (a relation id) or a whole line (a link id) for everyone in the
+    // notebook; it's never made again for that pair.
     .delete(
         '/:notebookId/links/:linkId',
         async ({ auth, params, set }) => {
@@ -83,7 +84,10 @@ export const graphRoutes = new Elysia({ prefix: '/api/graph' })
             // Link ids start with their notebook's id: another notebook's can't match.
             if (
                 !linkId.startsWith(`${params.notebookId}|`) ||
-                !(await removeGraphLink(params.notebookId, linkId, auth.user._id))
+                !(
+                    (await removeGraphRelation(params.notebookId, linkId, auth.user._id)) ||
+                    (await removeGraphPair(params.notebookId, linkId, auth.user._id))
+                )
             ) {
                 set.status = 404;
                 return { error: 'Not found', message: 'That link is already gone' };

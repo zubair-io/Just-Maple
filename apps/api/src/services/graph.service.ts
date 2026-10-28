@@ -1,53 +1,67 @@
 import {
     dataGraphItemNodeId,
+    dataGraphReasonWeight,
+    dataGraphRelationFamily,
     isNotebookShared,
     parseDataGraphItemNodeId,
     type DataGraph,
+    type DataGraphExample,
     type DataGraphLink,
     type DataGraphNode,
+    type DataGraphReason,
     type MacDataItem,
     type TravelEstimate,
 } from '@maple/shared';
 import {
     claimGraphPass,
-    deleteGraphLinksGoneBefore,
-    deleteGraphLinksTouching,
+    deleteActiveRelationsOfKind,
     deleteGraphNodes,
-    deleteStaleRuleLinks,
+    deleteGraphRelationsGoneBefore,
+    deleteGraphRelationsTouching,
+    deleteStaleRuleRelations,
     findDecidedPairs,
-    findGraphLinks,
-    findGraphLinksOf,
-    findGraphLinksToCheck,
     findGraphNodes,
+    findGraphRelations,
+    findGraphRelationsForPairs,
+    findGraphRelationsOf,
+    findGraphRelationsToCheck,
     findGraphState,
     findJudgedItems,
     finishGraphPass,
+    interactionInput,
     linkKey,
-    markGraphLinksChecked,
+    markGraphRelationsChecked,
     markItemsJudged,
+    migrateLegacyGraphLinks,
     pruneGraphUsage,
     pruneJudgedItems,
     pruneRejectedPairs,
     rejectGraphPairs,
+    relationId,
+    relationKey,
     releaseGraphCall,
     releaseGraphPass,
     requestFullGraphPass,
     reserveGraphCall,
-    saveGraphLinks,
     saveGraphNodes,
-    setGraphLinkEvidence,
-    type GraphLinkDocument,
-    type GraphLinkInput,
+    saveGraphRelations,
+    addInteractions,
+    setGraphRelationEvidence,
+    MAX_RELATION_ITEMS,
     type GraphNodeDocument,
+    type GraphRelationDocument,
+    type GraphRelationInput,
 } from '../repositories/graph.repo';
 import { findDeviceItemsByIds, findDeviceItemsForGraph } from '../repositories/device-item.repo';
 import { findTravelEstimates } from '../repositories/travel-estimate.repo';
 import { findNotebookByIdUnsafe } from '../repositories/notebook.repo';
 import {
+    findAboutMePage,
     findDeviceDataPagesInNotebook,
     findGraphNotebookIds,
     findGraphPage,
 } from '../repositories/page.repo';
+import { listEntities, listRelations } from '../repositories/profile.repo';
 import { collectorTimeZone } from '../repositories/collector.repo';
 import {
     dataPageSlicesFor,
@@ -56,8 +70,13 @@ import {
 } from './device-data-access.service';
 import { sharedRefusal } from './about-me.service';
 import {
+    aboutMeRelationships,
+    happeningNodeId,
     incrementalRuleLinks,
+    isSyntheticHandle,
+    matchPersonByName,
     modelCandidates,
+    normalizeHandle,
     ruleGraph,
     topicNodeId,
     type Candidate,
@@ -80,21 +99,30 @@ import { formatInZone } from '../utils/time-zone';
  * 1. A notebook opts in by adding its Graph page. From then on, a background pass links
  *    the items its data pages share (each page through its filter, as every member sees
  *    it) over the last 30 days (and the next 30 for events).
- * 2. Rules make certain links (same place, same time, driving time, one person across
- *    phones and emails). A full pass rebuilds them at most every 15 minutes; between
- *    full passes, new uploads are linked to the people and places already known.
- * 3. A batched model pass judges likely pairs and sorts items into topics. It remembers
- *    which items it has seen, so items that arrive later (a new page, a wider filter, a
- *    big upload) are judged in later passes, within a daily budget.
- * 4. Links, people, places and topics belong to the notebook. They're built and read only
- *    from that notebook's pages; the same email in two notebooks is linked separately.
- * 5. Reading checks every item against the pages again, so an item a filter stops
- *    sharing drops out at once. Nothing is deleted on read: model links go only once an
- *    item has been gone from the device data for 30 days.
- * 6. In a shared notebook, reads hide private topics and reasons and travel links, even
- *    ones saved while it was private; the first pass after it's shared scrubs them.
- * 7. Someone can remove a link; it is never made again for the same pair, even when a
- *    person's id changes because two of them merged.
+ * 2. Two nodes are joined by one line that holds every reason they're connected:
+ *    - relationships between people (spouse, child…), from contact cards and About me;
+ *    - interactions: one per pair (a member and someone), counting their messages, emails
+ *      and events, with the first and last time and a few examples;
+ *    - item relations: same place, same time, driving time, same plan, same topic, and
+ *      events (calendar ones, or happenings the model found) as hubs their items and
+ *      people link to, so a party isn't a tangle of pairwise lines.
+ * 3. Rules make certain relations. A full pass rebuilds them at most every 15 minutes;
+ *    between full passes, new uploads are linked to the people and places already known,
+ *    and added to the interactions.
+ * 4. A batched model pass judges likely pairs, sorts items into topics and finds
+ *    happenings. It remembers which items it has seen, so items that arrive later (a new
+ *    page, a wider filter, a big upload) are judged in later passes, within a daily budget.
+ * 5. Everything belongs to the notebook. It's built and read only from that notebook's
+ *    pages; the same email in two notebooks is linked separately.
+ * 6. Reading checks every item against the pages again, so an item a filter stops
+ *    sharing drops out at once (with the reasons that rest on it). Nothing is deleted on
+ *    read: model relations go only once an item has been gone from the device data for
+ *    30 days.
+ * 7. In a shared notebook, reads hide relationships (private facts), travel, private
+ *    topics, happenings and reasons, even ones saved while it was private; the first pass
+ *    after it's shared scrubs them.
+ * 8. Someone can remove one reason, or a whole line; it is never made again for the same
+ *    pair, even when a person's id changes because two of them merged.
  */
 
 const DAY = 24 * 60 * 60;
@@ -119,14 +147,16 @@ const LEASE_MS = 10 * 60 * 1000;
 const FULL_PASS_GAP_MS = 15 * 60 * 1000;
 /** A full pass runs this often even without uploads (filters change, items expire). */
 const REFRESH_MS = 30 * 60 * 1000;
-/** A model link goes once one of its items has been missing this long. */
+/** A model relation goes once one of its items has been missing this long. */
 const GONE_DAYS = 30;
 const LINKS_CHECKED_PER_PASS = 500;
 /** Rejected pairs and seen items this old have left the window. */
 const FORGET_DAYS = 90;
-/** At most this many items in the viewer, and links read for it. */
+/** At most this many items in the viewer, and relations read for it. */
 export const MAX_GRAPH_ITEMS = 2_000;
 const MAX_LINKS_READ = 10_000;
+/** At most this many relationships from About me. */
+const MAX_ABOUT_ME_RELATIONS = 500;
 
 export interface GraphPassResult {
     items: number;
@@ -189,34 +219,47 @@ function isPrivateMatter(text: string): boolean {
 }
 
 /**
- * What readers of the notebook may see of a link, as it is now (it may have been saved
- * while the notebook was private). In a shared notebook: no travel (it says where someone
- * was), and no private reasons. Null hides the link.
+ * What readers of the notebook may see of a relation, as it is now (it may have been
+ * saved while the notebook was private). In a shared notebook: no relationships (private
+ * facts), no travel (it says where someone was), and no private reasons. Null hides it.
  */
-function linkForReaders(link: GraphLinkDocument, shared: boolean): GraphLinkDocument | null {
-    if (!shared) return link;
-    if (link.kind === 'travel') return null;
-    return isPrivateMatter(link.evidence) ? { ...link, evidence: 'Related' } : link;
+function relationForReaders(
+    relation: GraphRelationDocument,
+    shared: boolean,
+): GraphRelationDocument | null {
+    if (!shared) return relation;
+    if (relation.kind === 'travel' || relation.kind === 'relationship') return null;
+    return isPrivateMatter(relation.evidence) ? { ...relation, evidence: 'Related' } : relation;
 }
 
-/** A person, place or topic readers may see; private topics stay out of shared notebooks. */
+/** A hub readers may see; private topics and happenings stay out of shared notebooks. */
 function hubForReaders(hub: GraphNodeDocument, shared: boolean): boolean {
-    return !(shared && hub.kind === 'topic' && isPrivateMatter(hub.label));
+    return !(
+        shared &&
+        (hub.kind === 'topic' || hub.kind === 'event') &&
+        isPrivateMatter(hub.label)
+    );
 }
 
 /** Cleans what was saved while the notebook was private, now that it's shared. */
 async function scrubForSharing(notebookId: string): Promise<void> {
-    const privateTopics = (await findGraphNodes(notebookId, ['topic']))
-        .filter((topic) => isPrivateMatter(topic.label))
-        .map((topic) => topic.id);
-    await deleteGraphLinksTouching(notebookId, privateTopics);
-    await deleteGraphNodes(notebookId, privateTopics);
-    const stored = await findGraphLinks(notebookId, ['active', 'removed'], 50_000);
-    await setGraphLinkEvidence(
+    const privateHubs = (await findGraphNodes(notebookId, ['topic', 'event']))
+        .filter((hub) => isPrivateMatter(hub.label))
+        .map((hub) => hub.id);
+    await deleteGraphRelationsTouching(notebookId, privateHubs);
+    await deleteGraphNodes(notebookId, privateHubs);
+    await deleteActiveRelationsOfKind(notebookId, ['relationship']);
+    const stored = await findGraphRelations(notebookId, ['active', 'removed'], 50_000);
+    await setGraphRelationEvidence(
         notebookId,
         stored
-            .filter((link) => link.kind === 'travel' || isPrivateMatter(link.evidence))
-            .map((link) => link._id),
+            .filter(
+                (relation) =>
+                    relation.kind === 'travel' ||
+                    relation.kind === 'relationship' ||
+                    isPrivateMatter(relation.evidence),
+            )
+            .map((relation) => relation._id),
         'Related',
     );
 }
@@ -225,43 +268,80 @@ async function scrubForSharing(notebookId: string): Promise<void> {
 function knownHubs(stored: GraphNodeDocument[]): KnownHubs {
     const personOf = new Map<string, string>();
     const people = new Map<string, string>();
+    const ownerPerson = new Map<string, string>();
     for (const node of stored) {
         if (node.kind !== 'person') continue;
         people.set(node.id, node.label);
+        if (node.ownerId) ownerPerson.set(node.ownerId, node.id);
         for (const handle of node.handles ?? []) {
             const earlier = personOf.get(handle);
             if (!earlier || node.id < earlier) personOf.set(handle, node.id);
         }
     }
-    return { personOf, people, places: stored.filter((node) => node.kind === 'place') };
+    return {
+        personOf,
+        people,
+        ownerPerson,
+        places: stored.filter((node) => node.kind === 'place'),
+    };
 }
 
 /**
- * Whether a link would bring back one someone removed: the same pair, or the same item
- * and a person who has since been merged into another id.
+ * Whether a relation would bring back one someone removed: the same relation on the same
+ * pair, or any relation on a pair whose older one-per-pair link was removed. Ends are
+ * compared under people's current ids, so a merge doesn't undo a removal.
  */
 async function removalCheck(
     notebookId: string,
     hubs: Array<Pick<GraphNodeInput, 'id' | 'aliases'>>,
-): Promise<(a: string, b: string) => boolean> {
+): Promise<(relation: GraphRelationInput) => boolean> {
     const current = new Map<string, string>();
     for (const hub of hubs) for (const alias of hub.aliases ?? []) current.set(alias, hub.id);
     const canonical = (id: string) => current.get(id) ?? id;
-    const pair = (x: string, y: string) => {
-        const [a, b] = [canonical(x), canonical(y)].sort();
-        return `${a}|${b}`;
+    const keyOf = (relation: Pick<GraphRelationInput, 'a' | 'b' | 'kind' | 'type' | 'from'>) => {
+        const a = canonical(relation.a);
+        const b = canonical(relation.b);
+        const pair = linkKey(notebookId, a, b);
+        return {
+            pair,
+            relation: `${pair}|${relationKey({ ...relation, a, b, from: relation.from && canonical(relation.from) })}`,
+        };
     };
-    const removed = new Set(
-        (await findGraphLinks(notebookId, ['removed'], 5_000)).map((link) => pair(link.a, link.b)),
-    );
-    return (a, b) => removed.has(pair(a, b));
+    const removedRelations = new Set<string>();
+    const removedPairs = new Set<string>();
+    for (const doc of await findGraphRelations(notebookId, ['removed'], 5_000)) {
+        const key = keyOf(doc);
+        removedRelations.add(key.relation);
+        if (doc.blocksPair) removedPairs.add(key.pair);
+    }
+    return (relation) => {
+        const key = keyOf(relation);
+        return removedPairs.has(key.pair) || removedRelations.has(key.relation);
+    };
+}
+
+/** Relationships the notebook's About me states, between people the graph has. */
+async function aboutMeRelations(
+    notebookId: string,
+    people: GraphNodeInput[],
+): Promise<GraphRelationInput[]> {
+    const page = await findAboutMePage(notebookId);
+    if (!page?.userId) return [];
+    const scope = { userId: page.userId, notebookId };
+    const [entities, relations] = await Promise.all([listEntities(scope), listRelations(scope)]);
+    return aboutMeRelationships({
+        ownerId: page.userId,
+        entities,
+        relations: relations.slice(0, MAX_ABOUT_ME_RELATIONS),
+        people: people.filter((node) => node.kind === 'person'),
+    });
 }
 
 const daysAgo = (now: Date, days: number) => new Date(now.getTime() - days * DAY * 1000);
 const dayOf = (now: Date) => now.toISOString().slice(0, 10);
 
 /**
- * One full linking pass for a notebook with a Graph page: rule links over the whole
+ * One full linking pass for a notebook with a Graph page: rule relations over the whole
  * window, then the model over a bounded batch of items it hasn't seen. Null when the
  * notebook has no Graph page or another pass is running.
  */
@@ -274,6 +354,10 @@ export async function runGraphPass(
     if (!(await claimGraphPass(notebookId, now, LEASE_MS))) return null;
     try {
         const state = await findGraphState(notebookId);
+        // Links from before relations become relations first, removals included.
+        const migrated =
+            state?.relationsMigratedAt ??
+            ((await migrateLegacyGraphLinks(notebookId)) ? now : undefined);
         const notebook = await findNotebookByIdUnsafe(notebookId);
         const shared = isNotebookShared(notebook);
         const slices = await notebookDataSlices(notebookId);
@@ -284,14 +368,15 @@ export async function runGraphPass(
             nowSeconds + UPCOMING_DAYS * DAY,
         );
 
-        // Rules: certain links, rebuilt over the whole window. People and places keep the
-        // ids they had.
+        // Rules: certain relations, rebuilt over the whole window. People and places keep
+        // the ids they had.
         const stored = await findGraphNodes(notebookId, ['person', 'place']);
         const storedById = new Map(stored.map((node) => [node.id, node]));
         const rules = ruleGraph(items, {
             travel: shared ? new Map() : await travelFor(items),
             shared,
             known: knownHubs(stored),
+            owners: new Map(slices.map((slice) => [slice.ownerId, slice.ownerName])),
         });
         const merged = new Set<string>();
         const nodes = rules.nodes.map((node) => {
@@ -311,13 +396,19 @@ export async function runGraphPass(
         await saveGraphNodes(notebookId, nodes);
         // People merged into another keep no node of their own (their id is an alias now).
         await deleteGraphNodes(notebookId, [...merged]);
-        const ruleLinks = await saveGraphLinks(
+        const made = [
+            ...rules.links,
+            ...rules.interactions.map(interactionInput),
+            // Relationships are private facts: About me's only in a private notebook.
+            ...(shared ? [] : await aboutMeRelations(notebookId, nodes)),
+        ];
+        const allowed = made.filter((relation) => !removed(relation));
+        const ruleLinks = await saveGraphRelations(notebookId, allowed);
+        // What wasn't made again goes, and so does what a removal now covers (a merged
+        // person's relation that was removed under their other id).
+        await deleteStaleRuleRelations(
             notebookId,
-            rules.links.filter((link) => !removed(link.a, link.b)),
-        );
-        await deleteStaleRuleLinks(
-            notebookId,
-            new Set(rules.links.map((link) => linkKey(notebookId, link.a, link.b))),
+            new Set(allowed.map((relation) => relationId(notebookId, relation))),
         );
         if (shared && !state?.scrubbedShared) await scrubForSharing(notebookId);
 
@@ -325,6 +416,8 @@ export async function runGraphPass(
             shared,
             userId: page.userId,
             now,
+            people: nodes.filter((node) => node.kind === 'person'),
+            removed,
         });
         await checkGoneItems(notebookId, now);
         await pruneRejectedPairs(notebookId, daysAgo(now, FORGET_DAYS));
@@ -341,6 +434,9 @@ export async function runGraphPass(
                 pendingItems: model.pending,
                 scrubbedShared: shared,
                 ...(backfilled && !state?.backfilledAt ? { backfilledAt: now } : {}),
+                ...(migrated && !state?.relationsMigratedAt
+                    ? { relationsMigratedAt: migrated }
+                    : {}),
             },
             { full: true },
         );
@@ -360,8 +456,9 @@ export async function runGraphPass(
 
 /**
  * Between full passes: links what was uploaded since the last pass to the people and
- * places the notebook already has. Rules only, no model. Null when there's nothing to
- * do it against yet, or another pass is running.
+ * places the notebook already has, and adds new messages, emails and events to their
+ * interactions. Rules only, no model. Null when there's nothing to do it against yet, or
+ * another pass is running.
  */
 export async function runIncrementalGraphPass(
     notebookId: string,
@@ -369,7 +466,7 @@ export async function runIncrementalGraphPass(
 ): Promise<{ items: number; ruleLinks: number } | null> {
     if (!(await findGraphPage(notebookId))) return null;
     const state = await findGraphState(notebookId);
-    if (!state?.lastFullRunAt || !state.cursor) return null;
+    if (!state?.lastFullRunAt || !state.cursor || !state.relationsMigratedAt) return null;
     if (!(await claimGraphPass(notebookId, now, LEASE_MS))) return null;
     try {
         const slices = await notebookDataSlices(notebookId);
@@ -388,10 +485,25 @@ export async function runIncrementalGraphPass(
         const rules = incrementalRuleLinks(fresh, knownHubs(stored));
         const removed = await removalCheck(notebookId, stored);
         await saveGraphNodes(notebookId, rules.nodes);
-        const ruleLinks = await saveGraphLinks(
-            notebookId,
-            rules.links.filter((link) => !removed(link.a, link.b)),
-        );
+        const ruleLinks =
+            (await saveGraphRelations(
+                notebookId,
+                rules.links.filter((relation) => !removed(relation)),
+            )) +
+            (await addInteractions(
+                notebookId,
+                rules.interactions.filter(
+                    (tally) =>
+                        !removed({
+                            a: tally.a,
+                            b: tally.b,
+                            kind: tally.kind,
+                            confidence: 1,
+                            evidence: '',
+                            madeBy: 'rule',
+                        }),
+                ),
+            ));
         await finishGraphPass(notebookId, { lastRunAt: now, cursor: now });
         return { items: fresh.length, ruleLinks };
     } catch (error) {
@@ -412,14 +524,21 @@ async function reserveModelCall(notebookId: string, userId: string, now: Date) {
 
 /**
  * Asks the model about items it hasn't seen, newest first, a batch per call: likely
- * pairs involving them, and their topics. Saves confident links and topics, and notes
- * the items as seen only once their call succeeded.
+ * pairs involving them, their topics, and happenings they're about. Saves confident
+ * relations, topics and happenings, and notes the items as seen only once their call
+ * succeeded.
  */
 async function modelPass(
     notebookId: string,
     items: GraphItem[],
     rules: RuleGraph,
-    options: { shared: boolean; userId: string; now: Date },
+    options: {
+        shared: boolean;
+        userId: string;
+        now: Date;
+        people: GraphNodeInput[];
+        removed: (relation: GraphRelationInput) => boolean;
+    },
 ): Promise<{ links: number; calls: number; pending: number }> {
     if (!graphModelAvailable()) return { links: 0, calls: 0, pending: 0 };
     const judgeable = items.filter(
@@ -432,11 +551,15 @@ async function modelPass(
     const pending = judgeable.filter((entry) => !seen.has(entry.nodeId));
     if (pending.length === 0) return { links: 0, calls: 0, pending: 0 };
 
-    const topics = await findGraphNodes(notebookId, ['topic']);
-    const topicNames = new Map(topics.map((topic) => [topic.id, topic.label]));
-    const people = new Map(
-        rules.nodes.filter((n) => n.kind === 'person').map((n) => [n.id, n.label]),
+    const hubs = await findGraphNodes(notebookId, ['topic', 'event']);
+    const topicNames = new Map(
+        hubs.filter((hub) => hub.kind === 'topic').map((topic) => [topic.id, topic.label]),
     );
+    const events: Array<{ id: string; label: string; at?: number }> = hubs.filter(
+        (hub) => hub.kind === 'event',
+    );
+    const people = new Map(options.people.map((n) => [n.id, n.label]));
+    const owners = new Set(options.people.filter((n) => n.ownerId).map((n) => n.id));
     const zones = new Map<string, string>();
     const zoneOf = async (ownerId: string) => {
         if (!zones.has(ownerId))
@@ -503,12 +626,78 @@ async function modelPass(
         });
         if (!judgement) break;
 
-        const links: GraphLinkInput[] = [];
+        const links: GraphRelationInput[] = [];
+        const newHubs: GraphNodeInput[] = [];
+
+        // Happenings first: items about the same one meet at its hub (its calendar event,
+        // or a node of its own), instead of being linked pair by pair.
+        const covered = new Set<string>();
+        for (const happening of judgement.happenings ?? []) {
+            if (happening.confidence < TOPIC_CONFIDENCE) continue;
+            if (options.shared && isPrivateMatter(happening.name)) continue;
+            const members = happening.items
+                .map((n) => entries[n])
+                .filter((entry): entry is GraphItem => !!entry);
+            if (members.length < 2) continue;
+            const calendar = members.find((entry) => entry.item.source === 'calendar');
+            let hub: string;
+            let label: string;
+            if (calendar) {
+                hub = calendar.nodeId;
+                label = calendar.item.title?.trim() || happening.name;
+            } else {
+                const at = Math.min(...members.map((entry) => entry.item.occurredAt));
+                hub = happeningNodeId(happening.name, at, events);
+                label = happening.name;
+                if (!events.some((event) => event.id === hub)) {
+                    events.push({ id: hub, label, at });
+                    newHubs.push({ id: hub, kind: 'event', label, at });
+                }
+            }
+            for (const member of members) {
+                for (const other of members)
+                    if (other !== member)
+                        covered.add(linkKey(notebookId, member.nodeId, other.nodeId));
+                if (member.nodeId === hub) continue;
+                links.push({
+                    a: member.nodeId,
+                    b: hub,
+                    kind: 'part_of',
+                    confidence: happening.confidence,
+                    evidence: `About ${label}`,
+                    madeBy: 'model',
+                });
+            }
+            const evidence = members
+                .map((entry) => entry.nodeId)
+                .filter((id) => id !== hub)
+                .slice(0, MAX_RELATION_ITEMS);
+            const list = options.people.map((person) => ({ id: person.id, label: person.label }));
+            for (const name of happening.people) {
+                const person = matchPersonByName(name, list);
+                if (!person || owners.has(person)) continue;
+                links.push({
+                    a: hub,
+                    b: person,
+                    kind: 'attendee',
+                    confidence: happening.confidence,
+                    evidence: `${people.get(person)} was there`,
+                    madeBy: 'model',
+                    items: evidence.length ? evidence : [hub],
+                });
+            }
+        }
+
         const rejected: Array<[string, string]> = [];
         for (const verdict of judgement.pairs) {
             const pair = pairs[verdict.p];
             if (!pair) continue;
-            if (verdict.related && verdict.confidence >= AUTO_LINK_CONFIDENCE) {
+            const key = linkKey(notebookId, pair.a.nodeId, pair.b.nodeId);
+            if (
+                verdict.related &&
+                verdict.confidence >= AUTO_LINK_CONFIDENCE &&
+                !covered.has(key)
+            ) {
                 const reason = verdict.reason || 'Related';
                 links.push({
                     a: pair.a.nodeId,
@@ -519,10 +708,10 @@ async function modelPass(
                     madeBy: 'model',
                 });
             } else {
+                // Unrelated, or joined through a happening's hub: either way, decided.
                 rejected.push([pair.a.nodeId, pair.b.nodeId]);
             }
         }
-        const newTopics = [];
         for (const topic of judgement.topics) {
             if (topic.confidence < TOPIC_CONFIDENCE) continue;
             if (options.shared && isPrivateMatter(topic.name)) continue;
@@ -532,7 +721,7 @@ async function modelPass(
             if (!known && topic.items.length < 2) continue;
             if (!known) {
                 topicNames.set(id, topic.name);
-                newTopics.push({ id, kind: 'topic' as const, label: topic.name });
+                newHubs.push({ id, kind: 'topic', label: topic.name });
             }
             for (const n of topic.items) {
                 const entry = entries[n];
@@ -547,8 +736,11 @@ async function modelPass(
                 });
             }
         }
-        await saveGraphNodes(notebookId, newTopics);
-        saved += await saveGraphLinks(notebookId, links);
+        await saveGraphNodes(notebookId, newHubs);
+        saved += await saveGraphRelations(
+            notebookId,
+            links.filter((relation) => !options.removed(relation)),
+        );
         await rejectGraphPairs(notebookId, rejected);
         await markItemsJudged(
             notebookId,
@@ -561,16 +753,16 @@ async function modelPass(
 }
 
 /**
- * Looks up the items of the model links checked longest ago. A link whose item is gone
- * from the device data (not just hidden by a filter) goes after 30 days; model links
+ * Looks up the items of the model relations checked longest ago. One whose item is gone
+ * from the device data (not just hidden by a filter) goes after 30 days; model relations
  * can't be rebuilt, so a filter change or a source moving devices never removes them.
  */
 async function checkGoneItems(notebookId: string, now: Date): Promise<void> {
-    const batch = await findGraphLinksToCheck(notebookId, LINKS_CHECKED_PER_PASS);
+    const batch = await findGraphRelationsToCheck(notebookId, LINKS_CHECKED_PER_PASS);
     if (batch.length === 0) return;
     const byOwner = new Map<string, Set<string>>();
-    for (const link of batch) {
-        for (const end of [link.a, link.b]) {
+    for (const relation of batch) {
+        for (const end of [relation.a, relation.b, ...(relation.items ?? [])]) {
             const parsed = parseDataGraphItemNodeId(end);
             if (!parsed) continue;
             byOwner.set(
@@ -583,15 +775,20 @@ async function checkGoneItems(notebookId: string, now: Date): Promise<void> {
     for (const [ownerId, ids] of byOwner)
         for (const item of await findDeviceItemsByIds(ownerId, [...ids], 0))
             found.add(dataGraphItemNodeId(ownerId, item.id));
-    const missing = (link: GraphLinkDocument) =>
-        [link.a, link.b].some((end) => end.startsWith('item:') && !found.has(end));
-    await markGraphLinksChecked(
+    const missing = (relation: GraphRelationDocument) => {
+        const ends = [relation.a, relation.b].filter((end) => end.startsWith('item:'));
+        if (ends.length) return ends.some((end) => !found.has(end));
+        // Between two hubs (someone at a happening): gone when all its items are.
+        const evidence = (relation.items ?? []).filter((id) => id.startsWith('item:'));
+        return evidence.length > 0 && evidence.every((id) => !found.has(id));
+    };
+    await markGraphRelationsChecked(
         notebookId,
-        batch.filter((link) => !missing(link)).map((link) => link._id),
-        batch.filter(missing).map((link) => link._id),
+        batch.filter((relation) => !missing(relation)).map((relation) => relation._id),
+        batch.filter(missing).map((relation) => relation._id),
         now,
     );
-    await deleteGraphLinksGoneBefore(notebookId, daysAgo(now, GONE_DAYS));
+    await deleteGraphRelationsGoneBefore(notebookId, daysAgo(now, GONE_DAYS));
 }
 
 async function describeForModel(
@@ -660,6 +857,7 @@ export async function graphTick(now = new Date()): Promise<void> {
                     sinceFull >= REFRESH_MS ||
                     (sinceFull >= FULL_PASS_GAP_MS &&
                         (!!state?.fullPassRequested ||
+                            !state?.relationsMigratedAt ||
                             (graphModelAvailable() && (state?.pendingItems ?? 0) > 0)));
                 if (full) {
                     await runGraphPass(notebookId, now);
@@ -685,31 +883,146 @@ export function startGraphLinking(intervalMs = 5 * 60 * 1000): () => void {
 
 // MARK: - Reading
 
+type VisibleItem = { item: MacDataItem; slice: DataPageSlice };
+
 /** Each visible item's node, with the page that shows it. */
 async function visibleItems(
     ids: string[],
     slices: DataPageSlice[],
-): Promise<{ visible: Map<string, { item: MacDataItem; slice: DataPageSlice }> }> {
+): Promise<Map<string, VisibleItem>> {
     const byOwner = new Map<string, string[]>();
-    for (const id of ids) {
+    for (const id of new Set(ids)) {
         const parsed = parseDataGraphItemNodeId(id);
         if (parsed)
             byOwner.set(parsed.ownerId, [...(byOwner.get(parsed.ownerId) ?? []), parsed.itemId]);
     }
-    const visible = new Map<string, { item: MacDataItem; slice: DataPageSlice }>();
+    const visible = new Map<string, VisibleItem>();
     for (const [ownerId, itemIds] of byOwner) {
         const owned = slices.filter((slice) => slice.ownerId === ownerId);
+        if (owned.length === 0) continue;
         for (const item of await findDeviceItemsByIds(ownerId, itemIds, 240)) {
             const slice = owned.find((s) => s.source === item.source && s.match(item));
             if (slice) visible.set(dataGraphItemNodeId(ownerId, item.id), { item, slice });
         }
     }
-    return { visible };
+    return visible;
+}
+
+const isItem = (id: string) => id.startsWith('item:');
+
+/** The other end of a relation. */
+const otherEnd = (relation: Pick<GraphRelationDocument, 'a' | 'b'>, from: string) =>
+    relation.a === from ? relation.b : relation.a;
+
+/** A reason as readers see it, with the examples they may see. */
+function toReason(relation: GraphRelationDocument, examples: DataGraphExample[]): DataGraphReason {
+    return {
+        id: relation._id,
+        kind: relation.kind,
+        ...(relation.type ? { type: relation.type } : {}),
+        ...(relation.from ? { from: relation.from } : {}),
+        ...(relation.to ? { to: relation.to } : {}),
+        madeBy: relation.madeBy,
+        confidence: relation.confidence,
+        evidence: relation.evidence,
+        ...(relation.count !== undefined ? { count: relation.count } : {}),
+        ...(relation.firstAt !== undefined ? { firstAt: relation.firstAt } : {}),
+        ...(relation.lastAt !== undefined ? { lastAt: relation.lastAt } : {}),
+        ...(examples.length ? { examples } : {}),
+    };
+}
+
+const FAMILY_RANK = { relationship: 0, interaction: 1, item: 2 } as const;
+
+/** Relationships first ("wife"), then interactions, then the rest; strongest first in each. */
+function byStrength(
+    x: Pick<DataGraphReason, 'kind' | 'confidence' | 'count'>,
+    y: Pick<DataGraphReason, 'kind' | 'confidence' | 'count'>,
+): number {
+    const family =
+        FAMILY_RANK[dataGraphRelationFamily(x.kind)] - FAMILY_RANK[dataGraphRelationFamily(y.kind)];
+    return family || dataGraphReasonWeight(y) - dataGraphReasonWeight(x);
+}
+
+/** One line per pair, its reasons strongest first. */
+function toLink(pair: string, a: string, b: string, reasons: DataGraphReason[]): DataGraphLink {
+    const sorted = [...reasons].sort(byStrength);
+    const top = sorted[0]!;
+    return {
+        id: pair,
+        source: a,
+        target: b,
+        reasons: sorted,
+        weight:
+            Math.round(sorted.reduce((sum, r) => sum + dataGraphReasonWeight(r), 0) * 100) / 100,
+        kind: top.kind,
+        confidence: top.confidence,
+        evidence: top.evidence,
+        madeBy: top.madeBy,
+    };
+}
+
+const stringList = (value: unknown): string[] =>
+    (Array.isArray(value) ? value : [])
+        .map((entry) =>
+            typeof entry === 'string'
+                ? entry
+                : typeof (entry as { value?: unknown })?.value === 'string'
+                  ? (entry as { value: string }).value
+                  : null,
+        )
+        .filter((entry): entry is string => !!entry);
+
+/** A person, with what their contact cards (the ones the reader may see) say. */
+function personNode(
+    hub: GraphNodeDocument,
+    cards: VisibleItem[],
+    shared: boolean,
+    viewerId: string,
+): DataGraphNode {
+    const node: DataGraphNode = { id: hub.id, kind: 'person', label: hub.label };
+    if (hub.ownerId) node.isOwner = true;
+    const card =
+        cards.find((c) => c.item.extra?.isMe === true && hub.ownerId) ??
+        cards.find((c) => c.item.extra?.isMe !== true) ??
+        cards[0];
+    if (card) {
+        node.itemId = card.item.id;
+        node.pageId = card.slice.pageId;
+        if (card.slice.ownerId !== viewerId) node.ownerName = card.slice.ownerName;
+        const extra = card.item.extra ?? {};
+        if (typeof extra['birthday'] === 'string') node.birthday = extra['birthday'];
+        if (typeof extra['organization'] === 'string') node.organization = extra['organization'];
+        if (typeof extra['jobTitle'] === 'string') node.jobTitle = extra['jobTitle'];
+        if (!shared && Array.isArray(extra['relations'])) {
+            const relations = (extra['relations'] as Array<{ label?: unknown; name?: unknown }>)
+                .filter((r) => typeof r?.name === 'string')
+                .slice(0, 20)
+                .map((r) => ({
+                    ...(typeof r.label === 'string' ? { label: r.label } : {}),
+                    name: r.name as string,
+                }));
+            if (relations.length) node.relations = relations;
+        }
+    }
+    const handles = new Set<string>();
+    for (const c of cards)
+        for (const value of [
+            ...stringList(c.item.extra?.['phones']),
+            ...stringList(c.item.extra?.['emails']),
+        ])
+            handles.add(value);
+    // Without a card, a private notebook still shows how they were reached.
+    if (handles.size === 0 && !shared)
+        for (const handle of hub.handles ?? []) if (!isSyntheticHandle(handle)) handles.add(handle);
+    if (handles.size) node.handles = [...handles].slice(0, 12);
+    return node;
 }
 
 /**
  * The notebook's graph as this person may see it: only items its data pages show them
- * now, and people, places and topics linked to those. Empty for non-members.
+ * now, and the people, places, topics and happenings joined to those, one line per pair
+ * with every reason. Empty for non-members.
  */
 export async function getDataGraph(
     notebookId: string,
@@ -728,52 +1041,101 @@ export async function getDataGraph(
     if (slices.length === 0) return { nodes: [], links: [], status: await status() };
 
     const shared = isNotebookShared(await findNotebookByIdUnsafe(notebookId));
-    const [stored, allHubs] = await Promise.all([
-        findGraphLinks(notebookId, ['active'], MAX_LINKS_READ),
+    const [stored, allHubs, removed] = await Promise.all([
+        findGraphRelations(notebookId, ['active'], MAX_LINKS_READ),
         findGraphNodes(notebookId),
+        findGraphRelations(notebookId, ['removed'], 5_000),
     ]);
-    const links = stored
-        .map((link) => linkForReaders(link, shared))
-        .filter((link): link is GraphLinkDocument => !!link);
-    const hubs = allHubs.filter((hub) => hubForReaders(hub, shared));
+    const relations = stored
+        .map((relation) => relationForReaders(relation, shared))
+        .filter((relation): relation is GraphRelationDocument => !!relation);
+    const hubById = new Map(
+        allHubs.filter((hub) => hubForReaders(hub, shared)).map((hub) => [hub.id, hub]),
+    );
+    // A card someone unlinked from a person (before cards were people) isn't theirs.
+    const unlinkedCards = new Set(
+        removed.filter((doc) => doc.blocksPair).map((doc) => `${doc.a}|${doc.b}`),
+    );
+    const cardsOf = (hub: GraphNodeDocument) =>
+        (hub.contactIds ?? []).filter(
+            (card) => !unlinkedCards.has(card < hub.id ? `${card}|${hub.id}` : `${hub.id}|${card}`),
+        );
+
+    // Look up every item the relations rest on, and the people's cards.
     const itemIds = new Set<string>();
-    for (const link of links) {
-        if (link.a.startsWith('item:')) itemIds.add(link.a);
-        if (link.b.startsWith('item:')) itemIds.add(link.b);
+    for (const relation of relations) {
+        for (const id of [relation.a, relation.b, ...(relation.items ?? [])])
+            if (isItem(id)) itemIds.add(id);
+        for (const end of [relation.a, relation.b]) {
+            const hub = hubById.get(end);
+            if (hub?.kind === 'person') for (const card of cardsOf(hub)) itemIds.add(card);
+        }
     }
     // Hidden items (another filter, deleted) just aren't shown; nothing is deleted here.
-    const { visible } = await visibleItems([...itemIds], slices);
+    const visible = await visibleItems([...itemIds], slices);
 
     // Date range, then the newest items up to the viewer's limit.
-    const inRange = [...visible].filter(([, { item }]) => {
-        if (item.source === 'contacts') return true;
+    const ends = new Set(relations.flatMap((relation) => [relation.a, relation.b]));
+    const inRange = [...visible].filter(([id, { item }]) => {
+        if (item.source === 'contacts' || !ends.has(id)) return false;
         if (options.from !== undefined && (item.endAt ?? item.occurredAt) < options.from)
             return false;
         return options.to === undefined || item.occurredAt <= options.to;
     });
     inRange.sort((a, b) => b[1].item.occurredAt - a[1].item.occurredAt);
     const kept = new Map(inRange.slice(0, MAX_GRAPH_ITEMS));
-    const hubById = new Map(hubs.map((hub) => [hub.id, hub]));
-    const shows = (id: string) => kept.has(id) || (!id.startsWith('item:') && hubById.has(id));
+    const spanInRange = (relation: GraphRelationDocument) => {
+        if (
+            options.from !== undefined &&
+            relation.lastAt !== undefined &&
+            relation.lastAt < options.from
+        )
+            return false;
+        return !(
+            options.to !== undefined &&
+            relation.firstAt !== undefined &&
+            relation.firstAt > options.to
+        );
+    };
+    const shows = (relation: GraphRelationDocument) => {
+        for (const end of [relation.a, relation.b]) {
+            if (isItem(end) ? !kept.has(end) : !hubById.has(end)) return false;
+        }
+        if (isItem(relation.a) || isItem(relation.b)) return true;
+        // Between two hubs: it rests on items the reader may see (or on About me).
+        if (!spanInRange(relation)) return false;
+        const evidence = relation.items ?? [];
+        return evidence.length === 0
+            ? relation.madeBy === 'user'
+            : evidence.some((id) => visible.has(id));
+    };
+    const example = (id: string): DataGraphExample | null => {
+        const entry = visible.get(id);
+        if (!entry) return null;
+        const node = itemNode(id, entry.item, entry.slice, viewerId);
+        return {
+            id,
+            label: node.label,
+            ...(node.source ? { source: node.source } : {}),
+            itemId: entry.item.id,
+            pageId: entry.slice.pageId,
+            ...(node.at !== undefined ? { at: node.at } : {}),
+        };
+    };
 
-    const outLinks: DataGraphLink[] = [];
-    const linked = new Set<string>();
-    for (const link of links) {
-        if (!shows(link.a) || !shows(link.b)) continue;
-        // Every link has an item at one end at least.
-        if (!kept.has(link.a) && !kept.has(link.b)) continue;
-        linked.add(link.a);
-        linked.add(link.b);
-        outLinks.push({
-            id: link._id,
-            source: link.a,
-            target: link.b,
-            kind: link.kind,
-            confidence: link.confidence,
-            evidence: link.evidence,
-            madeBy: link.madeBy,
-        });
+    const byPair = new Map<string, { a: string; b: string; reasons: DataGraphReason[] }>();
+    for (const relation of relations) {
+        if (!shows(relation)) continue;
+        const examples = (relation.items ?? [])
+            .filter((id) => id !== relation.a && id !== relation.b)
+            .map(example)
+            .filter((e): e is DataGraphExample => !!e);
+        const line = byPair.get(relation.pair) ?? { a: relation.a, b: relation.b, reasons: [] };
+        line.reasons.push(toReason(relation, examples));
+        byPair.set(relation.pair, line);
     }
+    const links = [...byPair].map(([pair, line]) => toLink(pair, line.a, line.b, line.reasons));
+    const linked = new Set(links.flatMap((link) => [link.source, link.target]));
     const nodes: DataGraphNode[] = [];
     for (const id of linked) {
         const entry = kept.get(id);
@@ -782,11 +1144,23 @@ export async function getDataGraph(
             continue;
         }
         const hub = hubById.get(id)!;
-        nodes.push({ id, kind: hub.kind, label: hub.label });
+        if (hub.kind === 'person') {
+            const cards = cardsOf(hub)
+                .map((card) => visible.get(card))
+                .filter((c): c is VisibleItem => !!c);
+            nodes.push(personNode(hub, cards, shared, viewerId));
+        } else {
+            nodes.push({
+                id,
+                kind: hub.kind,
+                label: hub.label,
+                ...(hub.at !== undefined ? { at: hub.at } : {}),
+            });
+        }
     }
     return {
         nodes,
-        links: outLinks,
+        links,
         status: await status(),
         ...(inRange.length > kept.size || stored.length >= MAX_LINKS_READ
             ? { truncated: true }
@@ -828,14 +1202,40 @@ export interface LinkedForBot {
     source?: string;
     title?: string;
     when?: string;
+    /** Every reason, joined ("wife; 214 messages, last today"). */
     link: string;
+    reasons?: string[];
     via?: string;
 }
 
+/** "today", "yesterday", "3 days ago", or the day. */
+function lastTime(at: number, timeZone: string, now = Date.now() / 1000): string {
+    const day = (seconds: number) => formatInZone(new Date(seconds * 1000), timeZone).slice(0, 10);
+    const date = day(at);
+    if (at > now) return `next ${date}`;
+    const days = Math.round((Date.parse(day(now)) - Date.parse(date)) / (DAY * 1000));
+    if (days === 0) return 'today';
+    if (days === 1) return 'yesterday';
+    return days < 14 ? `${days} days ago` : date;
+}
+
+/** One reason in a bot's words, from the owner's side when it's about them. */
+function reasonForBot(
+    relation: GraphRelationDocument,
+    context: { me?: string; timeZone: string },
+): string {
+    if (relation.kind === 'relationship' && relation.type && relation.from === context.me)
+        return relation.type.replace(/_/g, ' ');
+    if (dataGraphRelationFamily(relation.kind) === 'interaction' && relation.lastAt !== undefined)
+        return `${relation.evidence}, last ${lastTime(relation.lastAt, context.timeZone)}`;
+    return relation.evidence;
+}
+
 /**
- * What an item a bot reads is linked to in this notebook: linked items its pages share
- * with this reader, the people, places and topics, and a few other items in the same
- * topic or place. Never anything from another notebook.
+ * What an item a bot reads is connected to in this notebook: linked items its pages
+ * share with this reader, the people in it with every reason they're connected to the
+ * item's owner ("Jen — wife; 214 messages, last today"), places, topics and happenings,
+ * and a few other items through those. Never anything from another notebook.
  */
 export async function linkedForBot(
     notebookId: string,
@@ -847,54 +1247,121 @@ export async function linkedForBot(
 ): Promise<LinkedForBot[]> {
     const nodeId = dataGraphItemNodeId(ownerId, itemId);
     const shared = isNotebookShared(await findNotebookByIdUnsafe(notebookId));
-    const readable = (links: GraphLinkDocument[]) =>
-        links
-            .map((link) => linkForReaders(link, shared))
-            .filter((link): link is GraphLinkDocument => !!link);
-    const direct = readable(await findGraphLinksOf(notebookId, nodeId, 40));
-    if (direct.length === 0) return [];
+    const readable = (docs: GraphRelationDocument[]) =>
+        docs
+            .map((relation) => relationForReaders(relation, shared))
+            .filter((relation): relation is GraphRelationDocument => !!relation);
+    const direct = readable(await findGraphRelationsOf(notebookId, nodeId, 40));
     const hubs = new Map(
         (await findGraphNodes(notebookId))
             .filter((hub) => hubForReaders(hub, shared))
             .map((hub) => [hub.id, hub]),
     );
-    const other = (link: GraphLinkDocument, from: string) => (link.a === from ? link.b : link.a);
+    const me = [...hubs.values()].find(
+        (hub) => hub.kind === 'person' && hub.ownerId === ownerId,
+    )?.id;
 
-    // A few more items through each topic or place.
-    const viaHub = new Map<string, { hub: string; link: GraphLinkDocument }>();
-    for (const link of direct) {
-        const hubId = other(link, nodeId);
-        const hub = hubs.get(hubId);
-        if (!hub || hub.kind === 'person') continue;
-        const around = readable(await findGraphLinksOf(notebookId, hubId, 8));
-        for (const next of around.slice(0, 4)) {
-            const id = other(next, hubId);
-            if (id !== nodeId && !viaHub.has(id)) viaHub.set(id, { hub: hub.label, link: next });
+    // The people in the item, through their phones and emails.
+    const self = await visibleItems([nodeId], slices);
+    const read = self.get(nodeId)?.item;
+    const personOf = new Map<string, string>();
+    for (const hub of hubs.values())
+        if (hub.kind === 'person')
+            for (const handle of hub.handles ?? []) personOf.set(handle, hub.id);
+    const people = new Set<string>();
+    if (read && read.source !== 'contacts') {
+        for (const raw of [read.sender, ...read.participants]) {
+            const person = personOf.get(normalizeHandle(raw) ?? '');
+            if (person && person !== me) people.add(person);
         }
     }
-    const itemIds = [...direct.map((link) => other(link, nodeId)), ...viaHub.keys()].filter((id) =>
-        id.startsWith('item:'),
-    );
-    const { visible } = await visibleItems([...new Set(itemIds)], slices);
+    for (const relation of direct) {
+        const other = otherEnd(relation, nodeId);
+        if (hubs.get(other)?.kind === 'person' && other !== me) people.add(other);
+    }
+    if (direct.length === 0 && people.size === 0) return [];
+
+    // A few more items through each topic, place or happening.
+    const viaHub = new Map<string, { hub: string; relation: GraphRelationDocument }>();
+    for (const relation of direct) {
+        const hubId = otherEnd(relation, nodeId);
+        const hub = hubs.get(hubId);
+        if (!hub || hub.kind === 'person') continue;
+        const around = readable(await findGraphRelationsOf(notebookId, hubId, 8));
+        for (const next of around.slice(0, 4)) {
+            const id = otherEnd(next, hubId);
+            if (id !== nodeId && isItem(id) && !viaHub.has(id))
+                viaHub.set(id, { hub: hub.label, relation: next });
+        }
+    }
+    const itemIds = [
+        ...direct.map((relation) => otherEnd(relation, nodeId)),
+        ...viaHub.keys(),
+    ].filter(isItem);
+    const visible = await visibleItems(itemIds, slices);
     const describe = (item: MacDataItem) => ({
         id: item.id,
         source: item.source,
         ...(item.title ? { title: item.title.slice(0, 120) } : {}),
         when: formatInZone(new Date(item.occurredAt * 1000), timeZone),
     });
+    const entry = (
+        base: Omit<LinkedForBot, 'link' | 'reasons'>,
+        reasons: string[],
+    ): LinkedForBot => ({
+        ...base,
+        link: [...new Set(reasons)].join('; '),
+        reasons: [...new Set(reasons)],
+    });
 
     const out: LinkedForBot[] = [];
-    for (const link of direct.sort((a, b) => b.confidence - a.confidence)) {
-        const id = other(link, nodeId);
-        const entry = visible.get(id);
-        if (entry) out.push({ kind: 'item', ...describe(entry.item), link: link.evidence });
-        else if (hubs.has(id))
-            out.push({ kind: hubs.get(id)!.kind, title: hubs.get(id)!.label, link: link.evidence });
+    // People first: who they are to the owner, and how much they talk.
+    const toOwner = me
+        ? readable(
+              await findGraphRelationsForPairs(
+                  notebookId,
+                  [...people].map((person) => linkKey(notebookId, me, person)),
+              ),
+          )
+        : [];
+    for (const person of people) {
+        const hub = hubs.get(person);
+        if (!hub) continue;
+        const reasons = [
+            ...toOwner
+                .filter((relation) => otherEnd(relation, me!) === person)
+                .sort(byStrength)
+                .map((relation) => reasonForBot(relation, { me, timeZone })),
+            ...direct
+                .filter((relation) => otherEnd(relation, nodeId) === person)
+                .map((relation) => relation.evidence),
+        ];
+        if (reasons.length) out.push(entry({ kind: 'person', title: hub.label }, reasons));
     }
-    for (const [id, { hub, link }] of viaHub) {
-        const entry = visible.get(id);
-        if (entry && !out.some((o) => o.id === entry.item.id))
-            out.push({ kind: 'item', ...describe(entry.item), link: link.evidence, via: hub });
+    // Then linked items and hubs, strongest first, every reason on the pair.
+    const others = new Map<string, GraphRelationDocument[]>();
+    for (const relation of direct) {
+        const other = otherEnd(relation, nodeId);
+        if (people.has(other)) continue;
+        others.set(other, [...(others.get(other) ?? []), relation]);
+    }
+    const strength = (list: GraphRelationDocument[]) =>
+        list.reduce((sum, relation) => sum + dataGraphReasonWeight(relation), 0);
+    for (const [id, list] of [...others].sort((x, y) => strength(y[1]) - strength(x[1]))) {
+        const reasons = list
+            .sort((x, y) => y.confidence - x.confidence)
+            .map((relation) => relation.evidence);
+        const found = visible.get(id);
+        if (found) out.push(entry({ kind: 'item', ...describe(found.item) }, reasons));
+        else if (hubs.has(id))
+            out.push(entry({ kind: hubs.get(id)!.kind, title: hubs.get(id)!.label }, reasons));
+    }
+    for (const [id, { hub, relation }] of viaHub) {
+        const found = visible.get(id);
+        if (found && !out.some((o) => o.id === found.item.id))
+            out.push(
+                entry({ kind: 'item', ...describe(found.item), via: hub }, [relation.evidence]),
+            );
     }
     return out.slice(0, limit);
 }
