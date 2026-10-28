@@ -8,6 +8,7 @@ import { IMessageViewComponent } from './imessage-view/imessage-view.component';
 import { ContactsViewComponent } from './contacts-view/contacts-view.component';
 import { HealthViewComponent } from './health-view/health-view.component';
 import { PlacesViewComponent } from './places-view/places-view.component';
+import { HomeViewComponent } from './home-view/home-view.component';
 import { AboutMeService } from '../services/about-me.service';
 import {
   DeviceDataService,
@@ -46,6 +47,11 @@ describe('device data views', () => {
         { id: 'chat-2', name: 'Book club' },
       ],
       places: [],
+      homeEntities: [
+        { id: 'light.kitchen', name: 'Kitchen Light', domain: 'light', area: 'Kitchen' },
+        { id: 'person.ria', name: 'Ria', domain: 'person' },
+      ],
+      homeAreas: ['Kitchen'],
     })),
     updateDataPage: vi.fn(async () => page),
   };
@@ -327,6 +333,91 @@ describe('device data views', () => {
       expect(root.querySelector('[data-testid="collector"]')?.textContent).toContain(
         'Not collected yet: open Maple on your iPhone and turn on Health',
       );
+    });
+  });
+
+  describe('Home', () => {
+    const home = (overrides: Partial<MacDataItem>) => item({ source: 'home', ...overrides });
+
+    it('lists devices by area with their state, then recent changes', async () => {
+      listItems.mockResolvedValue({
+        items: [
+          home({
+            id: 'home:light.kitchen@1760000100',
+            title: 'Kitchen Light',
+            occurredAt: 1_760_000_100,
+            extra: { entityId: 'light.kitchen', kind: 'change', state: 'on', from: 'off' },
+          }),
+          home({
+            id: 'home:sensor.porch_temp',
+            title: 'Porch Temperature',
+            extra: { entityId: 'sensor.porch_temp', state: '18.5', unit: '°C', kind: 'state' },
+          }),
+          home({
+            id: 'home:light.kitchen',
+            title: 'Kitchen Light',
+            extra: { entityId: 'light.kitchen', state: 'on', area: 'Kitchen', kind: 'state' },
+          }),
+        ],
+        total: 3,
+        collector: null,
+      });
+      const { root } = await render(HomeViewComponent);
+      expect(listItems).toHaveBeenCalledWith(expect.objectContaining({ source: 'home' }));
+      const [devices, changes] = root.querySelectorAll('table');
+      const rows = devices!.querySelectorAll('tbody tr');
+      // Devices with an area first.
+      expect(rows[0]?.textContent).toContain('Kitchen Light');
+      expect(rows[0]?.textContent).toContain('Kitchen');
+      expect(rows[1]?.textContent).toContain('Porch Temperature');
+      expect(rows[1]?.textContent).toContain('18.5 °C');
+      expect(changes?.textContent).toContain('off → on');
+      expect(root.querySelector('[data-testid="collector"]')?.textContent).toContain(
+        'Not collected yet: open Maple on your Mac and turn on Home Assistant',
+      );
+    });
+
+    it("shares chosen areas, and who's home only when asked", async () => {
+      pageService.pages.set([{ ...page, deviceSource: 'home', deviceFilter: {} } as Page]);
+      deviceData.updateDataPage.mockClear();
+      listItems.mockResolvedValue({
+        items: [],
+        total: 0,
+        collector: null,
+        access: { canManage: true, ownerName: 'Alex', shared: true, filterSummary: 'Nothing yet' },
+      });
+      const { fixture, root } = await render(HomeViewComponent);
+      (root.querySelector('button[aria-label="Page settings"]') as HTMLButtonElement).click();
+      await wait();
+      fixture.detectChanges();
+      const check = (label: string) => {
+        const box = [...root.querySelectorAll('form label')]
+          .find((l) => l.textContent?.trim().startsWith(label))!
+          .querySelector('input') as HTMLInputElement;
+        box.checked = true;
+        box.dispatchEvent(new Event('change'));
+        fixture.detectChanges();
+      };
+      check('Kitchen');
+      expect(root.querySelector('[data-testid="share-preview"]')?.textContent).toContain(
+        'Devices in Kitchen',
+      );
+      check("Include who's home");
+      expect(root.querySelector('[data-testid="share-preview"]')?.textContent).toContain(
+        "Devices in Kitchen and who's home",
+      );
+      (root.querySelector('form button[type="submit"]') as HTMLButtonElement).click();
+      await wait();
+      expect(deviceData.updateDataPage).toHaveBeenCalledWith('p1', {
+        title: 'Family texts',
+        description: '',
+        deviceFilter: {
+          includeAll: false,
+          homeEntities: [],
+          homeAreas: ['Kitchen'],
+          includePresence: true,
+        },
+      });
     });
   });
 

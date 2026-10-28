@@ -13,6 +13,7 @@ import { botRoutes } from './routes/bots';
 import { macDataRoutes } from './routes/mac-data';
 import { deviceDataRoutes } from './routes/device-data';
 import { calendarProposalRoutes } from './routes/calendar-proposals';
+import { homeRoutes } from './routes/home';
 import { aboutMeRoutes } from './routes/about-me';
 import { graphRoutes } from './routes/graph';
 import { startGraphLinking } from './services/graph.service';
@@ -103,6 +104,7 @@ async function main() {
         .use(macDataRoutes)
         .use(deviceDataRoutes)
         .use(calendarProposalRoutes)
+        .use(homeRoutes)
         .use(aboutMeRoutes)
         .use(graphRoutes)
         .use(legoRoutes)

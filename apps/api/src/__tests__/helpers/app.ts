@@ -7,6 +7,7 @@ import { messageRoutes } from '../../routes/messages';
 import { botRoutes } from '../../routes/bots';
 import { deviceDataRoutes } from '../../routes/device-data';
 import { calendarProposalRoutes } from '../../routes/calendar-proposals';
+import { homeRoutes } from '../../routes/home';
 import { macDataRoutes } from '../../routes/mac-data';
 import { aboutMeRoutes } from '../../routes/about-me';
 import { graphRoutes } from '../../routes/graph';
@@ -33,6 +34,7 @@ export function createTestApp() {
         .use(botRoutes)
         .use(deviceDataRoutes)
         .use(calendarProposalRoutes)
+        .use(homeRoutes)
         .use(macDataRoutes)
         .use(aboutMeRoutes)
         .use(graphRoutes)

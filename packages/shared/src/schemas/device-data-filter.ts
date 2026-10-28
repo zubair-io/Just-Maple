@@ -45,6 +45,15 @@ export const DeviceDataFilterSchema = Type.Object({
     timeWindows: Type.Optional(Type.Array(DeviceDataTimeWindowSchema, { maxItems: 6 })),
     /** Places: never visits at these named places (About me place ids). */
     excludePlaceIds: Type.Optional(Type.Array(Type.String({ maxLength: 100 }), { maxItems: 50 })),
+    /** Home: these entities (Home Assistant entity ids), even who's home when picked here. */
+    homeEntities: Type.Optional(Type.Array(Type.String({ maxLength: 255 }), { maxItems: 500 })),
+    /** Home: entities in these areas, by name. */
+    homeAreas: Type.Optional(Type.Array(Name, { maxItems: 50 })),
+    /**
+     * Home: who's home (people and device trackers) with `includeAll` or an area. Off
+     * unless the creator turns it on; a person picked in `homeEntities` counts on its own.
+     */
+    includePresence: Type.Optional(Type.Boolean()),
 });
 export type DeviceDataFilter = Static<typeof DeviceDataFilterSchema>;
 
@@ -77,5 +86,17 @@ export const DeviceDataFilterOptionsSchema = Type.Object({
     mailboxes: Type.Array(Type.String()),
     chats: Type.Array(DeviceDataChoiceSchema),
     places: Type.Array(Type.Object({ id: Type.String(), name: Type.String() })),
+    /** Home: exposed entities, by name and area. */
+    homeEntities: Type.Optional(
+        Type.Array(
+            Type.Object({
+                id: Type.String(),
+                name: Type.String(),
+                domain: Type.String(),
+                area: Type.Optional(Type.String()),
+            }),
+        ),
+    ),
+    homeAreas: Type.Optional(Type.Array(Type.String())),
 });
 export type DeviceDataFilterOptions = Static<typeof DeviceDataFilterOptionsSchema>;

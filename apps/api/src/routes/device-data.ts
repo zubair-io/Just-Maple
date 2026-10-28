@@ -12,6 +12,7 @@ import {
     type MacDataSource,
 } from '@maple/shared';
 import { saveTravelEstimates } from '../repositories/travel-estimate.repo';
+import { deleteHomeExposure } from '../repositories/home-exposure.repo';
 import {
     deleteCollector,
     findCollector,
@@ -33,6 +34,7 @@ import {
     isMemberOf,
     loadDataPageView,
     filterOptionsFor,
+    homeExposureMatcher,
     itemMatcherFor,
     itemQueryFor,
 } from '../services/device-data-access.service';
@@ -249,6 +251,9 @@ export const deviceDataRoutes = new Elysia({ prefix: '/api' })
                 if (!pageQuery) {
                     return { items: [], total: 0, collector: null, access };
                 }
+            } else if (query.source === 'home') {
+                // Even the owner's own list shows only what they expose in Home Assistant.
+                pageQuery = { match: await homeExposureMatcher(ownerId) };
             }
             // Which device collects it: shown to the person whose data it is.
             const collector =
@@ -396,7 +401,7 @@ export const deviceDataRoutes = new Elysia({ prefix: '/api' })
                 return { item };
             }
             const item = await findDeviceItem(auth.user._id, params.id);
-            if (!item) {
+            if (!item || !(await homeExposureMatcher(auth.user._id))(item)) {
                 set.status = 404;
                 return { error: 'Item not found' };
             }
@@ -413,6 +418,7 @@ export const deviceDataRoutes = new Elysia({ prefix: '/api' })
     .delete('/device-data', async ({ auth, set }) => {
         if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
         const removed = await deleteDeviceItems(auth.user._id);
+        await deleteHomeExposure(auth.user._id);
         // Devices stay off until the user picks "Collect here" again.
         await disableAllSources(auth.user._id);
         await bumpDeviceDataVersion(auth.user._id);

@@ -28,7 +28,7 @@
 import Foundation
 
 nonisolated enum DeviceSource: String, Codable, CaseIterable, Sendable {
-    case imessage, mail, calendar, contacts, location, health
+    case imessage, mail, calendar, contacts, location, health, home
 }
 
 /// Small JSON values for an item's source-specific fields (a contact's phones, a visit's
@@ -263,6 +263,10 @@ actor DeviceDataClient {
 
     func post<Body: Encodable, Reply: Decodable>(_ path: String, _ body: Body) async throws -> Reply {
         try await send("POST", path, body)
+    }
+
+    func put<Body: Encodable, Reply: Decodable>(_ path: String, _ body: Body) async throws -> Reply {
+        try await send("PUT", path, body)
     }
 
     private func send<Body: Encodable, Reply: Decodable>(

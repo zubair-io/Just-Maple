@@ -696,6 +696,20 @@ Key files: `calendar-proposal.service.ts` / `.repo.ts` / `routes/calendar-propos
 
 ---
 
+## Home Assistant (`home` source)
+
+**Only entities the user exposed to assistants in Home Assistant are ever read, uploaded, shown to bots or controlled.**
+
+1. The Mac connects to Home Assistant's WebSocket with a long-lived token kept in the Keychain only (entered in a native window, never in the web page, never uploaded or logged). `auth_invalid` stops retrying: Home Assistant bans addresses that keep failing.
+2. It reads `homeassistant/expose_entity/list` (both the `{assistant: bool}` and older `{should_expose}` formats, at most 10,000), then `subscribe_entities` with `entity_ids` set to exactly that list. Never a subscription to everything, and never one with an empty list (that would mean every entity). The list is read again on every connect, every 5 minutes, and right before every action; a change resubscribes.
+3. The Mac uploads the exposed list (`PUT /api/home/exposure`) before any item. The server hides home items of entities not on it (`homeExposureMatcher`, fails closed) but keeps them, so re-exposing brings them back. Items: `home:<entity>` (current state, kept however old) and `home:<entity>@<time>` (a change, 30 days). Updates are coalesced (`HomeChangeCoalescer`): at most every 10 s, readings like watts at most every 5 minutes, 20 changes an hour per entity. Coordinates never leave the Mac.
+4. Page filters pick entities or areas. Who's home (`person.*`, `device_tracker.*`) needs `includePresence` or picking the entity, and bots never see it on a page without such a filter. Home is left out of the graph and of proactive news.
+5. Bots read with `get_home_states` and propose with `propose_home_action` (light, switch, fan, cover, climate, lock, media_player, scene, script; one value per service, see `HOME_SERVICES`). The owner taps the `home_proposal` card; locks and garage/gate/door covers need a second tap (`428` without `acknowledged`). That queues a `home_service` action on the #293 queue for the Mac collecting `home`, valid 15 minutes. The Mac checks the rules and the live exposed list again before `call_service`.
+
+Key files: `packages/shared/src/schemas/home.ts`, `apps/api/src/services/home.service.ts`, `repositories/home-*.repo.ts`, `routes/home.ts`; web `home-view`, `home-proposal-card`; Mac `HomeAssistant/` and `MacData/MacDataEngine+Home.swift`.
+
+---
+
 ## Quick Reference
 
 | Do                             | Don't                               |

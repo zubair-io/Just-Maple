@@ -103,6 +103,9 @@ export async function createIndexes(database: Db): Promise<void> {
     // "Add to calendar" proposals and the Mac action queue (sorted in code)
     await database.collection('calendar_proposals').createIndex({ userId: 1, status: 1 });
     await database.collection('calendar_proposals').createIndex({ userId: 1, 'event.start': 1 }); // Duplicate offers
+    // Home Assistant action proposals (sorted in code)
+    await database.collection('home_proposals').createIndex({ userId: 1, status: 1 });
+    await database.collection('home_proposals').createIndex({ userId: 1, 'call.entityId': 1 }); // Duplicate offers
     // About me
     await database.collection('profile_entities').createIndex({ userId: 1 });
     await database.collection('profile_relations').createIndex({ userId: 1 });

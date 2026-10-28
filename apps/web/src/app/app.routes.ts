@@ -18,6 +18,7 @@ import {
   CalendarPageGuard,
   ContactsPageGuard,
   HealthPageGuard,
+  HomePageGuard,
   IMessagePageGuard,
   MailPageGuard,
   PlacesPageGuard,
@@ -293,6 +294,12 @@ export const routes: Routes = [
               import('./pages/health-view/health-view.component').then(
                 (m) => m.HealthViewComponent,
               ),
+          },
+          {
+            path: ':id',
+            canMatch: [HomePageGuard],
+            loadComponent: () =>
+              import('./pages/home-view/home-view.component').then((m) => m.HomeViewComponent),
           },
           // About me page - what bots know about each member (each sees only their own)
           {

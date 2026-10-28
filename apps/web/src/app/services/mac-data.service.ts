@@ -39,6 +39,16 @@ export interface MacActionCalendars {
   defaultId: string | null;
 }
 
+/** This Mac's Home Assistant connection. The token never reaches the page. */
+export interface MacHomeStatus {
+  configured: boolean;
+  url: string | null;
+  state: 'stopped' | 'connecting' | 'connected' | 'retrying' | 'failed';
+  /** Entities exposed to assistants, once connected. */
+  exposed?: number;
+  error?: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class MacDataService {
   private readonly zone = inject(NgZone);
@@ -113,6 +123,18 @@ export class MacDataService {
   /** null goes back to the Mac's default calendar. */
   async setActionCalendar(calendarId: string | null): Promise<void> {
     await this.call('setActionCalendar', calendarId ? { calendarId } : {});
+  }
+
+  // MARK: - Home Assistant
+
+  async homeStatus(): Promise<MacHomeStatus | null> {
+    if (!this.isAvailable()) return null;
+    return this.call<MacHomeStatus>('homeStatus');
+  }
+
+  /** Opens the Mac's own window for the address and access token. */
+  async openHomeSettings(): Promise<void> {
+    await this.call('homeOpenSettings');
   }
 
   // MARK: - Migration

@@ -300,6 +300,7 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                         t.Literal('contacts'),
                         t.Literal('location'),
                         t.Literal('health'),
+                        t.Literal('home'),
                     ]),
                 ),
             }),

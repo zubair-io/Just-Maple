@@ -11,6 +11,7 @@ import type {
 import { isBotModel } from '@maple/shared';
 import { botUIPrompt, parseBotResponse, botUIToText } from './bot-ui.service';
 import { attachProposals, withProposalCards } from './calendar-proposal.service';
+import { attachHomeProposalCards, withHomeProposalCards } from './home.service';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { SDKAssistantMessage } from '@anthropic-ai/claude-agent-sdk';
 import { findBotTemplateById } from '../repositories/bot-template.repo';
@@ -946,7 +947,9 @@ export class BotExecutorService {
         // "Add to calendar" cards come from the proposals saved in this run, never from
         // what the model wrote.
         const proposals = ctx.macData?.proposedEvents ?? [];
-        const ui = proposals.length ? await withProposalCards(parsed.ui, proposals) : parsed.ui;
+        const homeActions = ctx.macData?.proposedHomeActions ?? [];
+        let ui = proposals.length ? await withProposalCards(parsed.ui, proposals) : parsed.ui;
+        if (homeActions.length) ui = await withHomeProposalCards(ui, homeActions);
         ctx.variables.$botUI = ui;
         return markdownToProseMirror(parsed.markdown || (ui ? botUIToText(ui) : ''));
     }
@@ -961,6 +964,11 @@ export class BotExecutorService {
         if (proposals.length)
             await attachProposals(proposals, pageId, messageId).catch((error) =>
                 console.error('[BotExecutor] Could not attach proposals:', error),
+            );
+        const homeActions = ctx.macData?.proposedHomeActions ?? [];
+        if (homeActions.length)
+            await attachHomeProposalCards(homeActions, pageId, messageId).catch((error) =>
+                console.error('[BotExecutor] Could not attach home proposals:', error),
             );
     }
 

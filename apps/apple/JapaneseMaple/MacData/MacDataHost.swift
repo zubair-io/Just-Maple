@@ -17,6 +17,11 @@
 //  It also adds the events the user confirmed in chats (CalendarActions) after each
 //  upload, on every poll, when the relay connects, and when the server asks.
 //
+//  Home Assistant (HomeAssistant/): homeStatus, and homeOpenSettings for the native
+//  window where the address and token are entered (the token never reaches the page).
+//  The connector runs while the source is on, it's set up, and the server takes Home
+//  Assistant from this Mac.
+//
 
 #if os(macOS)
 import AppKit
@@ -40,6 +45,13 @@ final class MacDataHost: NSObject, WKScriptMessageHandlerWithReply {
     private var watchers: [MacDataFileWatcher] = []
     private var pollTimer: Timer?
     private var observers: [NSObjectProtocol] = []
+    private let homeSettings = HomeAssistantSettingsStore()
+    /// Read from the Keychain at launch and after the settings window saves.
+    private lazy var homeCredentials = homeSettings.load()
+    private lazy var homeConnector = HomeAssistantConnector(
+        sink: HomeEngineSink(engine: engine) { [weak self] change in
+            self?.homeChanged(change)
+        })
 
     func attach(to webView: WKWebView) {
         self.webView = webView
@@ -110,6 +122,41 @@ final class MacDataHost: NSObject, WKScriptMessageHandlerWithReply {
         }
         connection.onActionsRequested = { [weak self] in self?.runActions() }
         connection.start()
+        HomeAssistantSettingsWindow.shared.onChange = { [weak self] in
+            guard let self else { return }
+            self.homeCredentials = self.homeSettings.load()
+            self.updateHome()
+        }
+    }
+
+    /// Starts or stops the Home Assistant connection to match the settings and the server.
+    private func updateHome() {
+        Task {
+            let enabled = (try? await engine.enabledSources())?.contains(.home) == true
+            let active = await engine.homeIsActive
+            if let credentials = homeCredentials, enabled, active {
+                await homeConnector.start(settings: credentials.settings, token: credentials.token)
+                await engine.setHomePerformer(homeConnector)
+            } else {
+                await engine.setHomePerformer(nil)
+                await homeConnector.stop()
+            }
+            await engine.setHomeState(
+                configured: homeCredentials != nil, status: await homeConnector.status)
+            await emitStatus()
+        }
+    }
+
+    private func homeChanged(_ change: HomeEngineSink.Change) {
+        switch change {
+        case .items:
+            upload()
+        case .exposure:
+            emit(["type": "changed", "source": MacDataSource.home.rawValue])
+            upload()
+        case .status:
+            Task { await self.emitStatus() }
+        }
     }
 
     private func syncAll() {
@@ -143,6 +190,7 @@ final class MacDataHost: NSObject, WKScriptMessageHandlerWithReply {
                 await engine.uploadPending()
             }
             await self.emitStatus()
+            if source == .home { self.updateHome() }
         }
     }
 
@@ -151,6 +199,7 @@ final class MacDataHost: NSObject, WKScriptMessageHandlerWithReply {
             await engine.uploadPending()
             await self.emitStatus()
             await engine.runActions()
+            self.updateHome()
         }
     }
 
@@ -168,6 +217,9 @@ final class MacDataHost: NSObject, WKScriptMessageHandlerWithReply {
             }
         case .imessage, .mail:
             if openSettingsIfDenied { Self.openPrivacySettings("Privacy_AllFiles") }
+        case .home:
+            // "Access" is the address and token, entered in a native window.
+            if openSettingsIfDenied || homeCredentials == nil { HomeAssistantSettingsWindow.shared.show() }
         }
     }
 
@@ -217,6 +269,7 @@ final class MacDataHost: NSObject, WKScriptMessageHandlerWithReply {
             if try await engine.disable(source) {
                 await engine.registrationChanged()
             }
+            if source == .home { updateHome() }
             upload()
             await emitStatus()
             return true
@@ -236,6 +289,30 @@ final class MacDataHost: NSObject, WKScriptMessageHandlerWithReply {
 
         case "setActionCalendar":
             try await engine.setActionCalendar(body["calendarId"] as? String)
+            return true
+
+        // Home Assistant: whether it's set up and connected; never the token.
+        case "homeStatus":
+            let status = await homeConnector.status
+            var reply: [String: Any] = [
+                "configured": homeCredentials != nil,
+                "url": homeSettings.settings?.url.absoluteString ?? NSNull(),
+                "state": "stopped",
+            ]
+            switch status {
+            case .stopped: break
+            case .connecting: reply["state"] = "connecting"
+            case .connected(let exposed):
+                reply["state"] = "connected"
+                reply["exposed"] = exposed
+            case .failed(let message, let retrying):
+                reply["state"] = retrying ? "retrying" : "failed"
+                reply["error"] = message
+            }
+            return reply
+
+        case "homeOpenSettings":
+            HomeAssistantSettingsWindow.shared.show()
             return true
 
         case "deletePage":

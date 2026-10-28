@@ -1,4 +1,5 @@
 import { Type, Static } from '@sinclair/typebox';
+import { HomeServiceCallSchema } from './home';
 
 /**
  * "Add to calendar" proposals.
@@ -66,7 +67,7 @@ export type CalendarProposal = Static<typeof CalendarProposalSchema>;
 // MARK: - Collector action queue
 
 /** A pending action for a collector. The id is stable across retries: the device uses it to avoid doing the same thing twice. */
-export const DeviceActionSchema = Type.Object({
+export const CalendarDeviceActionSchema = Type.Object({
     id: Type.String(),
     type: Type.Literal('create_event'),
     source: Type.Literal('calendar'),
@@ -74,6 +75,20 @@ export const DeviceActionSchema = Type.Object({
     createdAt: Type.String(),
     expiresAt: Type.String(),
 });
+export type CalendarDeviceAction = Static<typeof CalendarDeviceActionSchema>;
+
+/** A Home Assistant service call the owner confirmed (see home.ts). The Mac refuses it after `expiresAt`. */
+export const HomeDeviceActionSchema = Type.Object({
+    id: Type.String(),
+    type: Type.Literal('home_service'),
+    source: Type.Literal('home'),
+    call: HomeServiceCallSchema,
+    createdAt: Type.String(),
+    expiresAt: Type.String(),
+});
+export type HomeDeviceAction = Static<typeof HomeDeviceActionSchema>;
+
+export const DeviceActionSchema = Type.Union([CalendarDeviceActionSchema, HomeDeviceActionSchema]);
 export type DeviceAction = Static<typeof DeviceActionSchema>;
 
 export const DeviceActionResultSchema = Type.Object({

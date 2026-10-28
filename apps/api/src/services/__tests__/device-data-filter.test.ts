@@ -4,7 +4,10 @@ import {
     deviceFilterIsEmpty,
     deviceItemMatchesFilter,
     deviceItemThreadKey,
+    describeHomeCall,
+    homeItemVisibleToBots,
     imessageHandleKey,
+    isHomePresenceEntity,
     imessageThreadKey,
     type MacDataItem,
 } from '@maple/shared';
@@ -140,5 +143,93 @@ describe('device data page filters', () => {
         expect(
             deviceItemThreadKey({ ...base, source: 'calendar', extra: { chatId: 'x;-;y' } }),
         ).toBeUndefined();
+    });
+});
+
+describe('Home page filters', () => {
+    const home = (entityId: string, area?: string): MacDataItem => ({
+        id: `home:${entityId}`,
+        source: 'home',
+        revision: '1',
+        occurredAt: 0,
+        participants: [],
+        body: '',
+        extra: { entityId, ...(area ? { area } : {}) },
+    });
+    const light = home('light.kitchen', 'Kitchen');
+    const person = home('person.alex');
+    const tracker = home('device_tracker.alex_phone', 'Hall');
+
+    it('shares entities by id or area, and nothing when empty', () => {
+        expect(deviceFilterIsEmpty('home', {})).toBe(true);
+        expect(deviceFilterIsEmpty('home', { homeAreas: ['Kitchen'] })).toBe(false);
+        expect(deviceItemMatchesFilter(light, { homeAreas: ['Kitchen'] }, utc)).toBe(true);
+        expect(deviceItemMatchesFilter(light, { homeAreas: ['Garage'] }, utc)).toBe(false);
+        expect(deviceItemMatchesFilter(light, { homeEntities: ['light.kitchen'] }, utc)).toBe(true);
+        expect(deviceItemMatchesFilter(home('light.kitchen'), { includeAll: true }, utc)).toBe(
+            true,
+        );
+    });
+
+    it("leaves out who's home unless picked or turned on", () => {
+        expect(deviceItemMatchesFilter(person, { includeAll: true }, utc)).toBe(false);
+        expect(deviceItemMatchesFilter(tracker, { homeAreas: ['Hall'] }, utc)).toBe(false);
+        expect(
+            deviceItemMatchesFilter(tracker, { homeAreas: ['Hall'], includePresence: true }, utc),
+        ).toBe(true);
+        expect(deviceItemMatchesFilter(person, { homeEntities: ['person.alex'] }, utc)).toBe(true);
+        expect(isHomePresenceEntity('person.alex')).toBe(true);
+        expect(isHomePresenceEntity('light.kitchen')).toBe(false);
+    });
+
+    it("hides who's home from bots on pages without a filter", () => {
+        expect(homeItemVisibleToBots(person, undefined)).toBe(false);
+        expect(homeItemVisibleToBots(light, undefined)).toBe(true);
+        expect(homeItemVisibleToBots(person, { includeAll: true, includePresence: true })).toBe(
+            true,
+        );
+        expect(homeItemVisibleToBots(person, { homeEntities: ['person.alex'] })).toBe(true);
+    });
+
+    it('describes what a Home page shares', () => {
+        expect(describeDeviceFilter('home', { includeAll: true })).toBe('All exposed devices');
+        expect(describeDeviceFilter('home', { includeAll: true, includePresence: true })).toBe(
+            "All exposed devices and who's home",
+        );
+        expect(describeDeviceFilter('home', { homeAreas: ['Kitchen', 'Garage'] })).toBe(
+            'Devices in Kitchen and Garage',
+        );
+        expect(describeDeviceFilter('home', { homeEntities: ['a.b', 'c.d'] })).toBe(
+            '2 chosen devices',
+        );
+        expect(describeDeviceFilter('home', {})).toBe('Nothing yet');
+    });
+
+    it('describes proposed actions', () => {
+        expect(
+            describeHomeCall({
+                entityId: 'light.kitchen',
+                domain: 'light',
+                service: 'turn_on',
+                name: 'Kitchen Light',
+                data: { brightness_pct: 40 },
+            }),
+        ).toBe('Turn on Kitchen Light at 40%');
+        expect(
+            describeHomeCall({
+                entityId: 'scene.movie',
+                domain: 'scene',
+                service: 'turn_on',
+                name: 'Movie',
+            }),
+        ).toBe('Run Movie');
+        expect(
+            describeHomeCall({
+                entityId: 'lock.front',
+                domain: 'lock',
+                service: 'unlock',
+                name: 'Front Door',
+            }),
+        ).toBe('Unlock Front Door');
     });
 });

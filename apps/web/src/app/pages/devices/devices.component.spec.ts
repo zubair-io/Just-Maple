@@ -60,6 +60,8 @@ describe('DevicesComponent', () => {
       defaultId: 'home',
     })),
     setActionCalendar: vi.fn(async () => undefined),
+    homeStatus: vi.fn(async () => null as unknown),
+    openHomeSettings: vi.fn(async () => undefined),
   };
   const iphoneStatuses = signal<IPhoneSourceStatus[]>([]);
   const iphone = {
@@ -193,11 +195,28 @@ describe('DevicesComponent', () => {
     const root = await render();
     expect(root.textContent).toContain('On this Mac');
     const rows = root.querySelectorAll('[data-testid="mac-source"]');
-    expect(rows).toHaveLength(4);
+    expect(rows).toHaveLength(5);
     const contacts = [...rows].find((row) => row.textContent?.includes('Contacts'))!;
     button(contacts, 'Turn on').click();
     await flush();
     expect(macData.enableSource).toHaveBeenCalledWith('contacts');
+  });
+
+  it('shows the Home Assistant connection and opens its native settings', async () => {
+    macData.isAvailable.set(true);
+    macData.homeStatus.mockResolvedValue({
+      configured: true,
+      url: 'http://homeassistant.local:8123',
+      state: 'connected',
+      exposed: 12,
+    });
+    macStatuses.set({ home: { source: 'home', state: 'ready', itemCount: 12, enabled: true } });
+    const root = await render();
+    const row = root.querySelector('[data-testid="home-assistant"]')!;
+    expect(row.textContent).toContain('http://homeassistant.local:8123 · 12 exposed entities');
+    button(row, 'Change…').click();
+    await flush();
+    expect(macData.openHomeSettings).toHaveBeenCalled();
   });
 
   it('picks the calendar that Add to calendar uses on this Mac', async () => {

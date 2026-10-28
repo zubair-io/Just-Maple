@@ -11,6 +11,7 @@ const MAC_ACCESS_COPY: Partial<Record<MacDataSource, { app: string; button: stri
   mail: { app: 'Mail', button: 'Open Full Disk Access settings' },
   calendar: { app: 'Calendar', button: 'Allow Calendar access' },
   contacts: { app: 'Contacts', button: 'Allow Contacts access' },
+  home: { app: 'Home Assistant', button: 'Set up Home Assistant' },
 };
 
 /**

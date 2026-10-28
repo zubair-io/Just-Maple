@@ -3,6 +3,7 @@ import { getDb } from '../db/client';
 import {
     DEVICE_DATA_RETENTION_DAYS,
     deviceChoiceKey,
+    isHomeStateItemId,
     deviceItemThreadKey,
     type DeviceDataChoice,
     type DeviceItemVectors,
@@ -296,6 +297,17 @@ export async function findDeviceItemFacets(
     };
 }
 
+/**
+ * The user's Home entities' current states without bodies, for the filter panel and the
+ * read tool. Exposure is checked by the caller.
+ */
+export async function findHomeStateItems(userId: string): Promise<MacDataItem[]> {
+    const docs = await getCollection()
+        .find({ userId, source: 'home' }, { projection: { id: 1, item: 1 } })
+        .toArray();
+    return docs.filter((doc) => isHomeStateItemId(doc.id)).map((doc) => doc.item);
+}
+
 /** The user's own contact card, if their Mac uploaded one. */
 export async function findMyContactCard(userId: string): Promise<MacDataItem | null> {
     const doc = await getCollection().findOne({
@@ -430,6 +442,7 @@ export async function countDeviceItems(
         'contacts',
         'location',
         'health',
+        'home',
     ];
     const counts = await Promise.all(
         sources.map((source) =>
@@ -468,11 +481,16 @@ export async function purgeExpiredDeviceItems(now = Date.now()): Promise<string[
                 source: { $nin: ['contacts'] },
                 occurredAt: { $lt: cutoff },
             },
-            { projection: { _id: 1, userId: 1, source: 1, endAt: 1 } },
+            { projection: { _id: 1, id: 1, userId: 1, source: 1, endAt: 1 } },
         )
         .toArray();
-    // Calendar events that started before the cutoff but haven't ended yet stay.
-    const doomed = expired.filter((doc) => doc.source !== 'calendar' || (doc.endAt ?? 0) < cutoff);
+    // Calendar events that started before the cutoff but haven't ended yet stay, and so
+    // does each Home entity's current state (only its recorded changes age out).
+    const doomed = expired.filter(
+        (doc) =>
+            (doc.source !== 'calendar' || (doc.endAt ?? 0) < cutoff) &&
+            (doc.source !== 'home' || !isHomeStateItemId(doc.id)),
+    );
     if (doomed.length === 0) return [];
     await getCollection().deleteMany({ _id: { $in: doomed.map((doc) => doc._id) } });
     return [...new Set(doomed.map((doc) => doc.userId))];

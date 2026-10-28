@@ -4,6 +4,7 @@ import type {
     DeviceDataTimeWindow,
 } from '../schemas/device-data-filter';
 import type { MacDataItem, MacDataSource } from '../schemas/mac-data';
+import { HOME_PRESENCE_DOMAINS } from '../schemas/home';
 import type { Notebook } from '../schemas/notebook';
 
 /** The notebook has members besides its owner, or is public. The owner is listed too. */
@@ -125,6 +126,8 @@ export function deviceItemMatchesFilter(
             return all || inList(filter.mailboxes, item.mailbox);
         case 'imessage':
             return all || inChoices(filter.chats, item, item.thread);
+        case 'home':
+            return homeItemMatches(item, filter);
         case 'location':
             return (
                 all &&
@@ -145,6 +148,7 @@ export function deviceFilterIsEmpty(
     if (source === 'calendar') return !filter.calendars?.length;
     if (source === 'mail') return !filter.mailboxes?.length;
     if (source === 'imessage') return !filter.chats?.length;
+    if (source === 'home') return !filter.homeEntities?.length && !filter.homeAreas?.length;
     return true;
 }
 
@@ -183,9 +187,62 @@ export function describeDeviceFilter(
             if (excluded.length) parts.push(`not at ${joinNames(excluded)}`);
             return parts.join(', ');
         }
+        case 'home': {
+            const presence = filter.includePresence ? " and who's home" : '';
+            if (filter.includeAll) return `All exposed devices${presence}`;
+            const parts: string[] = [];
+            if (filter.homeAreas?.length)
+                parts.push(`Devices in ${joinNames(filter.homeAreas)}${presence}`);
+            const count = filter.homeEntities?.length ?? 0;
+            if (count) parts.push(count === 1 ? '1 chosen device' : `${count} chosen devices`);
+            return parts.join(', and ');
+        }
         default:
             return 'Everything';
     }
+}
+
+// MARK: - Home
+
+/** The Home Assistant entity a Home item is about (`light.kitchen`). */
+export function homeEntityId(item: MacDataItem): string | undefined {
+    if (item.source !== 'home') return undefined;
+    const value = item.extra?.['entityId'];
+    return typeof value === 'string' && value ? value : undefined;
+}
+
+/** People and device trackers: where someone is. */
+export function isHomePresenceEntity(entityId: string): boolean {
+    const domain = entityId.split('.')[0] ?? '';
+    return (HOME_PRESENCE_DOMAINS as readonly string[]).includes(domain);
+}
+
+/**
+ * An entity picked by id always passes. Who's home passes with "everything" or an area
+ * only when the creator turned it on. Otherwise: everything, or the entity's area.
+ */
+function homeItemMatches(item: MacDataItem, filter: DeviceDataFilter): boolean {
+    const id = homeEntityId(item);
+    if (!id) return false;
+    if (filter.homeEntities?.includes(id)) return true;
+    if (isHomePresenceEntity(id) && !filter.includePresence) return false;
+    if (filter.includeAll) return true;
+    const area = item.extra?.['area'];
+    return typeof area === 'string' && !!filter.homeAreas?.includes(area);
+}
+
+/**
+ * Bots never see who's home unless the page's filter picks it: a page without a filter
+ * shows its creator everything, but not their bots.
+ */
+export function homeItemVisibleToBots(
+    item: MacDataItem,
+    filter: DeviceDataFilter | undefined,
+): boolean {
+    const id = homeEntityId(item);
+    if (!id) return item.source !== 'home';
+    if (!isHomePresenceEntity(id)) return true;
+    return !!filter && (!!filter.includePresence || !!filter.homeEntities?.includes(id));
 }
 
 function joinNames(names: string[]): string {
