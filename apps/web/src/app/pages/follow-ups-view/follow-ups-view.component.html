@@ -1,0 +1,205 @@
+<div class="flex h-full min-h-0 flex-col bg-[var(--color-bg)]">
+  <header
+    class="flex flex-wrap items-center gap-3 border-b border-[var(--color-border)] px-6 py-4 max-md:px-4"
+  >
+    <span class="material-symbols-rounded text-xl text-[var(--color-primary)]" aria-hidden="true"
+      >assignment_return</span
+    >
+    <div class="min-w-0 flex-1">
+      <h1 class="m-0 truncate font-sans text-base! font-bold text-[var(--color-text-main)]">
+        {{ page()?.title || 'Follow-ups' }}
+      </h1>
+      <p class="m-0 font-sans text-xs text-[var(--color-text-muted)]" data-testid="summary">
+        {{ summary() }} · Only you see yours, from the messages and mail this notebook shares
+        @if (service.list(); as list) {
+          @if (!list.status.modelAvailable) {
+            · Only explicit "I'll…" promises (no model on this server)
+          }
+          @if (!list.status.lastRunAt) {
+            · Reading the last two weeks…
+          }
+        }
+      </p>
+    </div>
+  </header>
+
+  @if (lastAction(); as last) {
+    <div
+      class="flex items-center gap-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-6 py-2 font-sans text-xs text-[var(--color-text-main)] max-md:px-4"
+      data-testid="undo"
+    >
+      <span class="min-w-0 flex-1 truncate">{{ last.label }}</span>
+      <button type="button" class="follow-up-button" (click)="reopen(last.followUp)">Undo</button>
+    </div>
+  }
+
+  @if (actionError(); as error) {
+    <p class="m-0 px-6 pt-3 font-sans text-xs text-[var(--color-error)] max-md:px-4" role="alert">
+      {{ error }}
+    </p>
+  }
+
+  <div class="min-h-0 flex-1 overflow-y-auto px-6 py-4 max-md:px-4">
+    @if (service.error(); as error) {
+      <p class="m-0 font-sans text-sm text-[var(--color-error)]">{{ error }}</p>
+    } @else if (service.list() && !youOwe().length && !owedToYou().length && !snoozed().length) {
+      <div class="flex flex-col items-center gap-2 py-16 text-center" data-testid="empty">
+        <span
+          class="material-symbols-rounded text-4xl text-[var(--color-text-muted)]"
+          aria-hidden="true"
+          >task_alt</span
+        >
+        <p class="m-0 font-sans text-sm text-[var(--color-text-main)]">Nothing owed either way.</p>
+        <p class="m-0 max-w-sm font-sans text-xs text-[var(--color-text-muted)]">
+          Promises you make and get ("I'll send it tomorrow") and questions left unanswered in the
+          Messages and Mail pages of this notebook show up here.
+        </p>
+      </div>
+    } @else {
+      <section class="mb-6" data-testid="you-owe">
+        <h2 class="follow-up-heading">You owe · {{ youOwe().length }}</h2>
+        @for (followUp of youOwe(); track followUp.id) {
+          <ng-container *ngTemplateOutlet="row; context: { $implicit: followUp }" />
+        } @empty {
+          <p class="follow-up-none">Nothing you owe anyone.</p>
+        }
+      </section>
+      <section class="mb-6" data-testid="owed-to-you">
+        <h2 class="follow-up-heading">Owed to you · {{ owedToYou().length }}</h2>
+        @for (followUp of owedToYou(); track followUp.id) {
+          <ng-container *ngTemplateOutlet="row; context: { $implicit: followUp }" />
+        } @empty {
+          <p class="follow-up-none">Nobody owes you anything.</p>
+        }
+      </section>
+      @if (snoozed().length) {
+        <section data-testid="snoozed">
+          <button
+            type="button"
+            class="follow-up-heading flex cursor-pointer items-center gap-1 border-none bg-transparent p-0"
+            [attr.aria-expanded]="showSnoozed()"
+            (click)="showSnoozed.set(!showSnoozed())"
+          >
+            <span class="material-symbols-rounded text-base" aria-hidden="true">{{
+              showSnoozed() ? 'expand_more' : 'chevron_right'
+            }}</span>
+            Snoozed · {{ snoozed().length }}
+          </button>
+          @if (showSnoozed()) {
+            @for (followUp of snoozed(); track followUp.id) {
+              <ng-container *ngTemplateOutlet="row; context: { $implicit: followUp }" />
+            }
+          }
+        </section>
+      }
+    }
+  </div>
+</div>
+
+<ng-template #row let-followUp>
+  <article class="follow-up-row" [attr.data-id]="followUp.id">
+    <div class="min-w-0 flex-1">
+      <p class="m-0 font-sans text-sm text-[var(--color-text-main)]">
+        <span class="follow-up-kind" [attr.data-kind]="followUp.direction">{{
+          kindLabel(followUp)
+        }}</span>
+        {{ followUp.what }}
+      </p>
+      <p class="m-0 mt-0.5 font-sans text-xs text-[var(--color-text-muted)]">
+        {{ followUp.who }} · {{ date(followUp.at) | date: 'MMM d' }}
+        @if (followUp.dueAt !== undefined) {
+          ·
+          <span [class.follow-up-overdue]="isOverdue(followUp)" data-testid="due">
+            {{ isOverdue(followUp) ? 'Overdue, was due' : 'Due' }}
+            {{ date(followUp.dueAt) | date: 'EEE MMM d' }}
+          </span>
+        }
+        @if (followUp.status === 'snoozed' && followUp.snoozedUntil) {
+          · Snoozed until {{ date(followUp.snoozedUntil) | date: 'EEE MMM d' }}
+        }
+        @if (followUp.evidence[0]?.pageId) {
+          ·
+          <button
+            type="button"
+            class="follow-up-link"
+            (click)="openEvidence(followUp)"
+            data-testid="evidence"
+          >
+            {{ followUp.evidence[0]?.source === 'mail' ? 'Open email' : 'Open message' }}
+          </button>
+        }
+      </p>
+    </div>
+    <div class="relative flex shrink-0 items-center gap-1">
+      @if (followUp.status === 'snoozed') {
+        <button
+          type="button"
+          class="follow-up-button"
+          [disabled]="busyId() === followUp.id"
+          (click)="reopen(followUp)"
+          data-action="wake"
+        >
+          Wake now
+        </button>
+      } @else {
+        <button
+          type="button"
+          class="follow-up-button"
+          [disabled]="busyId() === followUp.id"
+          (click)="done(followUp)"
+          data-action="done"
+        >
+          <span class="material-symbols-rounded text-base" aria-hidden="true">check</span>
+          Done
+        </button>
+        <button
+          type="button"
+          class="follow-up-button"
+          [disabled]="busyId() === followUp.id"
+          [attr.aria-expanded]="snoozeFor() === followUp.id"
+          (click)="toggleSnooze(followUp)"
+          data-action="snooze"
+        >
+          <span class="material-symbols-rounded text-base" aria-hidden="true">snooze</span>
+          Snooze
+        </button>
+        <button
+          type="button"
+          class="follow-up-button follow-up-icon"
+          [disabled]="busyId() === followUp.id"
+          (click)="dismiss(followUp)"
+          title="Dismiss"
+          aria-label="Dismiss"
+          data-action="dismiss"
+        >
+          <span class="material-symbols-rounded text-base" aria-hidden="true">close</span>
+        </button>
+      }
+      @if (snoozeFor() === followUp.id) {
+        <div class="follow-up-menu" role="menu" data-testid="snooze-menu">
+          <button type="button" role="menuitem" (click)="snooze(followUp, 1)">1 day</button>
+          <button type="button" role="menuitem" (click)="snooze(followUp, 7)">1 week</button>
+          <label class="flex items-center gap-1 px-2 py-1 font-sans text-xs">
+            <input
+              type="date"
+              [min]="tomorrow()"
+              [value]="customDate()"
+              (change)="customDate.set($any($event.target).value)"
+              aria-label="Snooze until"
+              class="h-7 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-1 font-sans text-xs text-[var(--color-text-main)]"
+            />
+            <button
+              type="button"
+              class="follow-up-button"
+              [disabled]="!customDate()"
+              (click)="snooze(followUp, 'custom')"
+              data-action="snooze-custom"
+            >
+              Snooze
+            </button>
+          </label>
+        </div>
+      }
+    </div>
+  </article>
+</ng-template>

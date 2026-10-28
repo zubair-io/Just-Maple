@@ -1368,6 +1368,26 @@ export async function findGraphNotebookIds(limit = 1000): Promise<string[]> {
     return [...new Set(docs.map((doc) => doc.notebookId?.toString()).filter(Boolean))] as string[];
 }
 
+/** The notebook's Follow-ups page, if it has one (there is at most one per notebook). */
+export async function findFollowUpsPage(notebookId: string): Promise<Page | null> {
+    if (!ObjectId.isValid(notebookId)) return null;
+    const doc = await getCollection().findOne({
+        type: 'followups',
+        notebookId: new ObjectId(notebookId),
+        isTrashed: { $ne: true },
+    });
+    return doc ? toPageResponse(doc) : null;
+}
+
+/** Notebooks with a Follow-ups page: the ones whose messages and mail get scanned. */
+export async function findFollowUpsNotebookIds(limit = 1000): Promise<string[]> {
+    const docs = await getCollection()
+        .find({ type: 'followups', isTrashed: { $ne: true } }, { projection: { notebookId: 1 } })
+        .limit(limit)
+        .toArray();
+    return [...new Set(docs.map((doc) => doc.notebookId?.toString()).filter(Boolean))] as string[];
+}
+
 /** Every device data page in a notebook, whoever created it. */
 export async function findDeviceDataPagesInNotebook(notebookId: string): Promise<Page[]> {
     if (!ObjectId.isValid(notebookId)) return [];

@@ -128,6 +128,10 @@ export async function createIndexes(database: Db): Promise<void> {
     await database.collection('graph_links').createIndex({ checkedAt: 1 });
     await database.collection('graph_judged').createIndex({ notebookId: 1, judgedAt: 1 });
     await database.collection('graph_usage').createIndex({ day: 1 });
+    // Follow-ups: per person, read through each notebook's pages.
+    await database.collection('follow_ups').createIndex({ userId: 1, status: 1 });
+    await database.collection('follow_up_scanned').createIndex({ scannedAt: 1 }); // Cleanup
+    await database.collection('follow_up_usage').createIndex({ day: 1 }); // Cleanup
     await database.collection('travel_estimates').createIndex({ userId: 1 });
     await database.collection('travel_estimates').createIndex({ savedAt: 1 }); // Cleanup
     await database.collection('scheduled_sends').createIndex({ sentAt: 1 }); // Cleanup
