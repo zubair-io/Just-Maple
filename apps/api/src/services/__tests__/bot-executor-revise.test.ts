@@ -39,7 +39,9 @@ vi.mock('../proactive-settings.service', () => ({ appendProactiveInstruction: vi
 vi.mock('../mac-data-tools.service', () => ({
     getMacDataToolContext: vi.fn(),
     macDataSystemPrompt: vi.fn(() => 'MAC DATA PROMPT'),
-    macDataToolDefinitions: vi.fn(() => []),
+    macDataToolDefinitions: vi.fn(() => [
+        { name: 'search_local_data', description: 'Search', input_schema: { type: 'object' } },
+    ]),
     executeMacDataTool: vi.fn(),
 }));
 vi.mock('../llm-tool-loop.service', async (importOriginal) => ({
