@@ -32,6 +32,7 @@ describe('provider models in bot settings', () => {
     templatesLoading: signal(false),
     userBots: signal([bot]),
     userBotsLoading: signal(false),
+    webSearchAvailable: signal(false),
     customBots: signal([]),
     customBotsLoading: signal(false),
     loadTemplates: vi.fn(() => of([])),
