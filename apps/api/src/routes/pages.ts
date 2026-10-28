@@ -24,6 +24,7 @@ import {
     findAboutMePage,
     findGraphPage,
     findActivityPage,
+    findFollowUpsPage,
 } from '../repositories/page.repo';
 import { otService } from '../services/ot.service';
 import { realtimeWSService } from '../services/realtime-ws.service';
@@ -37,7 +38,8 @@ import {
     ProactiveSettingsError,
 } from '../services/proactive-settings.service';
 import { ensureProfile } from '../services/about-me.service';
-import { aboutMePageId, activityPageId, graphPageId } from '@maple/shared';
+import { aboutMePageId, activityPageId, followUpsPageId, graphPageId } from '@maple/shared';
+import { runFollowUpsForNotebook } from '../services/follow-up.service';
 import { requestGraphPass, runGraphPass } from '../services/graph.service';
 import { updateLinksForPage, handlePageRename, handlePageDeletion } from '../services/link.service';
 import { indexPage, removeFromIndex } from '../repositories/search.repo';
@@ -264,6 +266,13 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 );
             }
 
+            // Adding Follow-ups starts reading what the notebook's pages share.
+            if (page.type === 'followups' && page.notebookId) {
+                void runFollowUpsForNotebook(page.notebookId).catch((error) =>
+                    console.error('[FollowUps] Could not start:', error),
+                );
+            }
+
             // Index page for search (background, don't block response)
             indexPage(page.id).catch((err) =>
                 console.error(`[Search] Failed to index page ${page.id}:`, err),
@@ -288,6 +297,7 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                         t.Literal('aboutme'),
                         t.Literal('graph'),
                         t.Literal('activity'),
+                        t.Literal('followups'),
                     ]),
                 ),
                 title: t.Optional(t.String({ maxLength: 255 })),
@@ -702,6 +712,16 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 briefTime: t.Optional(
                     t.Union([t.String({ pattern: '^([01]\\d|2[0-3]):[0-5]\\d$' }), t.Null()]),
                 ),
+                // Timing: how long news may wait, quiet hours, and "every item" right away
+                maxWaitMinutes: t.Optional(t.Number({ minimum: 5, maximum: 1440 })),
+                quietHours: t.Optional(
+                    t.Object({
+                        enabled: t.Boolean(),
+                        start: t.String({ pattern: '^([01]\\d|2[0-3]):[0-5]\\d$' }),
+                        end: t.String({ pattern: '^([01]\\d|2[0-3]):[0-5]\\d$' }),
+                    }),
+                ),
+                everyItem: t.Optional(t.Boolean()),
             }),
         },
     )
@@ -747,6 +767,7 @@ const ONE_PER_NOTEBOOK: Record<
     aboutme: { name: 'About me', id: aboutMePageId, find: findAboutMePage },
     graph: { name: 'Graph', id: graphPageId, find: findGraphPage },
     activity: { name: 'Activity', id: activityPageId, find: findActivityPage },
+    followups: { name: 'Follow-ups', id: followUpsPageId, find: findFollowUpsPage },
 };
 
 /**

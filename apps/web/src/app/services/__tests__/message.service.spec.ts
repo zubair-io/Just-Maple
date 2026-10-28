@@ -600,6 +600,46 @@ describe('MessageService', () => {
       expect(service.totalMessageUnreadCount()).toBe(0);
     });
 
+    function emitEdited(message: Message) {
+      realtimeEventsSubject.next({
+        action: 'edited',
+        data: message,
+        notebookId: message.notebookId,
+        pageId: message.pageId,
+        userId: message.userId,
+        timestamp: new Date().toISOString(),
+      } as ChatEvent);
+    }
+
+    const revisedBotPost: Message = {
+      ...mockMessage,
+      id: 'bot-post',
+      senderType: 'bot',
+      userBotId: 'bot-1',
+      proactiveMeta: { kind: 'news', urgency: 1 },
+      revisedAt: '2026-10-28T18:00:00.000Z',
+    };
+
+    it('marks the open chat read when a bot revises its post there', () => {
+      vi.mocked(mockNotificationService.activeNotebookId!).mockReturnValue('tag-1');
+
+      emitEdited(revisedBotPost);
+
+      const req = httpMock.expectOne('/api/pages/page-1/read');
+      req.flush({ lastReadAt: new Date().toISOString(), unreadNotificationCount: 0 });
+      // An edit is never a new unread message.
+      expect(service.totalMessageUnreadCount()).toBe(0);
+    });
+
+    it('leaves a revised post unread when its chat is not open, and ignores plain edits', () => {
+      emitEdited(revisedBotPost);
+      vi.mocked(mockNotificationService.activeNotebookId!).mockReturnValue('tag-1');
+      emitEdited({ ...mockMessage, editedAt: new Date().toISOString() });
+
+      httpMock.expectNone('/api/pages/page-1/read');
+      expect(service.totalMessageUnreadCount()).toBe(0);
+    });
+
     it('marks a thread reply read when its chat is open', () => {
       vi.mocked(mockNotificationService.activeNotebookId!).mockReturnValue('tag-1');
 

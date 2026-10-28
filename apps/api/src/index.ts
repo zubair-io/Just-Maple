@@ -17,6 +17,8 @@ import { botActionRoutes } from './routes/bot-actions';
 import { aboutMeRoutes } from './routes/about-me';
 import { graphRoutes } from './routes/graph';
 import { startGraphLinking } from './services/graph.service';
+import { followUpRoutes } from './routes/follow-ups';
+import { startFollowUpScanning } from './services/follow-up.service';
 import { startDeviceDataRetention } from './services/device-data.service';
 import { startProactiveScheduler } from './services/proactive-scheduler.service';
 import { legoRoutes } from './routes/lego';
@@ -76,6 +78,8 @@ async function main() {
     startDeviceDataRetention();
     // Every 5 minutes: link the data in notebooks that have a Graph page
     startGraphLinking();
+    // Every 10 minutes: find promises and replies owed, for notebooks with a Follow-ups page
+    startFollowUpScanning();
     // Every minute: daily briefs and leave-now reminders
     startProactiveScheduler();
 
@@ -107,6 +111,7 @@ async function main() {
         .use(botActionRoutes)
         .use(aboutMeRoutes)
         .use(graphRoutes)
+        .use(followUpRoutes)
         .use(legoRoutes)
         .use(collabRoutes)
         .use(memoRoutes)

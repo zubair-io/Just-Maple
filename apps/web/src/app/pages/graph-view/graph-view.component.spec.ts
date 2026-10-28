@@ -2,15 +2,37 @@ import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { of } from 'rxjs';
-import type { DataGraph, Page } from '@maple/shared';
+import type { DataGraph, DataGraphLink, DataGraphReason, Page } from '@maple/shared';
 import { GraphViewComponent } from './graph-view.component';
-import { GraphCanvas, type CanvasNode } from './graph-canvas';
+import { GraphCanvas, isGuess, lineWidth, type CanvasNode } from './graph-canvas';
 import { DataGraphService } from '../../services/data-graph.service';
 import { PageService } from '../../services/page.service';
 import { DialogService } from '../../components';
 
 const day = 24 * 60 * 60;
 const now = Math.floor(Date.now() / 1000);
+
+/** One line with its reasons; the strongest (first) one sums it up. */
+function line(
+  id: string,
+  source: string,
+  target: string,
+  reasons: Array<Omit<DataGraphReason, 'id'> & { id?: string }>,
+): DataGraphLink {
+  const full = reasons.map((reason) => ({ id: `${id}|${reason.kind}`, ...reason }));
+  const top = full[0]!;
+  return {
+    id,
+    source,
+    target,
+    reasons: full,
+    weight: full.reduce((sum, reason) => sum + reason.confidence + (reason.count ? 1 : 0), 0),
+    kind: top.kind,
+    confidence: top.confidence,
+    evidence: top.evidence,
+    madeBy: top.madeBy,
+  };
+}
 
 const graph: DataGraph = {
   nodes: [
@@ -45,33 +67,99 @@ const graph: DataGraph = {
     { id: 'topic:soccer', kind: 'topic', label: 'Soccer season' },
   ],
   links: [
+    line('nb1|a|b', 'item:u1:calendar:dentist', 'item:u1:location:visit', [
+      {
+        kind: 'created_at',
+        confidence: 1,
+        evidence: 'Created while at Bright Smiles Dental',
+        madeBy: 'rule',
+      },
+    ]),
+    line('nb1|c|d', 'item:u1:calendar:dentist', 'place:office', [
+      {
+        kind: 'at_place',
+        confidence: 0.95,
+        evidence: 'Event at Bright Smiles Dental',
+        madeBy: 'rule',
+      },
+    ]),
+    line('nb1|e|f', 'item:u1:mail:party', 'topic:soccer', [
+      { kind: 'topic', confidence: 0.9, evidence: 'Part of Soccer season', madeBy: 'model' },
+    ]),
+  ],
+  status: { backfilledAt: '2026-10-27T00:00:00Z', modelLinks: true },
+};
+
+// Alex and Jen: one line with a relationship, their messages and events together.
+const people: DataGraph = {
+  nodes: [
+    { id: 'person:alex', kind: 'person', label: 'Alex Lawrence', isOwner: true },
     {
-      id: 'nb1|a|b',
-      source: 'item:u1:calendar:dentist',
-      target: 'item:u1:location:visit',
-      kind: 'created_at',
-      confidence: 1,
-      evidence: 'Created while at Bright Smiles Dental',
-      madeBy: 'rule',
+      id: 'person:jen',
+      kind: 'person',
+      label: 'Jen Lawrence',
+      itemId: 'contacts:jen',
+      pageId: 'contacts-page',
+      birthday: '1986-02-03',
+      organization: 'Albany Med',
+      jobTitle: 'Nurse',
+      handles: ['(518) 555-0123', 'jen@example.com'],
+      relations: [{ label: 'husband', name: 'Alex' }],
     },
     {
-      id: 'nb1|c|d',
-      source: 'item:u1:calendar:dentist',
-      target: 'place:office',
-      kind: 'at_place',
-      confidence: 0.95,
-      evidence: 'Event at Bright Smiles Dental',
-      madeBy: 'rule',
+      id: 'item:u1:calendar:dinner',
+      kind: 'item',
+      source: 'calendar',
+      label: 'Dinner',
+      pageId: 'cal-page',
+      at: now - day,
     },
-    {
-      id: 'nb1|e|f',
-      source: 'item:u1:mail:party',
-      target: 'topic:soccer',
-      kind: 'topic',
-      confidence: 0.9,
-      evidence: 'Part of Soccer season',
-      madeBy: 'model',
-    },
+  ],
+  links: [
+    line('nb1|alex|jen', 'person:alex', 'person:jen', [
+      {
+        id: 'r-wife',
+        kind: 'relationship',
+        type: 'wife',
+        from: 'person:alex',
+        to: 'person:jen',
+        confidence: 0.95,
+        evidence: "Jen Lawrence is Alex Lawrence's wife",
+        madeBy: 'rule',
+      },
+      {
+        id: 'r-texts',
+        kind: 'messages_with',
+        confidence: 1,
+        count: 214,
+        firstAt: now - 20 * day,
+        lastAt: now - 3600,
+        evidence: '214 messages',
+        madeBy: 'rule',
+        examples: [
+          {
+            id: 'item:u1:imessage:t1',
+            label: 'See you soon',
+            source: 'imessage',
+            pageId: 'messages-page',
+            at: now - 3600,
+          },
+        ],
+      },
+      {
+        id: 'r-met',
+        kind: 'met_with',
+        confidence: 1,
+        count: 3,
+        firstAt: now - 9 * day,
+        lastAt: now - day,
+        evidence: '3 events together',
+        madeBy: 'rule',
+      },
+    ]),
+    line('nb1|dinner|jen', 'item:u1:calendar:dinner', 'person:jen', [
+      { kind: 'attendee', confidence: 1, evidence: 'Jen Lawrence is invited', madeBy: 'rule' },
+    ]),
   ],
   status: { backfilledAt: '2026-10-27T00:00:00Z', modelLinks: true },
 };
@@ -84,6 +172,7 @@ describe('GraphViewComponent', () => {
     loading: signal(false),
     load: vi.fn().mockResolvedValue(undefined),
     removeLink: vi.fn().mockResolvedValue(undefined),
+    removeReason: vi.fn().mockResolvedValue(undefined),
   };
   const router = { navigate: vi.fn().mockResolvedValue(true) };
   const dialog = { confirm: vi.fn().mockResolvedValue(true) };
@@ -212,23 +301,99 @@ describe('GraphViewComponent', () => {
     expect(content).toContain('Part of Soccer season · model, 90%');
   });
 
-  it('removes a link after confirming', async () => {
+  it('removes a reason after confirming', async () => {
     const fixture = render();
     fixture.componentInstance.select('item:u1:calendar:dentist');
     fixture.detectChanges();
     const remove = fixture.nativeElement.querySelector(
-      '[aria-label="Remove link to Bright Smiles Dental"]',
+      '[aria-label="Remove “Event at Bright Smiles Dental”"]',
     ) as HTMLButtonElement;
     remove.click();
     await fixture.whenStable();
     expect(dialog.confirm).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Remove this link?', confirmLabel: 'Remove' }),
+      expect.objectContaining({ title: 'Remove this reason?', confirmLabel: 'Remove' }),
     );
-    expect(service.removeLink).toHaveBeenCalledWith('nb1|a|b');
+    expect(service.removeReason).toHaveBeenCalledWith('nb1|c|d', 'nb1|c|d|at_place');
 
     dialog.confirm.mockResolvedValueOnce(false);
-    await fixture.componentInstance.removeLink(fixture.componentInstance.selectedLinks()[0]!);
-    expect(service.removeLink).toHaveBeenCalledTimes(1);
+    const entry = fixture.componentInstance.selectedLinks()[0]!;
+    await fixture.componentInstance.removeReason(entry.link, entry.link.reasons[0]!);
+    expect(service.removeReason).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens every reason on a line, with its evidence, and removes one on its own', async () => {
+    state.set(people);
+    const fixture = render();
+    // A click on a line (not a node) opens its reasons.
+    fixture.componentInstance.selectLink('nb1|alex|jen');
+    fixture.detectChanges();
+    const panel = fixture.nativeElement.querySelector('[data-testid="reasons"]') as HTMLElement;
+    expect(fixture.nativeElement.querySelector('[data-testid="details"]')).toBeNull();
+    const content = panel.textContent!.replace(/\s+/g, ' ');
+    expect(content).toContain('Linked by 3 reasons');
+    expect(content).toContain('Alex Lawrence');
+    expect(content).toContain('Jen Lawrence');
+    const reasons = [...panel.querySelectorAll('[data-testid="reason"]')].map((li) =>
+      li.textContent!.replace(/\s+/g, ' ').trim(),
+    );
+    expect(reasons).toHaveLength(3);
+    expect(reasons[0]).toContain('Wife');
+    expect(reasons[0]).toContain("Jen Lawrence is Alex Lawrence's wife");
+    expect(reasons[0]).toContain('certain');
+    expect(reasons[1]).toContain('Messages');
+    expect(reasons[1]).toContain('214 messages');
+    expect(reasons[1]).toContain('last ');
+    expect(reasons[1]).toContain('See you soon');
+    expect(reasons[2]).toContain('3 events together');
+
+    // The evidence opens its data page.
+    const example = [...panel.querySelectorAll('button')].find((b) =>
+      b.textContent!.includes('See you soon'),
+    )!;
+    example.click();
+    await fixture.whenStable();
+    expect(router.navigate).toHaveBeenCalledWith(['/', 'nb1', 'messages-page']);
+
+    (panel.querySelector('[aria-label="Remove “214 messages”"]') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    expect(service.removeReason).toHaveBeenCalledWith('nb1|alex|jen', 'r-texts');
+
+    // An end of the line opens that node.
+    const jen = [...panel.querySelectorAll('h2 button')].find((b) =>
+      b.textContent!.includes('Jen Lawrence'),
+    ) as HTMLButtonElement;
+    jen.click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.selectedId()).toBe('person:jen');
+    expect(fixture.componentInstance.selectedLinkId()).toBeNull();
+  });
+
+  it("shows a person's contact card details and opens the contact", async () => {
+    state.set(people);
+    const fixture = render();
+    fixture.componentInstance.select('person:jen');
+    fixture.detectChanges();
+    const details = fixture.nativeElement.querySelector('[data-testid="details"]') as HTMLElement;
+    const content = details.textContent!.replace(/\s+/g, ' ');
+    expect(content).toContain('Nurse, Albany Med');
+    expect(content).toMatch(/Birthday ?1986-02-03/);
+    expect(content).toContain('Phone (518) 555-0123');
+    expect(content).toContain('Email jen@example.com');
+    expect(content).toContain('husband Alex');
+    // Each line lists all its reasons, each removable.
+    expect(content).toContain('214 messages · certain');
+    expect(details.querySelectorAll('[aria-label^="Remove “"]')).toHaveLength(4);
+    const open = [...details.querySelectorAll('button')].find(
+      (b) => b.textContent!.trim() === 'Open contact',
+    )!;
+    open.click();
+    await fixture.whenStable();
+    expect(router.navigate).toHaveBeenCalledWith(['/', 'nb1', 'contacts-page']);
+    (
+      details.querySelector('[aria-label="Why linked to Alex Lawrence"]') as HTMLButtonElement
+    ).click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.selectedLinkId()).toBe('nb1|alex|jen');
   });
 
   it('explains an empty graph', () => {
@@ -240,6 +405,33 @@ describe('GraphViewComponent', () => {
 });
 
 describe('GraphCanvas', () => {
+  it('draws one line per pair, thicker with more reasons, and finds a line by position', () => {
+    expect(lineWidth(people.links[0]!)).toBeGreaterThan(lineWidth(people.links[1]!));
+    expect(lineWidth({ weight: 100 })).toBe(lineWidth({ weight: 6 }));
+    expect(isGuess(graph.links[2]!)).toBe(true);
+    expect(isGuess(people.links[0]!)).toBe(false);
+
+    const element = document.createElement('canvas');
+    const canvas = new GraphCanvas(element, { hover: vi.fn(), click: vi.fn(), clickLink: vi.fn() });
+    canvas.resize(400, 300);
+    canvas.setData(people.nodes, people.links);
+    const internal = canvas as unknown as {
+      nodes: CanvasNode[];
+      links: unknown[];
+      simulation: { stop(): void; tick(n: number): void };
+      transform: { apply(point: [number, number]): [number, number] };
+    };
+    internal.simulation.stop();
+    internal.simulation.tick(200);
+    // Three reasons, one line.
+    expect(internal.links).toHaveLength(2);
+    const alex = internal.nodes.find((n) => n.id === 'person:alex')!;
+    const jen = internal.nodes.find((n) => n.id === 'person:jen')!;
+    const [x, y] = internal.transform.apply([(alex.x! + jen.x!) / 2, (alex.y! + jen.y!) / 2]);
+    expect(canvas.linkAt(x, y)).toBe('nb1|alex|jen');
+    canvas.destroy();
+  });
+
   it('lays out nodes and reports the one under the pointer on click and hover', () => {
     const element = document.createElement('canvas');
     const hover = vi.fn();
@@ -274,15 +466,13 @@ describe('GraphCanvas', () => {
       source: 'mail' as const,
       label: `Item ${i}`,
     }));
-    const links = many.slice(1).map((node, i) => ({
-      id: `l${i}`,
-      source: many[i % 50]!.id,
-      target: node.id,
-      kind: 'related' as const,
-      confidence: 0.8,
-      evidence: 'Related',
-      madeBy: 'model' as const,
-    }));
+    const links = many
+      .slice(1)
+      .map((node, i) =>
+        line(`l${i}`, many[i % 50]!.id, node.id, [
+          { kind: 'related', confidence: 0.8, evidence: 'Related', madeBy: 'model' },
+        ]),
+      );
     const start = performance.now();
     canvas.setData(many, links);
     const internal = canvas as unknown as {

@@ -10,7 +10,7 @@ import {
   untracked,
 } from '@angular/core';
 import { DatePipe } from '@angular/common';
-import type { Page } from '@maple/shared';
+import { PROACTIVE_TIMING_DEFAULTS, type Page } from '@maple/shared';
 import { NotebookService } from '../../../services/notebook.service';
 import {
   ProactiveBotService,
@@ -30,6 +30,15 @@ const SOURCE_NAMES: Record<string, string> = {
   location: 'Places',
   health: 'Health',
 };
+
+/** How long news that can wait may be held, in minutes. */
+const WAIT_CHOICES = [30, 60, 120, 240, 480];
+
+function waitLabel(minutes: number): string {
+  if (minutes < 60) return `${minutes} minutes`;
+  const hours = minutes / 60;
+  return hours === 1 ? '1 hour' : `${Number.isInteger(hours) ? hours : hours.toFixed(1)} hours`;
+}
 
 @Component({
   selector: 'app-proactive-bot-panel',
@@ -54,6 +63,22 @@ export class ProactiveBotPanelComponent {
   /** A daily brief at this local time; off when empty. */
   readonly briefOn = signal(false);
   readonly briefTime = signal('07:30');
+  /** Timing: tell every batch right away instead of holding what can wait. */
+  readonly everyItem = signal(false);
+  /** The longest news that can wait is held before a summary goes out. */
+  readonly maxWaitMinutes = signal(PROACTIVE_TIMING_DEFAULTS.maxWaitMinutes);
+  /** Quiet hours (owner's time zone): only urgent news goes out. */
+  readonly quietOn = signal(PROACTIVE_TIMING_DEFAULTS.quietHours.enabled);
+  readonly quietStart = signal(PROACTIVE_TIMING_DEFAULTS.quietHours.start);
+  readonly quietEnd = signal(PROACTIVE_TIMING_DEFAULTS.quietHours.end);
+  /** The wait choices, plus the saved one if it isn't among them. */
+  readonly waitOptions = computed(() => {
+    const current = this.maxWaitMinutes();
+    const minutes = WAIT_CHOICES.includes(current)
+      ? WAIT_CHOICES
+      : [...WAIT_CHOICES, current].sort((a, b) => a - b);
+    return minutes.map((value) => ({ value, label: waitLabel(value) }));
+  });
   /** Other people can see this notebook, so they'll see what the bot posts. */
   readonly sharedWithOthers = computed(() => {
     const notebookId = this.page().notebookId;
@@ -83,6 +108,13 @@ export class ProactiveBotPanelComponent {
         this.instructions.set(same ? proactive.instructions : '');
         this.briefOn.set(same && !!proactive?.briefTime);
         this.briefTime.set((same && proactive?.briefTime) || '07:30');
+        const saved = same ? proactive : undefined;
+        const quiet = saved?.quietHours ?? PROACTIVE_TIMING_DEFAULTS.quietHours;
+        this.everyItem.set(!!saved?.everyItem);
+        this.maxWaitMinutes.set(saved?.maxWaitMinutes ?? PROACTIVE_TIMING_DEFAULTS.maxWaitMinutes);
+        this.quietOn.set(quiet.enabled);
+        this.quietStart.set(quiet.start);
+        this.quietEnd.set(quiet.end);
         this.error.set(null);
       });
     });
@@ -108,6 +140,13 @@ export class ProactiveBotPanelComponent {
         instructions: this.instructions().trim(),
         enabled: true,
         briefTime: this.briefOn() && this.briefTime() ? this.briefTime() : null,
+        everyItem: this.everyItem(),
+        maxWaitMinutes: this.maxWaitMinutes(),
+        quietHours: {
+          enabled: this.quietOn(),
+          start: this.quietStart() || PROACTIVE_TIMING_DEFAULTS.quietHours.start,
+          end: this.quietEnd() || PROACTIVE_TIMING_DEFAULTS.quietHours.end,
+        },
       });
       this.closed.emit();
     } catch (err: unknown) {

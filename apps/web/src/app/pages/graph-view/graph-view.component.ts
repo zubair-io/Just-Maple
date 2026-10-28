@@ -15,7 +15,7 @@ import { DatePipe, DecimalPipe } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { map } from 'rxjs';
-import type { DataGraphLink, DataGraphNode } from '@maple/shared';
+import type { DataGraphLink, DataGraphNode, DataGraphReason } from '@maple/shared';
 import { DataGraphService } from '../../services/data-graph.service';
 import { PageService } from '../../services/page.service';
 import { DialogService } from '../../components';
@@ -32,14 +32,31 @@ export const GRAPH_KINDS: GraphKind[] = [
   { key: 'imessage', label: 'Messages' },
   { key: 'calendar', label: 'Events' },
   { key: 'location', label: 'Visits' },
-  { key: 'contacts', label: 'Contacts' },
   { key: 'health', label: 'Health' },
   { key: 'person', label: 'People' },
   { key: 'place', label: 'Places' },
   { key: 'topic', label: 'Topics' },
+  { key: 'event', label: 'Happenings' },
 ];
 
-/** A link from the selected node, with the node at its other end. */
+/** What each kind of reason is called in the reasons panel. */
+const REASON_KINDS: Record<DataGraphReason['kind'], string> = {
+  relationship: 'Relationship',
+  messages_with: 'Messages',
+  emails_with: 'Email',
+  met_with: 'Events together',
+  created_at: 'Booked there',
+  attended: 'Was there',
+  at_place: 'Place',
+  travel: 'Drive',
+  attendee: 'Was there',
+  related: 'Same thing',
+  topic: 'Topic',
+  part_of: 'About it',
+  person: 'Person',
+};
+
+/** A line from the selected node, with the node at its other end. */
 export interface NodeLink {
   link: DataGraphLink;
   other: DataGraphNode;
@@ -48,10 +65,12 @@ export interface NodeLink {
 const DAY = 24 * 60 * 60;
 
 /**
- * The Graph page: everything this notebook's data pages share, linked. Items, people,
- * places and topics are nodes, colored by kind; links come from rules (same place and
- * time, one person) and the model (same plan, same topic). Pan and zoom, hover to light
- * up a node's neighbors, click for details, open the item or remove a link.
+ * The Graph page: everything this notebook's data pages share, connected. Items, people,
+ * places, topics and happenings are nodes, colored by kind. Two nodes are joined by one
+ * line, thicker with more or stronger reasons (she's your wife, 214 messages, three
+ * events together). Pan and zoom, hover to light up a node's neighbors, click a node for
+ * its details or a line for every reason with its evidence, open an item or a contact,
+ * and remove a reason on its own.
  */
 @Component({
   selector: 'app-graph-view',
@@ -87,6 +106,8 @@ export class GraphViewComponent {
   readonly toDate = signal('');
   readonly hoveredId = signal<string | null>(null);
   readonly selectedId = signal<string | null>(null);
+  /** The line whose reasons are open (a node and a line aren't open at once). */
+  readonly selectedLinkId = signal<string | null>(null);
   readonly busy = signal(false);
   readonly actionError = signal<string | null>(null);
 
@@ -119,11 +140,20 @@ export class GraphViewComponent {
         .map((node) => [node.id, node]),
     );
     const shown = (id: string) => items.has(id) || hubs.has(id);
+    // Lines between two hubs (Jen and you) stay while some reason falls in the date range;
+    // lasting ones (relationships) have no time and always stay.
+    const inRange = (link: DataGraphLink) =>
+      link.reasons.some(
+        (reason) =>
+          reason.lastAt === undefined ||
+          ((from === null || reason.lastAt >= from) &&
+            (to === null || (reason.firstAt ?? reason.lastAt) < to)),
+      );
     const links = graph.links.filter(
       (link) =>
         shown(link.source) &&
         shown(link.target) &&
-        (items.has(link.source) || items.has(link.target)),
+        (items.has(link.source) || items.has(link.target) || inRange(link)),
     );
     const linked = new Set(links.flatMap((link) => [link.source, link.target]));
     const nodes = graph.nodes.filter(
@@ -139,7 +169,7 @@ export class GraphViewComponent {
     const id = this.selectedId();
     return id ? (this.nodesById().get(id) ?? null) : null;
   });
-  /** The selected node's links, strongest first. */
+  /** The selected node's lines, strongest first. */
   readonly selectedLinks = computed<NodeLink[]>(() => {
     const id = this.selectedId();
     if (!id) return [];
@@ -148,7 +178,17 @@ export class GraphViewComponent {
       .links.filter((link) => link.source === id || link.target === id)
       .map((link) => ({ link, other: byId.get(link.source === id ? link.target : link.source)! }))
       .filter((entry) => !!entry.other)
-      .sort((a, b) => b.link.confidence - a.link.confidence);
+      .sort((a, b) => b.link.weight - a.link.weight);
+  });
+  /** The open line, with its two ends. */
+  readonly selectedLink = computed(() => {
+    const id = this.selectedLinkId();
+    if (!id) return null;
+    const link = this.view().links.find((l) => l.id === id);
+    const byId = this.nodesById();
+    const source = link && byId.get(link.source);
+    const target = link && byId.get(link.target);
+    return link && source && target ? { link, source, target } : null;
   });
   /** The hovered node and its neighbors (the canvas lights them up). */
   readonly neighbors = computed(() => {
@@ -182,7 +222,8 @@ export class GraphViewComponent {
     effect(() => {
       const hovered = this.hoveredId();
       const selected = this.selectedId();
-      untracked(() => this.canvas?.setFocus(hovered, selected));
+      const link = this.selectedLinkId();
+      untracked(() => this.canvas?.setFocus(hovered, selected, link));
     });
 
     const destroyRef = inject(DestroyRef);
@@ -192,7 +233,8 @@ export class GraphViewComponent {
       if (!element || !stage) return;
       this.canvas = new GraphCanvas(element, {
         hover: (id) => this.hoveredId.set(id),
-        click: (id) => this.selectedId.set(id),
+        click: (id) => this.select(id),
+        clickLink: (id) => this.selectLink(id),
       });
       const size = () => this.canvas?.resize(stage.clientWidth, stage.clientHeight);
       size();
@@ -241,8 +283,35 @@ export class GraphViewComponent {
   }
 
   select(id: string | null, center = false): void {
+    this.selectedLinkId.set(null);
     this.selectedId.set(id);
     if (id && center) this.canvas?.centerOn(id);
+  }
+
+  /** Opens a line's reasons. */
+  selectLink(id: string | null): void {
+    this.selectedId.set(null);
+    this.selectedLinkId.set(id);
+  }
+
+  /** "Nurse, Albany Med". */
+  workLine(node: DataGraphNode): string {
+    return [node.jobTitle, node.organization].filter((part) => !!part).join(', ');
+  }
+
+  reasonKind(reason: DataGraphReason): string {
+    if (reason.kind === 'relationship' && reason.type) {
+      const type = reason.type.replace(/_/g, ' ');
+      return type.charAt(0).toUpperCase() + type.slice(1);
+    }
+    return REASON_KINDS[reason.kind] ?? reason.kind;
+  }
+
+  /** How sure: certain (rules), "you said so" (About me), or the model's confidence. */
+  reasonSource(reason: DataGraphReason): string {
+    if (reason.madeBy === 'rule') return 'certain';
+    if (reason.madeBy === 'user') return 'from About me';
+    return `model, ${Math.round(reason.confidence * 100)}%`;
   }
 
   zoom(factor: number): void {
@@ -253,26 +322,28 @@ export class GraphViewComponent {
     this.canvas?.fit();
   }
 
-  /** Opens the data page that shows the item. */
-  async open(node: DataGraphNode): Promise<void> {
+  /** Opens the data page that shows the item (or a person's contact card). */
+  async open(node: Pick<DataGraphNode, 'pageId'>): Promise<void> {
     const notebookId = this.notebookId();
     if (!notebookId || !node.pageId) return;
     await this.router.navigate(['/', notebookId, node.pageId]);
   }
 
-  async removeLink(entry: NodeLink): Promise<void> {
+  /** Removes one reason a pair is connected; the line stays while it has others. */
+  async removeReason(link: DataGraphLink, reason: DataGraphReason): Promise<void> {
     const confirmed = await this.dialog.confirm({
-      title: 'Remove this link?',
-      message: `“${entry.link.evidence}” won’t be linked again in this notebook.`,
+      title: 'Remove this reason?',
+      message: `“${reason.evidence}” won’t be linked again in this notebook.`,
       confirmLabel: 'Remove',
     });
     if (!confirmed) return;
     this.busy.set(true);
     this.actionError.set(null);
     try {
-      await this.service.removeLink(entry.link.id);
+      await this.service.removeReason(link.id, reason.id);
+      if (!this.view().links.some((l) => l.id === link.id)) this.selectedLinkId.set(null);
     } catch {
-      this.actionError.set('Could not remove the link. Try again.');
+      this.actionError.set('Could not remove it. Try again.');
     } finally {
       this.busy.set(false);
     }

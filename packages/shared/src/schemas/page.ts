@@ -40,6 +40,7 @@ export const PageTypeSchema = Type.Union([
     Type.Literal('aboutme'), // What bots know about each member, per notebook (one per notebook)
     Type.Literal('graph'), // Links between the notebook's data page items (one per notebook)
     Type.Literal('activity'), // What bots did and proposed in the notebook (one per notebook)
+    Type.Literal('followups'), // Promises and replies owed, from messages and mail (one per notebook)
 ]);
 
 export type PageType = Static<typeof PageTypeSchema>;

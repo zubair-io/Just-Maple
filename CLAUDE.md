@@ -714,6 +714,37 @@ Key files: `packages/shared/src/schemas/bot-action.ts`, `bot-action.service.ts` 
 
 ---
 
+## Proactive Timing ("now or wait")
+
+A proactive bot doesn't post about every batch of device news. It decides whether the user needs to hear it now.
+
+1. Each batch (about 60 seconds of uploads) joins the chat's **pending pile** (`proactive_piles`, one per chat, in the database). The whole pile is then re-scored: one cheap triage call (`proactive-triage.service.ts`, server key, `PROACTIVE_TRIAGE_MODEL`) over short summaries of each item, plus signals found in code (calendar clashes, events changed that start within a day, threads waiting on the user, big piles).
+2. **Now** means time-sensitive, a direct question or request, a schedule change or conflict, or something from a close person that needs a reply. A calendar clash is always now. Then the bot writes one message about the whole pile, and the covered items leave it.
+3. Otherwise the pile waits: until a later arrival tips it, its oldest item has waited `maxWaitMinutes` (default 2 hours; the scheduler's `flushWaitingNews` sends a summary), or the morning brief takes it in. **Quiet hours** (default 22:00–07:00, owner's zone) and the hour before the brief hold everything except "now".
+4. **Revising:** if the bot's latest post in the chat is a news post the **owner** hasn't read (read marker older than its last version), nothing was posted after it, nobody replied in its thread, and it's under 12 hours old, the new message replaces it (`reviseBotMessage`, broadcast as `edited`, shown as "Updated 3:40 PM"). Earlier versions stay in `revisions`. No new notification, unless urgency rose: then one push, "Updated: <what changed>". Briefs, leave reminders and About me questions are never revised.
+5. Triage calls are capped per chat per day (`PROACTIVE_TRIAGE_BUDGET`, default 60); past it, or without a key, only the code signals decide (so only clashes go now). **Every item** (`everyItem`) turns all of this off for a chat.
+
+Settings live on `page.proactive` (`maxWaitMinutes`, `quietHours`, `everyItem`), edited in the proactive bot panel. Key files: `proactive-bot.service.ts` ("Now or wait"), `proactive-triage.service.ts`, `proactive-pile.repo.ts`, `proactive-scheduler.service.ts`, `bot-executor.service.ts` (`runProactive` `revise`).
+
+---
+
+## Bot Web Search
+
+Bots can search the web (`web_search`) and read pages (`fetch_page`). Both are our own tools, offered the same way to every provider through `llm-tool-loop.service.ts`; there are no provider-native search tools.
+
+1. The server needs `BRAVE_SEARCH_API_KEY`. Without it the tools are never offered and the settings switch is hidden (`GET /api/user-bots` returns `webSearchAvailable`).
+2. Each bot has a switch, `config.webSearch`, **off by default**. Proactive runs also need `config.webSearchProactive`, and even then they only get `web_search`, never `fetch_page`.
+3. Searches per bot owner per UTC day are capped by `WEB_SEARCH_DAILY_LIMIT` (default 50), counted in `web_search_usage` (one document per owner per day, `_id` `owner:day`). Each LLM action may run up to 5 searches and 5 page reads; limits and the Sources list start fresh for every action.
+4. `fetch_page` only opens a URL exactly as it appeared in that action's search results or in the user's own message (not note content, not fetched text), so injected text can't make the bot send private data out in a URL. URLs with personal details in them are refused too.
+5. Every hop (first URL and each redirect) must be http(s) and resolve only to public addresses. The request then connects to the address that was checked, with the original Host header and TLS name (`sendPinned`), so a DNS answer that changes in between is never used, and proxy env vars are ignored. Also: a timeout, a 1 MB read cap, text-only content types, scripts stripped.
+6. Search results and page text reach the model NFKC-normalized, with invisible characters and any form of the wrapper name removed, wrapped in `<untrusted_web_content id="…">` with a random id per call. The system prompt says text inside is never an instruction.
+7. The prompt forbids personal details in queries. Queries with email addresses, account-like numbers, phone numbers or street addresses are refused.
+8. Replies link their sources; if a reply used the web but has no links, a short **Sources** list is appended.
+
+Key files: `apps/api/src/services/web-search.service.ts` (provider interface, Brave, tools, page fetcher), `repositories/web-search-usage.repo.ts`, `bot-executor.service.ts` (tool assembly), web `bots.component.*`.
+
+---
+
 ## Quick Reference
 
 | Do                             | Don't                               |

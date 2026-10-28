@@ -634,6 +634,37 @@
             <h3 id="botActivityHeading">Activity</h3>
             <app-action-log [botId]="bot._id" />
           </section>
+          @if (webSearchAvailable() && supportsWebSearch(bot.templateId)) {
+            <div class="form-field">
+              <label class="toggle-label">
+                <input
+                  type="checkbox"
+                  [ngModel]="editWebSearch()"
+                  (ngModelChange)="editWebSearch.set($event)"
+                />
+                <span>Search the web</span>
+              </label>
+              <p class="field-hint">
+                Lets this bot search the web and read pages, and link its sources. Searches go to an
+                outside search service, without your personal details.
+              </p>
+            </div>
+            @if (editWebSearch()) {
+              <div class="form-field">
+                <label class="toggle-label">
+                  <input
+                    type="checkbox"
+                    [ngModel]="editWebSearchProactive()"
+                    (ngModelChange)="editWebSearchProactive.set($event)"
+                  />
+                  <span>Also when posting on its own</span>
+                </label>
+                <p class="field-hint">
+                  Proactive updates may search the web too. Off means only replies to you search.
+                </p>
+              </div>
+            }
+          }
           @if (editError()) {
             <div class="error-message">{{ editError() }}</div>
           }

@@ -51,7 +51,10 @@ import { ProfileAvatarComponent } from '../../atoms';
             @if (message().senderType === 'bot' && message().botUI; as ui) {
               <app-bot-ui [response]="ui" (followUp)="followUp.emit($event)" />
             }
-            @if (message().editedAt) {
+            @if (message().revisedAt; as revisedAt) {
+              <!-- A proactive bot rewrote its unread post with newer news -->
+              <span class="edited">Updated {{ revisedAt | date: 'shortTime' }}</span>
+            } @else if (message().editedAt) {
               <span class="edited">(edited)</span>
             }
           </div>

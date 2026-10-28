@@ -12,9 +12,16 @@ import {
 import { purgeOldTravelEstimates } from '../repositories/travel-estimate.repo';
 import { purgeOldOverlapFlags } from '../repositories/calendar-overlap.repo';
 import { findNotebookByIdUnsafe } from '../repositories/notebook.repo';
-import { askAboutMeQuestion, runDailyBrief, sendLeaveReminder } from './proactive-bot.service';
+import {
+    askAboutMeQuestion,
+    flushPendingNews,
+    runDailyBrief,
+    sendLeaveReminder,
+} from './proactive-bot.service';
 import { formatInZone } from '../utils/time-zone';
 import { currentPlace } from './about-me.service';
+import { getPiles, purgeOldTriageBudgets } from '../repositories/proactive-pile.repo';
+import { holdNews, maxWaitMs } from './proactive-triage.service';
 
 /**
  * Time-based proactive messages, checked every minute:
@@ -30,6 +37,9 @@ import { currentPlace } from './about-me.service';
  *    proactive bot may ask one question to fill a gap in their About me, in a notebook
  *    with an About me page that nobody else can see. The bot skips it (NO_UPDATE) when
  *    it asked recently or has nothing worth asking.
+ * 4. **Max-wait summaries.** News a bot held back (see "Now or wait" in
+ *    proactive-bot.service) goes out once it has waited the chat's maximum, outside quiet
+ *    hours, unless the morning brief is about to take it in.
  *
  * Each send is claimed in the database first, so several API instances never send it twice.
  * A send that fails (the bot couldn't run, or the model errored) is retried a few times.
@@ -65,6 +75,7 @@ async function purgeOldRecords(): Promise<void> {
         await purgeOldScheduledSends();
         await purgeOldTravelEstimates();
         await purgeOldOverlapFlags();
+        await purgeOldTriageBudgets();
     } catch (error) {
         console.error('[Scheduler] Cleanup failed:', error);
     }
@@ -87,9 +98,48 @@ export async function tick(now = new Date()): Promise<void> {
         await sendDueBriefs(pages, now);
         await sendLeaveReminders(pages, now);
         await sendAboutMeQuestions(pages, now);
+        await flushWaitingNews(pages, now);
     } catch (error) {
         console.error('[Scheduler] Tick failed:', error);
     }
+}
+
+// MARK: - Max-wait flush
+
+/**
+ * News a proactive bot held back (its pending pile) goes out as one summary once the
+ * oldest item has waited the chat's maximum (two hours unless set). Not in quiet hours,
+ * and not when the daily brief is coming up soon: the brief takes the pile in.
+ */
+/**
+ * The claim key for a pile's summary. Each send gets a few quick retries (see
+ * `claimScheduledSend`); if those run out, a new key opens after a growing pause (1, 3,
+ * 7, 15... hours after the summary was due), so a pile is never stuck for good.
+ */
+export function flushKey(pageId: string, oldestAt: Date, now: Date, maxWait: number): string {
+    const hoursLate = Math.max(0, now.getTime() - oldestAt.getTime() - maxWait) / 3_600_000;
+    const round = Math.floor(Math.log2(1 + hoursLate));
+    return `flush:${pageId}:${oldestAt.toISOString()}:${round}`;
+}
+
+export async function flushWaitingNews(pages: Page[], now: Date): Promise<number> {
+    // Chats switched to "every item" may still have a pile from before: it drains too.
+    const waiting = pages.filter((page) => page.proactive?.enabled);
+    const piles = await getPiles(waiting.map((page) => page.id));
+    let sent = 0;
+    for (const page of waiting) {
+        const pile = piles.get(page.id);
+        const settings = page.proactive!;
+        if (!pile || now.getTime() - pile.oldestAt.getTime() < maxWaitMs(settings)) continue;
+        const owner = settings.ownerUserId;
+        const timeZone = (await collectorTimeZone(owner)) ?? 'UTC';
+        if (holdNews(settings, now, timeZone)) continue;
+        const key = flushKey(page.id, pile.oldestAt, now, maxWaitMs(settings));
+        if (!(await claimScheduledSend(key, now))) continue;
+        deliver(key, now, () => flushPendingNews(page, owner), `news summary for page ${page.id}`);
+        sent++;
+    }
+    return sent;
 }
 
 // MARK: - Daily briefs
