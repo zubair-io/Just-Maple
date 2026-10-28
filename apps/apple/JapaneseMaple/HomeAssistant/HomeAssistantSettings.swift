@@ -149,20 +149,32 @@ nonisolated struct HomeAssistantSettingsStore: @unchecked Sendable {
     }
 }
 
-/// Generic passwords in the login Keychain, for this Mac only.
+/// Generic passwords in the data protection Keychain (the iOS-style one: per app, never the
+/// shared login keychain other apps can be granted), for this Mac only.
 nonisolated struct KeychainHomeCredentials: HomeCredentialStore {
     static let service = "app.justmaple.home-assistant"
 
-    private func query(_ account: String) -> [String: Any] {
-        [
+    func query(_ account: String, legacy: Bool = false) -> [String: Any] {
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: Self.service,
             kSecAttrAccount as String: account,
         ]
+        if !legacy { query[kSecUseDataProtectionKeychain as String] = true }
+        return query
     }
 
     func token(for account: String) throws -> String? {
-        var query = query(account)
+        if let token = try read(query(account)) { return token }
+        // Saved by an earlier build in the login keychain: move it over.
+        guard let token = try read(query(account, legacy: true)) else { return nil }
+        try save(token, for: account)
+        SecItemDelete(query(account, legacy: true) as CFDictionary)
+        return token
+    }
+
+    private func read(_ base: [String: Any]) throws -> String? {
+        var query = base
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         var value: CFTypeRef?
@@ -187,6 +199,7 @@ nonisolated struct KeychainHomeCredentials: HomeCredentialStore {
     }
 
     func delete(account: String) throws {
+        SecItemDelete(query(account, legacy: true) as CFDictionary)
         let status = SecItemDelete(query(account) as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw HomeAssistantError.keychain

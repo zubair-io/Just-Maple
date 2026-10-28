@@ -13,12 +13,17 @@
 //  3. `subscribe_entities` with `entity_ids` set to exactly the exposed entities. Never a
 //     subscription to everything filtered afterwards; with nothing exposed, no
 //     subscription at all (an empty list would mean every entity).
-//  4. Re-read the exposed list on every connect and every 5 minutes, and before every
-//     action. When it changes: resubscribe, drop pending updates of entities no longer
-//     exposed, and tell the sink so the server hides them at once.
+//  4. Re-read the exposed list on every connect, every 5 minutes, whenever the entity
+//     registry changes (`entity_registry_updated`: un-exposing writes there), and before
+//     every action. When it changes: resubscribe, drop pending updates of entities no
+//     longer exposed, and tell the sink so the server hides them at once. Each read is
+//     numbered when sent; an older read finishing late never overwrites a newer one.
 //  5. Updates go through HomeChangeCoalescer, then to the sink as items.
 //  6. A lost connection reconnects after 1, 2, 4… seconds, at most 60. Everything the
 //     connection started (receiving, pings, refreshes, request timeouts) ends with it.
+//     Each connection has a generation: work a stopped connection finishes late writes
+//     nothing (exposure, sink, uploads, subscription).
+//  7. Messages go out in the order they're made, through one queue per connection.
 //
 
 #if os(macOS)
@@ -71,11 +76,21 @@ actor HomeAssistantConnector: HomeActionPerforming {
 
     // One connection's state; reset when it ends.
     private var socket: HomeSocket?
+    private var outbox: AsyncStream<(id: Int, text: String)>.Continuation?
     private var nextId = 0
     private var pending: [Int: CheckedContinuation<[String: Any], Error>] = [:]
     private var timeouts: [Int: Task<Void, Never>] = [:]
     private var subscriptionId: Int?
+    private var registrySubscriptionId: Int?
+    private var registryRefresh: Task<Void, Never>?
     private var connected = false
+    /// Bumped for every connection and by `stop()`; work from an older one writes nothing.
+    private(set) var generation = 0
+    /// Exposure reads, numbered when sent; only a newer read than the last applied counts.
+    private var exposureReads = 0
+    private var appliedExposureRead = 0
+    /// Sink calls about exposure, in order.
+    private var exposureSink: Task<Void, Never>?
 
     // Kept across reconnects.
     private(set) var exposed: Set<String> = []
@@ -117,6 +132,7 @@ actor HomeAssistantConnector: HomeActionPerforming {
     }
 
     func stop() {
+        generation += 1
         runTask?.cancel()
         runTask = nil
         flushTask?.cancel()
@@ -162,14 +178,20 @@ actor HomeAssistantConnector: HomeActionPerforming {
     private func connection() async throws {
         guard let settings, let token else { throw HomeAssistantError.notConfigured }
         setStatus(.connecting)
+        generation += 1
+        let generation = generation
         let socket = factory.open(settings.webSocketURL)
         self.socket = socket
         nextId = 0
+        let (messages, outbox) = AsyncStream<(id: Int, text: String)>.makeStream()
+        self.outbox = outbox
         do {
             try await authenticate(socket, token: token)
+            guard isCurrent(generation) else { throw CancellationError() }
             try await withThrowingTaskGroup(of: Void.self) { group in
                 group.addTask { try await self.receiveLoop(socket) }
-                group.addTask { try await self.setUp() }
+                group.addTask { try await Self.sendLoop(messages, on: socket, failing: self) }
+                group.addTask { try await self.setUp(generation) }
                 group.addTask { try await self.keepAlive() }
                 do {
                     _ = try await group.next()
@@ -200,10 +222,14 @@ actor HomeAssistantConnector: HomeActionPerforming {
         }
     }
 
-    private func setUp() async throws {
-        let list = try await readExposure()
-        await readRegistries(for: list)
-        try await applyExposure(list, force: true)
+    private func setUp(_ generation: Int) async throws {
+        let read = try await readExposure()
+        let list = try await readRegistries(for: read.list, generation)
+        guard isCurrent(generation) else { throw CancellationError() }
+        try await applyExposure(list, read: read.number, generation, force: true)
+        guard isCurrent(generation) else { throw CancellationError() }
+        await subscribeToRegistry(generation)
+        guard isCurrent(generation) else { throw CancellationError() }
         connected = true
         connectedOnce = true
         setStatus(.connected(exposed: exposed.count))
@@ -211,6 +237,42 @@ actor HomeAssistantConnector: HomeActionPerforming {
             try await timing.interval(Self.exposureRefresh)
             try await refreshExposure()
         }
+    }
+
+    /// Re-reads exposure whenever the entity registry changes: un-exposing writes there.
+    /// Without the event (older Home Assistant), the 5-minute refresh still catches it.
+    private func subscribeToRegistry(_ generation: Int) async {
+        let id = takeId()
+        registrySubscriptionId = id
+        do {
+            _ = try await request(["type": "subscribe_events", "event_type": "entity_registry_updated"], id: id)
+        } catch {
+            if isCurrent(generation), registrySubscriptionId == id { registrySubscriptionId = nil }
+        }
+    }
+
+    /// One refresh at a time for registry events; a burst of them reads once more after.
+    private var registryChangedAgain = false
+
+    private func registryChanged() {
+        guard registryRefresh == nil else {
+            registryChangedAgain = true
+            return
+        }
+        let generation = generation
+        // Runs on this actor (a Task made here inherits it).
+        registryRefresh = Task {
+            repeat {
+                registryChangedAgain = false
+                _ = try? await refreshExposure(rereadRegistries: true)
+            } while registryChangedAgain && isCurrent(generation)
+            if self.generation == generation { registryRefresh = nil }
+        }
+    }
+
+    /// Still the connection that `generation` started, and not stopped.
+    func isCurrent(_ generation: Int) -> Bool {
+        generation == self.generation && socket != nil
     }
 
     private func keepAlive() async throws {
@@ -227,6 +289,22 @@ actor HomeAssistantConnector: HomeActionPerforming {
         }
     }
 
+    /// Sends the connection's messages one after another, in the order they were made.
+    private static func sendLoop(
+        _ messages: AsyncStream<(id: Int, text: String)>, on socket: HomeSocket,
+        failing connector: HomeAssistantConnector
+    ) async throws {
+        for await message in messages {
+            try Task.checkCancellation()
+            do {
+                try await socket.send(message.text)
+            } catch {
+                await connector.failRequest(message.id, error)
+                throw error
+            }
+        }
+    }
+
     /// Fails every waiting request, cancels their timeouts and closes the socket. Only for
     /// the current connection: a stopped one finishing late leaves its successor alone.
     private func endConnection(_ error: Error, of ended: HomeSocket?) {
@@ -236,6 +314,12 @@ actor HomeAssistantConnector: HomeActionPerforming {
         }
         connected = false
         subscriptionId = nil
+        registrySubscriptionId = nil
+        registryRefresh?.cancel()
+        registryRefresh = nil
+        registryChangedAgain = false
+        outbox?.finish()
+        outbox = nil
         socket?.close()
         socket = nil
         for task in timeouts.values { task.cancel() }
@@ -247,26 +331,41 @@ actor HomeAssistantConnector: HomeActionPerforming {
 
     // MARK: - Exposure
 
-    /// Reads the exposed list now and applies any change.
-    func refreshExposure() async throws {
-        let list = try await readExposure()
-        if list != exposed { await readRegistries(for: list) }
-        try await applyExposure(list, force: false)
+    /// Reads the exposed list now, applies any change, and returns the list it read
+    /// (less anything the registry says is no longer exposed).
+    @discardableResult
+    func refreshExposure(rereadRegistries: Bool = false) async throws -> Set<String> {
+        let generation = generation
+        let read = try await readExposure()
+        var list = read.list
+        if rereadRegistries || list != exposed {
+            list = try await readRegistries(for: list, generation)
+        } else {
+            list.subtract(registryUnexposed)
+        }
+        try await applyExposure(list, read: read.number, generation, force: false)
+        return list
     }
 
-    private func readExposure() async throws -> Set<String> {
+    private func readExposure() async throws -> (list: Set<String>, number: Int) {
         let id = takeId()
+        // Numbered as it's sent: Home Assistant answers in order, so a higher number is newer.
+        exposureReads += 1
+        let number = exposureReads
         let message: [String: Any]
         do {
             message = try await request(["type": "homeassistant/expose_entity/list"], id: id)
         } catch HomeRequestError.failed(let code, _) where code == "unauthorized" {
             throw HomeAssistantError.notAdmin
         }
-        return try HomeExposure.parse(message: message, id: id)
+        return (try HomeExposure.parse(message: message, id: id), number)
     }
 
-    /// Subscribes to exactly `list`, when it changed (or always, on connect).
-    private func applyExposure(_ list: Set<String>, force: Bool) async throws {
+    /// Subscribes to exactly `list`, when it changed (or always, on connect). Ignored when
+    /// a newer read was already applied, or the connection that read it has ended.
+    private func applyExposure(_ list: Set<String>, read: Int, _ generation: Int, force: Bool) async throws {
+        guard isCurrent(generation), read > appliedExposureRead else { return }
+        appliedExposureRead = read
         let removed = exposed.subtracting(list)
         let changed = list != exposed
         exposed = list
@@ -275,13 +374,15 @@ actor HomeAssistantConnector: HomeActionPerforming {
             coalescer.forget(removed)
             for id in removed { states[id] = nil }
         }
-        if changed || force { await sink.homeExposure(list) }
+        if changed || force { await tellSink(list) }
+        // A newer read took over while this one waited: it does the rest.
+        guard isCurrent(generation), appliedExposureRead == read else { return }
         if connected { setStatus(.connected(exposed: list.count)) }
-        // Decided before any wait, so overlapping refreshes subscribe once.
         guard changed || force else { return }
         if let old = subscriptionId {
             subscriptionId = nil
             _ = try? await request(["type": "unsubscribe_events", "subscription": old])
+            guard isCurrent(generation), appliedExposureRead == read else { return }
         }
         // An empty entity_ids would subscribe to every entity: subscribe to none instead.
         guard !list.isEmpty else { return }
@@ -291,9 +392,26 @@ actor HomeAssistantConnector: HomeActionPerforming {
         _ = try await request(["type": "subscribe_entities", "entity_ids": list.sorted()], id: id)
     }
 
-    /// Names and areas of the exposed entities. Missing registries only cost names.
-    private func readRegistries(for list: Set<String>) async {
-        guard !list.isEmpty else { return }
+    /// Exposure changes reach the sink in the order they were applied.
+    private func tellSink(_ list: Set<String>) async {
+        let previous = exposureSink
+        let sink = sink
+        let task = Task {
+            await previous?.value
+            await sink.homeExposure(list)
+        }
+        exposureSink = task
+        await task.value
+    }
+
+    /// What the last registry read said is no longer exposed.
+    private var registryUnexposed: Set<String> = []
+
+    /// Names and areas of the exposed entities; returns `list` less any entity the registry
+    /// says no assistant exposes. Missing registries only cost names, but a closed
+    /// connection still ends the setup.
+    private func readRegistries(for list: Set<String>, _ generation: Int) async throws -> Set<String> {
+        guard !list.isEmpty else { return list }
         do {
             let areas = try await request(["type": "config/area_registry/list"])["result"] as? [[String: Any]] ?? []
             let devices = try await request(["type": "config/device_registry/list"])["result"] as? [[String: Any]] ?? []
@@ -306,17 +424,29 @@ actor HomeAssistantConnector: HomeActionPerforming {
             for device in devices {
                 if let id = device["id"] as? String, let area = device["area_id"] as? String { deviceAreas[id] = area }
             }
+            let unexposed = HomeExposure.unexposedInRegistry(entities)
+            let kept = list.subtracting(unexposed)
             var next: [String: HomeEntityInfo] = [:]
             for entity in entities {
-                guard let id = entity["entity_id"] as? String, list.contains(id) else { continue }
+                guard let id = entity["entity_id"] as? String, kept.contains(id) else { continue }
                 let areaId = (entity["area_id"] as? String) ?? (entity["device_id"] as? String).flatMap { deviceAreas[$0] }
                 next[id] = HomeEntityInfo(
                     name: (entity["name"] as? String) ?? (entity["original_name"] as? String),
                     area: areaId.flatMap { areaNames[$0] })
             }
+            guard isCurrent(generation) else { throw CancellationError() }
             info = next
-        } catch {
+            registryUnexposed = unexposed
+            return kept
+        } catch let error as HomeRequestError {
+            // Not an admin, or an older Home Assistant: names only.
             Self.log.notice("Home Assistant registries unavailable: \(error.localizedDescription, privacy: .public)")
+            return list.subtracting(registryUnexposed)
+        } catch HomeAssistantError.timedOut {
+            // A slow registry on a big install: try again on the next refresh.
+            guard isCurrent(generation) else { throw CancellationError() }
+            Self.log.notice("Home Assistant registries timed out")
+            return list.subtracting(registryUnexposed)
         }
     }
 
@@ -340,6 +470,10 @@ actor HomeAssistantConnector: HomeActionPerforming {
                 continuation.resume(returning: message)
             }
         case "event":
+            if let id, id == registrySubscriptionId {
+                registryChanged()
+                return
+            }
             // Only our current subscription, and only exposed entities within it.
             guard let id, id == subscriptionId, let event = message["event"] as? [String: Any] else { return }
             let changes = HomeEntityDiff.apply(event, to: &states, allowed: exposed)
@@ -360,7 +494,7 @@ actor HomeAssistantConnector: HomeActionPerforming {
     private func request(_ payload: [String: Any], id: Int? = nil) async throws -> [String: Any] {
         // A stopped connection's tasks must not send on the next one.
         try Task.checkCancellation()
-        guard let socket else { throw HomeAssistantError.unreachable("not connected") }
+        guard socket != nil, let outbox else { throw HomeAssistantError.unreachable("not connected") }
         let id = id ?? takeId()
         var message = payload
         message["id"] = id
@@ -373,8 +507,9 @@ actor HomeAssistantConnector: HomeActionPerforming {
                 guard !Task.isCancelled else { return }
                 await self?.timedOut(id)
             }
-            Task {
-                do { try await socket.send(text) } catch { self.failRequest(id, error) }
+            // Queued in order; the connection's send loop sends them one at a time.
+            if case .terminated = outbox.yield((id, text)) {
+                failRequest(id, HomeAssistantError.unreachable("not connected"))
             }
         }
     }
@@ -420,14 +555,18 @@ actor HomeAssistantConnector: HomeActionPerforming {
 
     /// Calls a confirmed service, after checking it's allowed and the entity is still exposed.
     func perform(_ call: HomeServiceCall) async -> DeviceActionResult {
-        if let problem = HomeServiceRules.problem(call) {
+        let known = states[call.entityId]
+        if let problem = HomeServiceRules.problem(
+            call, deviceClass: known?.deviceClass, name: info[call.entityId]?.name ?? known?.friendlyName)
+        {
             return DeviceActionResult(ok: false, error: problem)
         }
         guard connected else { return HomeActionError.notConnected() }
         do {
-            // Read the exposed list right now, not the one from minutes ago.
-            try await refreshExposure()
-            guard exposed.contains(call.entityId) else {
+            // Read the exposed list right now, not the one from minutes ago, and check the
+            // list this read returned (another refresh may have applied meanwhile).
+            let list = try await refreshExposure()
+            guard list.contains(call.entityId), exposed.contains(call.entityId) else {
                 return DeviceActionResult(
                     ok: false,
                     error: "\(call.name ?? call.entityId) is no longer exposed in Home Assistant, so Just Maple can't change it.")

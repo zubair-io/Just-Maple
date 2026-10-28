@@ -45,7 +45,7 @@ nonisolated enum HomeDomains {
     static let control: Set<String> = [
         "light", "switch", "fan", "cover", "climate", "lock", "media_player", "scene", "script",
     ]
-    static let presence: Set<String> = ["person", "device_tracker"]
+    static let presence: Set<String> = ["person", "device_tracker", "zone"]
     static let measuring: Set<String> = ["sensor", "number", "input_number", "counter"]
 
     /// Attributes worth keeping. Coordinates, pictures and long lists never leave the Mac.

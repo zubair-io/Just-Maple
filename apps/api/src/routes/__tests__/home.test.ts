@@ -255,6 +255,30 @@ describe.runIf(mongoAvailable)('Home Assistant', () => {
 
     // MARK: - Pages
 
+    it('lists current states and changes separately when asked', async () => {
+        const ids = async (kind: string, extra = '') =>
+            (
+                (
+                    await json(
+                        call(owner, `/api/device-data/items?source=home&homeKind=${kind}${extra}`),
+                    )
+                ).items as MacDataItem[]
+            ).map((item) => item.id);
+        const states = await ids('state');
+        expect(states).toHaveLength(everything.length - 1);
+        expect(states).not.toContain(kitchenChange.id);
+        expect(await ids('change')).toEqual([kitchenChange.id]);
+        const notebookId = await notebook(false);
+        const page = await homePage(notebookId, { includeAll: true });
+        expect(await ids('change', `&pageId=${page.id}`)).toEqual([kitchenChange.id]);
+        // Paging counts states only.
+        const first = await json(
+            call(owner, '/api/device-data/items?source=home&homeKind=state&limit=2'),
+        );
+        expect(first.items).toHaveLength(2);
+        expect(first.total).toBe(everything.length - 1);
+    });
+
     it('starts with nothing shared in a shared notebook, then shares entities or areas', async () => {
         const notebookId = await notebook(true);
         const page = await homePage(notebookId);
@@ -463,6 +487,42 @@ describe.runIf(mongoAvailable)('Home Assistant', () => {
             );
             const door = await propose({ entity_id: 'cover.garage_door', service: 'open_cover' });
             expect((await confirm(owner, door)).status).toBe(428);
+        });
+
+        it('asks twice for scenes, scripts and switches that open a garage or gate', async () => {
+            const extra = [
+                entity('scene.movie_night', 'scening', { area: 'Living Room' }),
+                entity('script.leave_home', 'off'),
+                entity('switch.garage_opener', 'off', { area: 'Garage' }),
+                entity('switch.kettle', 'off', { area: 'Kitchen' }),
+            ];
+            await upload(extra);
+            await expose([
+                ...exposedIds,
+                ...extra.map((item) => item.extra!['entityId'] as string),
+            ]);
+            ctx = await botContext(notebookId);
+            for (const [entityId, service] of [
+                ['scene.movie_night', 'turn_on'],
+                ['script.leave_home', 'turn_on'],
+                ['switch.garage_opener', 'turn_on'],
+            ] as const) {
+                const id = await propose({ entity_id: entityId, service });
+                expect((await view(owner, id)).call.sensitive).toBe(true);
+                expect((await confirm(owner, id)).status).toBe(428);
+            }
+            ctx = await botContext(notebookId); // three proposals per reply
+            const kettle = await propose({ entity_id: 'switch.kettle', service: 'turn_on' });
+            expect((await view(owner, kettle)).call.sensitive).toBeUndefined();
+            expect((await json(confirm(owner, kettle))).proposal.status).toBe('running');
+        });
+
+        it('rejects inherited object keys as services', async () => {
+            const result = await executeMacDataTool(ctx, 'propose_home_action', {
+                entity_id: 'light.kitchen',
+                service: 'constructor',
+            });
+            expect(result).toMatch(/supports turn_on/);
         });
 
         it('refuses a tap once the entity is no longer exposed, and fails without a Home Mac', async () => {

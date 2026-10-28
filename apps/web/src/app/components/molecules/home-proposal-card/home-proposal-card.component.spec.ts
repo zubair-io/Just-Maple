@@ -122,7 +122,7 @@ describe('HomeProposalCardComponent', () => {
     await settle();
     // The first tap only asks; nothing is sent.
     http.expectNone({ method: 'POST', url: `/api/home-proposals/${ID}/confirm` });
-    expect(text()).toContain('Are you sure? This unlocks a door.');
+    expect(text()).toContain('Are you sure? This will unlock Front Door.');
 
     button('Yes, do it')!.click();
     const request = http.expectOne({ method: 'POST', url: `/api/home-proposals/${ID}/confirm` });
@@ -152,6 +152,59 @@ describe('HomeProposalCardComponent', () => {
     );
     expect(text()).toContain("Couldn't do it: Kitchen Light is no longer exposed");
     expect(button('Try again')).toBeDefined();
+    fixture.destroy();
+  });
+
+  it('asks again before retrying a sensitive action', async () => {
+    const { text, button, settle, fixture } = await render(
+      lock,
+      proposal(lock, { status: 'failed', error: 'Home Assistant is offline' }),
+    );
+    button('Try again')!.click();
+    await settle();
+    http.expectNone({ method: 'POST', url: `/api/home-proposals/${ID}/confirm` });
+    expect(text()).toContain('Are you sure? This will unlock Front Door.');
+    expect(button('Try again')).toBeUndefined();
+
+    button('Yes, do it')!.click();
+    const request = http.expectOne({ method: 'POST', url: `/api/home-proposals/${ID}/confirm` });
+    expect(request.request.body).toEqual({ acknowledged: true });
+    request.flush({
+      proposal: proposal(lock, { status: 'running', updatedAt: '2026-10-28T12:01:00Z' }),
+    });
+    await settle();
+    expect(text()).toContain('Sending to Home Assistant');
+    fixture.destroy();
+  });
+
+  const warnings: Array<[HomeServiceCall, string]> = [
+    [{ ...lock, service: 'lock' }, 'This will lock Front Door.'],
+    [
+      {
+        entityId: 'cover.garage_door',
+        domain: 'cover',
+        service: 'close_cover',
+        name: 'Garage Door',
+        sensitive: true,
+      },
+      'This will close Garage Door.',
+    ],
+    [
+      {
+        entityId: 'cover.garage_door',
+        domain: 'cover',
+        service: 'open_cover',
+        name: 'Garage Door',
+        sensitive: true,
+      },
+      'This will open Garage Door.',
+    ],
+  ];
+  it.each(warnings)('says what the second tap does (%#)', async (call, warning) => {
+    const { text, button, settle, fixture } = await render(call, proposal(call));
+    button('Do it')!.click();
+    await settle();
+    expect(text()).toContain(`Are you sure? ${warning}`);
     fixture.destroy();
   });
 });

@@ -7,7 +7,9 @@ import {
     describeHomeCall,
     homeItemVisibleToBots,
     imessageHandleKey,
+    isHomePresence,
     isHomePresenceEntity,
+    isSensitiveHomeEntity,
     imessageThreadKey,
     type MacDataItem,
 } from '@maple/shared';
@@ -189,6 +191,66 @@ describe('Home page filters', () => {
             true,
         );
         expect(homeItemVisibleToBots(person, { homeEntities: ['person.alex'] })).toBe(true);
+    });
+
+    it('treats zones, people groups, presence and place-revealing sensors as presence', () => {
+        expect(isHomePresence({ entityId: 'zone.work' })).toBe(true);
+        expect(isHomePresence({ entityId: 'group.family', state: 'home' })).toBe(true);
+        expect(isHomePresence({ entityId: 'group.family', state: 'not_home' })).toBe(true);
+        expect(isHomePresence({ entityId: 'group.downstairs_lights', state: 'on' })).toBe(false);
+        expect(isHomePresence({ entityId: 'binary_sensor.alex_presence' })).toBe(true);
+        expect(isHomePresence({ entityId: 'binary_sensor.front_door' })).toBe(false);
+        expect(isHomePresence({ entityId: 'sensor.alex_phone_geocoded_location' })).toBe(true);
+        expect(isHomePresence({ entityId: 'sensor.alex_phone_ssid' })).toBe(true);
+        expect(isHomePresence({ entityId: 'sensor.alex_phone_bssid' })).toBe(true);
+        expect(isHomePresence({ entityId: 'sensor.alex_phone_wifi_connection' })).toBe(true);
+        expect(isHomePresence({ entityId: 'sensor.kitchen_temperature' })).toBe(false);
+        expect(isHomePresence({ entityId: 'binary_sensor.alex', deviceClass: 'presence' })).toBe(
+            true,
+        );
+        // Occupancy with no area is a person's; a room's sensor has one.
+        expect(isHomePresence({ entityId: 'binary_sensor.alex', deviceClass: 'occupancy' })).toBe(
+            true,
+        );
+        expect(
+            isHomePresence({
+                entityId: 'binary_sensor.office',
+                deviceClass: 'occupancy',
+                area: 'Office',
+            }),
+        ).toBe(false);
+
+        const item = (entityId: string, extra: Record<string, unknown>): MacDataItem => ({
+            ...home(entityId),
+            extra: { entityId, ...extra },
+        });
+        const family = item('group.family', { state: 'home' });
+        expect(deviceItemMatchesFilter(home('zone.work'), { includeAll: true }, utc)).toBe(false);
+        expect(deviceItemMatchesFilter(family, { includeAll: true }, utc)).toBe(false);
+        expect(homeItemVisibleToBots(family, undefined)).toBe(false);
+        expect(homeItemVisibleToBots(home('sensor.alex_phone_ssid'), undefined)).toBe(false);
+        expect(
+            deviceItemMatchesFilter(family, { includeAll: true, includePresence: true }, utc),
+        ).toBe(true);
+    });
+
+    it('marks locks, scenes, scripts and entry openers as sensitive', () => {
+        expect(isSensitiveHomeEntity({ entityId: 'lock.front_door' })).toBe(true);
+        expect(isSensitiveHomeEntity({ entityId: 'scene.movie_night' })).toBe(true);
+        expect(isSensitiveHomeEntity({ entityId: 'script.leave_home' })).toBe(true);
+        expect(isSensitiveHomeEntity({ entityId: 'switch.garage_opener' })).toBe(true);
+        expect(isSensitiveHomeEntity({ entityId: 'switch.relay_1', name: 'Driveway gate' })).toBe(
+            true,
+        );
+        expect(isSensitiveHomeEntity({ entityId: 'switch.relay_2', deviceClass: 'door' })).toBe(
+            true,
+        );
+        expect(isSensitiveHomeEntity({ entityId: 'cover.garage', deviceClass: 'garage' })).toBe(
+            true,
+        );
+        expect(isSensitiveHomeEntity({ entityId: 'cover.living_room_blinds' })).toBe(false);
+        expect(isSensitiveHomeEntity({ entityId: 'switch.kettle', name: 'Kettle' })).toBe(false);
+        expect(isSensitiveHomeEntity({ entityId: 'light.garage' })).toBe(false);
     });
 
     it('describes what a Home page shares', () => {

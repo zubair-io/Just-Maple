@@ -8,6 +8,7 @@ import {
   signal,
   untracked,
 } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { describeHomeCall, type HomeServiceCall } from '@maple/shared';
 import {
   HomeAcknowledgeNeeded,
@@ -28,12 +29,13 @@ const ICONS: Record<string, string> = {
 
 /**
  * A bot's offer to change a Home Assistant device. Nothing happens until the home's owner
- * taps; unlocking or opening a garage door asks a second time. The owner's Mac does it,
+ * taps; locks, scenes, scripts, garage doors and gates ask a second time, on every try. The owner's Mac does it,
  * after checking the device is still exposed.
  */
 @Component({
   selector: 'app-home-proposal-card',
   standalone: true,
+  imports: [NgTemplateOutlet],
   templateUrl: './home-proposal-card.component.html',
   styleUrl: './home-proposal-card.component.scss',
   changeDetection: ChangeDetectionStrategy.Eager,
@@ -49,7 +51,12 @@ export class HomeProposalCardComponent {
   readonly canConfirm = computed(() => this.proposal()?.canConfirm === true);
   readonly summary = computed(() => describeHomeCall(this.call()));
   readonly icon = computed(() => ICONS[this.call().domain] ?? 'home');
-  /** Locks and garage doors: the first tap only arms the button. */
+  /** What the second tap does, as the warning says it: "unlock Front Door". */
+  readonly warning = computed(() => {
+    const text = this.summary();
+    return text.charAt(0).toLowerCase() + text.slice(1);
+  });
+  /** Locks, scenes, scripts, garage doors and gates: the first tap only arms the button. */
   readonly sensitive = computed(
     () => this.call().sensitive === true || this.proposal()?.call.sensitive === true,
   );

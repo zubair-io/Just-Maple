@@ -8,6 +8,7 @@
 
 #if os(macOS)
 import Foundation
+import Security
 import Testing
 
 @testable import JapaneseMaple
@@ -23,8 +24,15 @@ final class FakeHomeServer: HomeSocketFactory, @unchecked Sendable {
     private var _received: [[String: Any]] = []
     private var _sockets: [FakeHomeSocket] = []
     private var _lastSubscription: Int?
+    private var _registrySubscription: Int?
+    private var _held: [() -> Void] = []
+    private var _holding: Set<String> = []
     var acceptsToken = true
     var states: [String: [String: Any]]
+    /// What `config/entity_registry/list` returns.
+    var entityRegistry: [[String: Any]] = [["entity_id": "light.kitchen", "device_id": "dev1", "name": NSNull()]]
+    /// Sends of odd-numbered messages take a little longer, as a busy socket might.
+    var jitter = false
 
     init(exposure: [String: Any], states: [String: [String: Any]] = [:]) {
         _exposure = exposure
@@ -39,6 +47,31 @@ final class FakeHomeServer: HomeSocketFactory, @unchecked Sendable {
     var received: [[String: Any]] { lock.withLock { _received } }
     var connections: Int { lock.withLock { _sockets.count } }
     var lastSubscription: Int? { lock.withLock { _lastSubscription } }
+
+    /// Replies to these message types wait until `release()`; each is built when asked.
+    func hold(_ types: Set<String>) { lock.withLock { _holding = types } }
+
+    /// Sends the held replies, oldest first, and stops holding.
+    func release() {
+        let replies = lock.withLock {
+            _holding = []
+            defer { _held = [] }
+            return _held
+        }
+        for reply in replies { reply() }
+    }
+
+    var heldCount: Int { lock.withLock { _held.count } }
+
+    /// An `entity_registry_updated` event, as Home Assistant sends when exposure changes.
+    func pushRegistryUpdate() {
+        let (socket, id) = lock.withLock { (_sockets.last, _registrySubscription) }
+        guard let socket, let id else { return }
+        socket.deliver([
+            "id": id, "type": "event",
+            "event": ["event_type": "entity_registry_updated", "data": ["action": "update"]],
+        ])
+    }
 
     func received(_ type: String) -> [[String: Any]] {
         received.filter { $0["type"] as? String == type }
@@ -66,10 +99,17 @@ final class FakeHomeServer: HomeSocketFactory, @unchecked Sendable {
     fileprivate func handle(_ message: [String: Any], from socket: FakeHomeSocket) {
         lock.withLock { _received.append(message) }
         let id = message["id"] as? Int ?? 0
+        let type = message["type"] as? String ?? ""
+        let holding = lock.withLock { _holding.contains(type) }
         func result(_ value: Any) {
-            socket.deliver(["id": id, "type": "result", "success": true, "result": value])
+            let reply: [String: Any] = ["id": id, "type": "result", "success": true, "result": value]
+            if holding {
+                lock.withLock { _held.append { socket.deliver(reply) } }
+            } else {
+                socket.deliver(reply)
+            }
         }
-        switch message["type"] as? String {
+        switch type {
         case "auth":
             socket.deliver(["type": acceptsToken ? "auth_ok" : "auth_invalid"])
         case "homeassistant/expose_entity/list":
@@ -79,7 +119,12 @@ final class FakeHomeServer: HomeSocketFactory, @unchecked Sendable {
         case "config/device_registry/list":
             result([["id": "dev1", "area_id": "kitchen"]])
         case "config/entity_registry/list":
-            result([["entity_id": "light.kitchen", "device_id": "dev1", "name": NSNull()]])
+            result(entityRegistry)
+        case "subscribe_events":
+            if message["event_type"] as? String == "entity_registry_updated" {
+                lock.withLock { _registrySubscription = id }
+            }
+            result(NSNull())
         case "subscribe_entities":
             lock.withLock { _lastSubscription = id }
             socket.deliver(["id": id, "type": "result", "success": true, "result": NSNull()])
@@ -121,6 +166,9 @@ final class FakeHomeSocket: HomeSocket, @unchecked Sendable {
     func send(_ text: String) async throws {
         guard !isClosed else { throw HomeAssistantError.unreachable("closed") }
         let message = try JSONSerialization.jsonObject(with: Data(text.utf8)) as! [String: Any]
+        if server.jitter, (message["id"] as? Int ?? 0) % 2 == 1 {
+            try await Task.sleep(nanoseconds: 3_000_000)
+        }
         server.handle(message, from: self)
     }
 
@@ -266,6 +314,19 @@ struct HomeExposureTests {
         #expect(exposed == ["light.ok"])
     }
 
+    @Test func readsUnExposingFromTheRegistry() {
+        let unexposed = HomeExposure.unexposedInRegistry([
+            ["entity_id": "lock.a", "options": ["conversation": ["should_expose": false]]],
+            ["entity_id": "light.b", "options": ["conversation": ["should_expose": true]]],
+            ["entity_id": "light.c", "options": ["conversation": ["should_expose": false], "cloud.alexa": ["should_expose": true]]],
+            // Nothing said about assistants: leave it to the exposed list.
+            ["entity_id": "light.d", "options": ["light": ["favorite_colors": []]]],
+            ["entity_id": "light.e"],
+        ])
+        #expect(unexposed == ["lock.a"])
+        #expect(HomeDomains.presence.contains("zone"))
+    }
+
     @Test func capsTheListAtTenThousand() throws {
         var entities: [String: Any] = [:]
         for index in 0..<HomeExposure.maxEntities { entities["sensor.s\(index)"] = ["conversation": true] }
@@ -299,8 +360,10 @@ struct HomeAssistantConnectionTests {
         let subscriptions = server.received("subscribe_entities")
         #expect(subscriptions.count == 1)
         #expect(subscriptions.first?["entity_ids"] as? [String] == ["light.kitchen", "lock.front_door"])
-        // Never a subscription to every state change.
-        #expect(server.received("subscribe_events").isEmpty)
+        // Never a subscription to every state change: only to registry updates.
+        #expect(
+            server.received("subscribe_events").map { $0["event_type"] as? String }
+                == ["entity_registry_updated"])
         #expect(server.received("get_states").isEmpty)
         #expect(server.received("auth").first?["access_token"] as? String == "test-token")
         #expect(await sink.exposures.last == ["light.kitchen", "lock.front_door"])
@@ -411,6 +474,113 @@ struct HomeAssistantConnectionTests {
         // Home Assistant bans addresses that keep failing: one attempt only.
         #expect(server.connections == 1)
         #expect(server.received("homeassistant/expose_entity/list").isEmpty)
+        await ha.stop()
+    }
+
+    @Test func anOlderExposureReadNeverOverwritesANewerOne() async throws {
+        let server = FakeHomeServer(
+            exposure: ["light.kitchen": ["conversation": true]], states: homeStates)
+        let sink = RecordingSink()
+        let ha = connector(server, sink)
+        await ha.start(settings: settings, token: "t")
+        #expect(await eventually { await isConnected(ha) })
+
+        // An older read, sent while the lock was exposed, is slow to come back.
+        server.exposure = ["light.kitchen": ["conversation": true], "lock.front_door": ["conversation": true]]
+        server.hold(["homeassistant/expose_entity/list"])
+        let older = Task { try await ha.refreshExposure() }
+        #expect(await eventually { server.heldCount == 1 })
+        // Meanwhile a newer read, after the lock was un-exposed, gets through.
+        let held = server.release
+        server.exposure = ["light.kitchen": ["conversation": true]]
+        server.hold([])
+        let newer = try await ha.refreshExposure()
+        #expect(newer == ["light.kitchen"])
+        held()
+        _ = try await older.value
+        #expect(await ha.exposed == ["light.kitchen"])
+        #expect(await sink.exposures.last == ["light.kitchen"])
+        #expect(server.received("subscribe_entities").count == 1)
+        await ha.stop()
+    }
+
+    @Test func aStoppedConnectionsSetUpWritesNothing() async throws {
+        let server = FakeHomeServer(exposure: ["light.kitchen": ["conversation": true]], states: homeStates)
+        let sink = RecordingSink()
+        let ha = connector(server, sink)
+        // The exposed list comes back, then the registries hang until after the stop.
+        server.hold(["config/area_registry/list"])
+        await ha.start(settings: settings, token: "t")
+        #expect(await eventually { server.heldCount == 1 })
+        await ha.stop()
+        server.release()
+        try await Task.sleep(nanoseconds: 100_000_000)
+        #expect(await ha.exposed.isEmpty)
+        #expect(await sink.exposures.isEmpty)
+        #expect(await sink.items.isEmpty)
+        #expect(server.received("subscribe_entities").isEmpty)
+        #expect(await ha.status == .stopped)
+    }
+
+    @Test func aStoppedConnectionsLateResultIsDropped() async throws {
+        let server = FakeHomeServer(exposure: ["light.kitchen": ["conversation": true]], states: homeStates)
+        let sink = RecordingSink()
+        let ha = connector(server, sink)
+        await ha.start(settings: settings, token: "t")
+        #expect(await eventually { await isConnected(ha) })
+        let generation = await ha.generation
+        #expect(await ha.isCurrent(generation))
+        await ha.stop()
+        #expect(await ha.isCurrent(generation) == false)
+        // Started again: the old generation still isn't current.
+        await ha.start(settings: settings, token: "t")
+        #expect(await eventually { await isConnected(ha) })
+        #expect(await ha.isCurrent(generation) == false)
+        #expect(await ha.isCurrent(await ha.generation))
+        await ha.stop()
+    }
+
+    @Test func messagesGoOutInTheOrderTheyWereMade() async throws {
+        let server = FakeHomeServer(exposure: ["light.kitchen": ["conversation": true]], states: homeStates)
+        server.jitter = true
+        let ha = connector(server, RecordingSink())
+        await ha.start(settings: settings, token: "t")
+        #expect(await eventually { await isConnected(ha) })
+        async let a = ha.refreshExposure()
+        async let b = ha.refreshExposure()
+        async let c = ha.refreshExposure()
+        _ = try await (a, b, c)
+        let ids = server.received.compactMap { $0["id"] as? Int }
+        #expect(ids.count > 6)
+        #expect(ids == ids.sorted())
+        await ha.stop()
+    }
+
+    @Test func unExposingInTheRegistryDropsTheEntityAtOnce() async throws {
+        let server = FakeHomeServer(
+            exposure: ["light.kitchen": ["conversation": true], "lock.front_door": ["conversation": true]],
+            states: homeStates)
+        let sink = RecordingSink()
+        let ha = connector(server, sink)
+        await ha.start(settings: settings, token: "t")
+        #expect(await eventually { await ha.states.count == 2 })
+        let reads = server.received("homeassistant/expose_entity/list").count
+
+        // The registry says no assistant exposes the lock any more.
+        server.entityRegistry = [
+            ["entity_id": "light.kitchen", "device_id": "dev1", "name": NSNull()],
+            [
+                "entity_id": "lock.front_door",
+                "options": ["conversation": ["should_expose": false], "cloud.alexa": ["should_expose": false]],
+            ],
+        ]
+        server.pushRegistryUpdate()
+        #expect(await eventually { await ha.exposed == ["light.kitchen"] })
+        #expect(server.received("homeassistant/expose_entity/list").count > reads)
+        #expect(await ha.states["lock.front_door"] == nil)
+        #expect(await sink.exposures.last == ["light.kitchen"])
+        #expect(server.received("subscribe_entities").last?["entity_ids"] as? [String] == ["light.kitchen"])
+        #expect(await ha.currentItems().map(\.id) == ["home:light.kitchen"])
         await ha.stop()
     }
 
@@ -531,9 +701,12 @@ struct HomeChangeCoalescerTests {
 
 @Suite("Home Assistant actions")
 struct HomeAssistantActionTests {
-    private func call(_ entityId: String, _ service: String, _ data: [String: JSONValue]? = nil) -> HomeServiceCall {
+    private func call(
+        _ entityId: String, _ service: String, _ data: [String: JSONValue]? = nil, sensitive: Bool? = nil
+    ) -> HomeServiceCall {
         HomeServiceCall(
-            entityId: entityId, domain: String(entityId.split(separator: ".")[0]), service: service, data: data)
+            entityId: entityId, domain: String(entityId.split(separator: ".")[0]), service: service, data: data,
+            sensitive: sensitive)
     }
 
     @Test func callsTheServiceWhileTheEntityIsExposed() async throws {
@@ -565,7 +738,7 @@ struct HomeAssistantActionTests {
 
         // Unexposed in Home Assistant after the user confirmed.
         server.exposure = ["light.kitchen": ["conversation": true]]
-        let result = await ha.perform(call("lock.front_door", "unlock"))
+        let result = await ha.perform(call("lock.front_door", "unlock", sensitive: true))
         #expect(!result.ok)
         #expect(result.error?.contains("no longer exposed") == true)
         #expect(server.received("call_service").isEmpty)
@@ -589,7 +762,35 @@ struct HomeAssistantActionTests {
             HomeServiceRules.problem(
                 HomeServiceCall(entityId: "lock.front_door", domain: "light", service: "turn_on")) != nil)
         #expect(HomeServiceRules.problem(call("media_player.tv", "volume_set", ["volume_level": .number(0.4)])) == nil)
-        #expect(HomeServiceRules.problem(call("scene.movie", "turn_on")) == nil)
+        #expect(HomeServiceRules.problem(call("scene.movie", "turn_on", sensitive: true)) == nil)
+    }
+
+    @Test func sensitiveCallsNeedTheSecondConfirmation() async throws {
+        // Without the server's sensitive mark, the Mac refuses these on its own.
+        for (entityId, service) in [
+            ("lock.front_door", "unlock"), ("scene.movie", "turn_on"), ("script.leave_home", "turn_on"),
+            ("switch.garage_opener", "turn_on"), ("cover.driveway_gate", "open_cover"),
+        ] {
+            #expect(HomeServiceRules.problem(call(entityId, service))?.contains("second confirmation") == true)
+            #expect(HomeServiceRules.problem(call(entityId, service, sensitive: true)) == nil)
+        }
+        #expect(HomeServiceRules.problem(call("switch.kettle", "turn_on")) == nil)
+        #expect(HomeServiceRules.problem(call("switch.relay_1", "turn_on"), deviceClass: "garage") != nil)
+        #expect(HomeServiceRules.problem(call("switch.relay_1", "turn_on"), name: "Front Gate") != nil)
+        #expect(HomeServiceRules.isSensitive(entityId: "cover.blinds", deviceClass: "blind", name: "Blinds") == false)
+
+        // What Home Assistant says of the entity counts too: a relay named like a gate opener.
+        let server = FakeHomeServer(
+            exposure: ["switch.relay_1": ["conversation": true]],
+            states: ["switch.relay_1": state("off", ["friendly_name": "Driveway Gate"])])
+        let ha = connector(server, RecordingSink())
+        await ha.start(settings: settings, token: "t")
+        #expect(await eventually { await ha.states["switch.relay_1"] != nil })
+        let refused = await ha.perform(call("switch.relay_1", "turn_on"))
+        #expect(!refused.ok)
+        #expect(server.received("call_service").isEmpty)
+        #expect(await ha.perform(call("switch.relay_1", "turn_on", sensitive: true)).ok)
+        await ha.stop()
     }
 
     @Test func notConnectedRefuses() async {
@@ -737,6 +938,12 @@ struct HomeAssistantSettingsTests {
         // The address is a setting; the token isn't stored next to it.
         let saved = store.defaults.dictionaryRepresentation().values.compactMap { $0 as? String }
         #expect(!saved.contains { $0.contains("secret-token") })
+    }
+
+    @Test func theTokenGoesInTheDataProtectionKeychain() {
+        let query = KeychainHomeCredentials().query("account")
+        #expect(query[kSecUseDataProtectionKeychain as String] as? Bool == true)
+        #expect(KeychainHomeCredentials().query("account", legacy: true)[kSecUseDataProtectionKeychain as String] == nil)
     }
 
     @Test func anotherAddressForgetsTheOldToken() throws {

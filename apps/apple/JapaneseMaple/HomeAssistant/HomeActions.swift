@@ -8,6 +8,8 @@
 //  Before calling anything the Mac checks, again, on its own:
 //  - the action hasn't expired (the server gives 15 minutes from the tap);
 //  - the domain and service are on the allowed list below, with a value in range;
+//  - a sensitive call (locks, scenes, scripts, garage doors, gates and their openers) was
+//    confirmed twice: the server marks it `sensitive`, and the Mac refuses one that isn't;
 //  - the entity is still exposed, by reading the exposed list right then.
 //
 
@@ -55,13 +57,37 @@ nonisolated enum HomeServiceRules {
     ]
     static let hvacModes: Set<String> = ["off", "heat", "cool", "heat_cool", "auto", "dry", "fan_only"]
 
-    /// Why the call isn't allowed, or nil when it is.
-    static func problem(_ call: HomeServiceCall) -> String? {
+    /// Words that mean an entity opens or unlocks a way into the home.
+    static let entryWords: Set<String> = ["garage", "gate", "gates", "door", "doors", "lock", "locks", "opener"]
+
+    /// The same rule as `isSensitiveHomeEntity` on the server: locks, scenes and scripts;
+    /// covers and switches that are, or are named like, a garage door, gate, door or opener.
+    static func isSensitive(entityId: String, deviceClass: String?, name: String?) -> Bool {
+        let domain = entityId.split(separator: ".").first.map(String.init) ?? ""
+        if ["lock", "scene", "script"].contains(domain) { return true }
+        guard domain == "cover" || domain == "switch" else { return false }
+        if let deviceClass, ["garage", "gate", "door"].contains(deviceClass) { return true }
+        let words = "\(entityId) \(name ?? "")".lowercased()
+        if words.contains("garage") || words.contains("opener") { return true }
+        return words.split(whereSeparator: { !("a"..."z").contains($0) }).contains {
+            entryWords.contains(String($0))
+        }
+    }
+
+    /// Why the call isn't allowed, or nil when it is. `deviceClass` and `name` are what this
+    /// Mac knows of the entity, so a call the server didn't mark sensitive still is here.
+    static func problem(_ call: HomeServiceCall, deviceClass: String? = nil, name: String? = nil) -> String? {
         guard HomeExposure.isValidEntityId(call.entityId),
             call.entityId.hasPrefix("\(call.domain)."),
             HomeDomains.control.contains(call.domain),
             let allowed = services[call.domain], let field = allowed[call.service]
         else { return "Just Maple can't do \(call.domain).\(call.service)." }
+        if call.sensitive != true,
+            isSensitive(entityId: call.entityId, deviceClass: deviceClass, name: name)
+                || isSensitive(entityId: call.entityId, deviceClass: nil, name: call.name)
+        {
+            return "\(call.name ?? call.entityId) needs a second confirmation in Just Maple."
+        }
         let data = call.data ?? [:]
         guard data.count <= 1, data.keys.allSatisfy({ $0 == field }) else {
             return "Unexpected values for \(call.service)."

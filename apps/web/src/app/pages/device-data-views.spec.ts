@@ -340,30 +340,37 @@ describe('device data views', () => {
     const home = (overrides: Partial<MacDataItem>) => item({ source: 'home', ...overrides });
 
     it('lists devices by area with their state, then recent changes', async () => {
-      listItems.mockResolvedValue({
-        items: [
-          home({
-            id: 'home:light.kitchen@1760000100',
-            title: 'Kitchen Light',
-            occurredAt: 1_760_000_100,
-            extra: { entityId: 'light.kitchen', kind: 'change', state: 'on', from: 'off' },
-          }),
-          home({
-            id: 'home:sensor.porch_temp',
-            title: 'Porch Temperature',
-            extra: { entityId: 'sensor.porch_temp', state: '18.5', unit: '°C', kind: 'state' },
-          }),
-          home({
-            id: 'home:light.kitchen',
-            title: 'Kitchen Light',
-            extra: { entityId: 'light.kitchen', state: 'on', area: 'Kitchen', kind: 'state' },
-          }),
-        ],
-        total: 3,
-        collector: null,
+      const change = home({
+        id: 'home:light.kitchen@1760000100',
+        title: 'Kitchen Light',
+        occurredAt: 1_760_000_100,
+        extra: { entityId: 'light.kitchen', kind: 'change', state: 'on', from: 'off' },
       });
+      const states = [
+        home({
+          id: 'home:sensor.porch_temp',
+          title: 'Porch Temperature',
+          extra: { entityId: 'sensor.porch_temp', state: '18.5', unit: '°C', kind: 'state' },
+        }),
+        home({
+          id: 'home:light.kitchen',
+          title: 'Kitchen Light',
+          extra: { entityId: 'light.kitchen', state: 'on', area: 'Kitchen', kind: 'state' },
+        }),
+      ];
+      listItems.mockImplementation(async (query: { homeKind?: string }) =>
+        query.homeKind === 'change'
+          ? { items: [change], total: 1, collector: null }
+          : { items: states, total: 2, collector: null },
+      );
       const { root } = await render(HomeViewComponent);
-      expect(listItems).toHaveBeenCalledWith(expect.objectContaining({ source: 'home' }));
+      // States and changes load separately, so changes can't crowd devices off the list.
+      expect(listItems).toHaveBeenCalledWith(
+        expect.objectContaining({ source: 'home', homeKind: 'state', limit: 500 }),
+      );
+      expect(listItems).toHaveBeenCalledWith(
+        expect.objectContaining({ source: 'home', homeKind: 'change' }),
+      );
       const [devices, changes] = root.querySelectorAll('table');
       const rows = devices!.querySelectorAll('tbody tr');
       // Devices with an area first.

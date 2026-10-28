@@ -12,14 +12,7 @@
       @case ('proposed') {
         @if (canConfirm()) {
           @if (armed()) {
-            <span class="home-warn"
-              >Are you sure? This
-              {{ call().domain === 'lock' ? 'unlocks a door' : 'opens a door' }}.</span
-            >
-            <button type="button" class="home-do" [disabled]="tapping()" (click)="tap()">
-              {{ tapping() ? 'Sending…' : 'Yes, do it' }}
-            </button>
-            <button type="button" class="home-link" (click)="cancel()">Cancel</button>
+            <ng-container [ngTemplateOutlet]="areYouSure" />
           } @else {
             <button type="button" class="home-do" [disabled]="tapping()" (click)="tap()">
               {{ tapping() ? 'Sending…' : 'Do it' }}
@@ -50,9 +43,13 @@
       @case ('failed') {
         <span class="home-error">Couldn't do it: {{ proposal()?.error }}</span>
         @if (canConfirm()) {
-          <button type="button" class="home-do" [disabled]="tapping()" (click)="tap()">
-            Try again
-          </button>
+          @if (armed()) {
+            <ng-container [ngTemplateOutlet]="areYouSure" />
+          } @else {
+            <button type="button" class="home-do" [disabled]="tapping()" (click)="tap()">
+              Try again
+            </button>
+          }
         }
       }
       @case ('expired') {
@@ -64,3 +61,12 @@
     }
   </div>
 </section>
+
+<!-- The second tap for sensitive actions, on the first try and on every retry. -->
+<ng-template #areYouSure>
+  <span class="home-warn">Are you sure? This will {{ warning() }}.</span>
+  <button type="button" class="home-do" [disabled]="tapping()" (click)="tap()">
+    {{ tapping() ? 'Sending…' : 'Yes, do it' }}
+  </button>
+  <button type="button" class="home-link" (click)="cancel()">Cancel</button>
+</ng-template>

@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { DeviceDataPanelComponent } from '../../components/organisms/device-data-panel/device-data-panel.component';
 import { injectDeviceDataList } from '../../components/organisms/device-data-panel/device-data-list';
@@ -17,8 +17,15 @@ import { homeChangeRow, homeStateRow, isHomeChange } from '../../utils/device-it
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class HomeViewComponent {
-  // Every device's state plus recent changes; the API's largest page.
-  readonly list = injectDeviceDataList('home', { pageSize: 500 });
+  // Current states and changes load separately, so a busy day of changes never pushes
+  // devices off the list. The panel pages the devices ("Load more").
+  readonly list = injectDeviceDataList('home', { pageSize: 500, homeKind: 'state' });
+  readonly changeList = injectDeviceDataList('home', { pageSize: 100, homeKind: 'change' });
+
+  constructor() {
+    // One search box, for both.
+    effect(() => this.changeList.search.set(this.list.search()));
+  }
 
   /** By area, then name; devices without an area last. */
   readonly devices = computed(() =>
@@ -36,7 +43,7 @@ export class HomeViewComponent {
 
   /** Newest first. */
   readonly changes = computed(() =>
-    this.list
+    this.changeList
       .items()
       .filter(isHomeChange)
       .map(homeChangeRow)

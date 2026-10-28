@@ -68,6 +68,29 @@ nonisolated enum HomeExposure {
         return exposed
     }
 
+    /// Entities whose registry entry says no assistant exposes them (`options` lists each
+    /// assistant's `should_expose`, and none is true). Home Assistant writes these when the
+    /// user un-exposes an entity, so they're dropped before the next exposure read.
+    static func unexposedInRegistry(_ entities: [[String: Any]]) -> Set<String> {
+        var unexposed = Set<String>()
+        for entity in entities {
+            guard let id = entity["entity_id"] as? String,
+                let options = entity["options"] as? [String: Any]
+            else { continue }
+            var seen = false
+            var on = false
+            for assistant in assistants {
+                guard let settings = options[assistant] as? [String: Any],
+                    let enabled = flag(settings)
+                else { continue }
+                seen = true
+                if enabled { on = true }
+            }
+            if seen, !on { unexposed.insert(id) }
+        }
+        return unexposed
+    }
+
     /// `true`, or the older `{"should_expose": true}`.
     private static func flag(_ value: Any) -> Bool? {
         if let number = value as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() {

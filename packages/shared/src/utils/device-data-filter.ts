@@ -4,7 +4,7 @@ import type {
     DeviceDataTimeWindow,
 } from '../schemas/device-data-filter';
 import type { MacDataItem, MacDataSource } from '../schemas/mac-data';
-import { HOME_PRESENCE_DOMAINS } from '../schemas/home';
+import { isHomePresence } from '../schemas/home';
 import type { Notebook } from '../schemas/notebook';
 
 /** The notebook has members besides its owner, or is public. The owner is listed too. */
@@ -211,10 +211,25 @@ export function homeEntityId(item: MacDataItem): string | undefined {
     return typeof value === 'string' && value ? value : undefined;
 }
 
-/** People and device trackers: where someone is. */
+/** Where someone is, from the id alone (see `isHomePresence` for the whole rule). */
 export function isHomePresenceEntity(entityId: string): boolean {
-    const domain = entityId.split('.')[0] ?? '';
-    return (HOME_PRESENCE_DOMAINS as readonly string[]).includes(domain);
+    return isHomePresence({ entityId });
+}
+
+/** Where someone is, judged on the item's entity id, state, device class and area. */
+export function isHomePresenceItem(item: MacDataItem): boolean {
+    const entityId = homeEntityId(item);
+    if (!entityId) return false;
+    const text = (key: string) => {
+        const value = item.extra?.[key];
+        return typeof value === 'string' && value ? value : undefined;
+    };
+    return isHomePresence({
+        entityId,
+        state: text('state'),
+        deviceClass: text('deviceClass'),
+        area: text('area'),
+    });
 }
 
 /**
@@ -225,7 +240,7 @@ function homeItemMatches(item: MacDataItem, filter: DeviceDataFilter): boolean {
     const id = homeEntityId(item);
     if (!id) return false;
     if (filter.homeEntities?.includes(id)) return true;
-    if (isHomePresenceEntity(id) && !filter.includePresence) return false;
+    if (isHomePresenceItem(item) && !filter.includePresence) return false;
     if (filter.includeAll) return true;
     const area = item.extra?.['area'];
     return typeof area === 'string' && !!filter.homeAreas?.includes(area);
@@ -241,7 +256,7 @@ export function homeItemVisibleToBots(
 ): boolean {
     const id = homeEntityId(item);
     if (!id) return item.source !== 'home';
-    if (!isHomePresenceEntity(id)) return true;
+    if (!isHomePresenceItem(item)) return true;
     return !!filter && (!!filter.includePresence || !!filter.homeEntities?.includes(id));
 }
 

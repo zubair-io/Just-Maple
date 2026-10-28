@@ -39,7 +39,70 @@ export const HOME_CONTROL_DOMAINS = [
 export type HomeControlDomain = (typeof HOME_CONTROL_DOMAINS)[number];
 
 /** Where people are: never shared by default, and hidden from bots unless a page picks them. */
-export const HOME_PRESENCE_DOMAINS = ['person', 'device_tracker'] as const;
+export const HOME_PRESENCE_DOMAINS = ['person', 'device_tracker', 'zone'] as const;
+
+/** What the presence rule looks at: an entity id, and its state, class and area if known. */
+export interface HomeEntityFacts {
+    entityId: string;
+    state?: string;
+    deviceClass?: string;
+    area?: string;
+    name?: string;
+}
+
+/**
+ * Whether an entity tells where someone is. Off by default everywhere (page filters and
+ * bots), so this errs towards presence:
+ * - people, device trackers and zones;
+ * - groups whose state is home / not_home (a group of people or trackers);
+ * - `binary_sensor.*_presence`, and anything with device class `presence`;
+ * - device class `occupancy` without an area: not a room's sensor, so a person's;
+ * - phone sensors that give a place away: geocoded location, Wi-Fi SSID / BSSID.
+ */
+export function isHomePresence(entity: HomeEntityFacts): boolean {
+    const [domain = '', object = ''] = entity.entityId.split('.');
+    if ((HOME_PRESENCE_DOMAINS as readonly string[]).includes(domain)) return true;
+    if (domain === 'group' && (entity.state === 'home' || entity.state === 'not_home')) return true;
+    if (domain === 'binary_sensor' && /(^|_)presence(_|$)/.test(object)) return true;
+    if (entity.deviceClass === 'presence') return true;
+    if (entity.deviceClass === 'occupancy' && !entity.area) return true;
+    if (domain === 'sensor' && /geocoded_location|(^|_)b?ssid(_|$)|wifi_connection/.test(object))
+        return true;
+    return false;
+}
+
+/** Words that mean an entity opens or unlocks a way into the home. */
+const ENTRY_WORDS = new Set([
+    'garage',
+    'gate',
+    'gates',
+    'door',
+    'doors',
+    'lock',
+    'locks',
+    'opener',
+]);
+
+/**
+ * Actions that need the owner's second tap, every time (and that an autonomy setting may
+ * never run without asking):
+ * - every lock;
+ * - every scene and script: they can do anything, including unlocking, and Home
+ *   Assistant's exposure of a script says nothing about what it touches. In v1 they are
+ *   offered, but always as a double-confirm card;
+ * - covers with device class garage, gate or door;
+ * - covers and switches whose id or name says garage, gate, door, lock or opener
+ *   (`switch.garage_opener`, a relay wired to the gate).
+ */
+export function isSensitiveHomeEntity(entity: HomeEntityFacts): boolean {
+    const domain = entity.entityId.split('.')[0] ?? '';
+    if (domain === 'lock' || domain === 'scene' || domain === 'script') return true;
+    if (domain !== 'cover' && domain !== 'switch') return false;
+    if (['garage', 'gate', 'door'].includes(entity.deviceClass ?? '')) return true;
+    const words = `${entity.entityId} ${entity.name ?? ''}`.toLowerCase();
+    if (words.includes('garage') || words.includes('opener')) return true;
+    return words.split(/[^a-z]+/).some((word) => ENTRY_WORDS.has(word));
+}
 
 /**
  * The services each domain allows, with the one optional value each takes. The Mac

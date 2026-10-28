@@ -7,6 +7,7 @@ import {
     UploadTravelEstimatesSchema,
     MacDataSourceSchema,
     UpdateDeviceDataPageSchema,
+    isHomeStateItemId,
     type DeviceDataAccess,
     type JWTPayload,
     type MacDataSource,
@@ -255,6 +256,17 @@ export const deviceDataRoutes = new Elysia({ prefix: '/api' })
                 // Even the owner's own list shows only what they expose in Home Assistant.
                 pageQuery = { match: await homeExposureMatcher(ownerId) };
             }
+            // Home lists current states and changes separately, so a busy day of changes
+            // can't push devices off the first page.
+            const homeKind = query.homeKind;
+            if (homeKind && sources[0] === 'home' && pageQuery?.match) {
+                const match = pageQuery.match;
+                const wantState = homeKind === 'state';
+                pageQuery = {
+                    ...pageQuery,
+                    match: (item) => isHomeStateItemId(item.id) === wantState && match(item),
+                };
+            }
             // Which device collects it: shown to the person whose data it is.
             const collector =
                 ownerId === auth.user._id
@@ -294,6 +306,7 @@ export const deviceDataRoutes = new Elysia({ prefix: '/api' })
                 limit: t.Optional(t.Numeric({ minimum: 1, maximum: 500 })),
                 offset: t.Optional(t.Numeric({ minimum: 0 })),
                 order: t.Optional(t.Union([t.Literal('asc'), t.Literal('desc')])),
+                homeKind: t.Optional(t.Union([t.Literal('state'), t.Literal('change')])),
             }),
         },
     )

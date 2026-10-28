@@ -34,6 +34,8 @@ export interface DeviceItemsQuery {
   limit?: number;
   offset?: number;
   order?: 'asc' | 'desc';
+  /** Home only: current states or changes, each paged on its own. */
+  homeKind?: 'state' | 'change';
 }
 
 export interface DeviceItemsResult {

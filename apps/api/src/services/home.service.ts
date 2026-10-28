@@ -5,6 +5,7 @@ import {
     HOME_HVAC_MODES,
     HOME_SERVICES,
     isHomeStateItemId,
+    isSensitiveHomeEntity,
     type BotUIBlock,
     type BotUIResponse,
     type DeviceActionResult,
@@ -288,7 +289,7 @@ function toCall(
         return `Error: ${domain} devices can only be read, not changed.`;
     const service = typeof input.service === 'string' ? input.service.trim() : '';
     const services = HOME_SERVICES[domain];
-    if (!(service in services))
+    if (!Object.hasOwn(services, service))
         return `Error: ${domain} supports ${Object.keys(services).join(', ')}.`;
     const field = services[service] ?? null;
     let data: HomeServiceCall['data'];
@@ -304,10 +305,12 @@ function toCall(
     const extra = item.extra ?? {};
     const deviceClass = typeof extra['deviceClass'] === 'string' ? extra['deviceClass'] : '';
     const area = typeof extra['area'] === 'string' ? extra['area'] : undefined;
-    // Locks, garage doors and gates: the card asks twice.
-    const sensitive =
-        domain === 'lock' ||
-        (domain === 'cover' && ['garage', 'gate', 'door'].includes(deviceClass));
+    // Locks, scenes, scripts, garage doors, gates and their openers: the card asks twice.
+    const sensitive = isSensitiveHomeEntity({
+        entityId,
+        deviceClass,
+        name: item.title ?? undefined,
+    });
     return {
         entityId,
         domain,
