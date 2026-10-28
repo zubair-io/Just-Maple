@@ -370,16 +370,14 @@ describe('fetch_page only opens URLs it was given', () => {
         const ctx = context({
             provider: {
                 name: 't',
-                search: vi
-                    .fn()
-                    .mockResolvedValue([
-                        {
-                            title: 'Shop',
-                            url: 'https://shop.example/hours?lang=en',
-                            snippet: '',
-                            date: null,
-                        },
-                    ]),
+                search: vi.fn().mockResolvedValue([
+                    {
+                        title: 'Shop',
+                        url: 'https://shop.example/hours?lang=en',
+                        snippet: '',
+                        date: null,
+                    },
+                ]),
             },
         });
         await executeWebTool(ctx, 'web_search', { query: 'shop hours' });
