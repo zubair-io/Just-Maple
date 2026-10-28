@@ -29,13 +29,25 @@ const COLOR_KEYS = [
   'person',
   'place',
   'topic',
+  'event',
 ];
+
+/** A line's width at zoom 1: thicker with more or stronger reasons. */
+export function lineWidth(link: Pick<DataGraphLink, 'weight'>): number {
+  return 0.75 + Math.min(Math.max(link.weight, 0), 6) * 0.5;
+}
+
+/** Dashed when only the model says so. */
+export function isGuess(link: Pick<DataGraphLink, 'reasons'>): boolean {
+  return link.reasons.length > 0 && link.reasons.every((reason) => reason.madeBy === 'model');
+}
 
 /**
  * Draws the graph on a canvas with a d3 force layout: pan and zoom with the mouse,
- * wheel or touch, hover and click report nodes back. Canvas (not SVG) so ~2,000 nodes
- * stay smooth. Colors come from CSS variables on the canvas (`--graph-<kind>`), so dark
- * mode follows the theme.
+ * wheel or touch, hover and click report nodes back, and a click on a line reports the
+ * line. One line per pair, thicker with more or stronger reasons. Canvas (not SVG) so
+ * ~2,000 nodes stay smooth. Colors come from CSS variables on the canvas
+ * (`--graph-<kind>`), so dark mode follows the theme.
  */
 export class GraphCanvas {
   private nodes: CanvasNode[] = [];
@@ -50,6 +62,7 @@ export class GraphCanvas {
   private frame = 0;
   private hovered: string | null = null;
   private selected: string | null = null;
+  private selectedLink: string | null = null;
   /** The focused node and its neighbors; everything else is dimmed. */
   private lit: Set<string> | null = null;
   private fitted = false;
@@ -59,6 +72,8 @@ export class GraphCanvas {
     private readonly events: {
       hover: (id: string | null) => void;
       click: (id: string | null) => void;
+      /** A line was clicked (no node under the pointer). */
+      clickLink?: (id: string) => void;
     },
   ) {
     this.context = canvas.getContext?.('2d') ?? null;
@@ -139,9 +154,14 @@ export class GraphCanvas {
   }
 
   /** What's hovered and selected; their neighbors stay lit, the rest dims. */
-  setFocus(hovered: string | null, selected: string | null): void {
+  setFocus(
+    hovered: string | null,
+    selected: string | null,
+    selectedLink: string | null = null,
+  ): void {
     this.hovered = hovered;
     this.selected = selected;
+    this.selectedLink = selectedLink;
     const focus = hovered ?? selected;
     if (!focus) {
       this.lit = null;
@@ -211,6 +231,21 @@ export class GraphCanvas {
     return best?.id ?? null;
   }
 
+  /** The line under a point in the canvas, if any (nodes come first). */
+  linkAt(offsetX: number, offsetY: number): string | null {
+    const [x, y] = this.transform.invert([offsetX, offsetY]);
+    let best: { id: string; distance: number } | null = null;
+    for (const link of this.links) {
+      const a = link.source as CanvasNode;
+      const b = link.target as CanvasNode;
+      const distance = segmentDistance(x, y, a.x ?? 0, a.y ?? 0, b.x ?? 0, b.y ?? 0);
+      const reach = (lineWidth(link.link) / 2 + 4) / this.transform.k;
+      if (distance <= reach && (!best || distance < best.distance))
+        best = { id: link.id, distance };
+    }
+    return best?.id ?? null;
+  }
+
   /** Centers a node (after a click in the details panel). */
   centerOn(id: string): void {
     const node = this.byId.get(id);
@@ -239,14 +274,18 @@ export class GraphCanvas {
 
   private readonly onMove = (event: MouseEvent) => {
     const id = this.nodeAt(event.offsetX, event.offsetY);
-    this.canvas.style.cursor = id ? 'pointer' : 'grab';
+    const onLine = !id && !!this.events.clickLink && !!this.linkAt(event.offsetX, event.offsetY);
+    this.canvas.style.cursor = id || onLine ? 'pointer' : 'grab';
     if (id !== this.hovered) this.events.hover(id);
   };
 
   private readonly onLeave = () => this.events.hover(null);
 
   private readonly onClick = (event: MouseEvent) => {
-    this.events.click(this.nodeAt(event.offsetX, event.offsetY));
+    const id = this.nodeAt(event.offsetX, event.offsetY);
+    const link = id || !this.events.clickLink ? null : this.linkAt(event.offsetX, event.offsetY);
+    if (link) this.events.clickLink!(link);
+    else this.events.click(id);
   };
 
   private radius(node: CanvasNode): number {
@@ -289,15 +328,17 @@ export class GraphCanvas {
 
     const lit = this.lit;
     const focus = this.hovered ?? this.selected;
-    // Links: dimmed unless they touch the focus; the model's are dashed.
-    ctx.lineWidth = 1 / k;
+    // Lines: dimmed unless they touch the focus; thicker with more reasons; dashed when
+    // only the model says so; the selected one stands out.
     for (const link of this.links) {
       const a = link.source as CanvasNode;
       const b = link.target as CanvasNode;
-      const on = !lit || a.id === focus || b.id === focus;
-      ctx.globalAlpha = on ? (lit ? 0.9 : 0.45) : 0.08;
-      ctx.strokeStyle = lit && on ? colors['edgeLit']! : colors['edge']!;
-      ctx.setLineDash(link.link.madeBy === 'model' ? [3 / k, 3 / k] : []);
+      const chosen = link.id === this.selectedLink;
+      const on = chosen || !lit || a.id === focus || b.id === focus;
+      ctx.globalAlpha = on ? (lit || chosen ? 0.9 : 0.45) : 0.08;
+      ctx.strokeStyle = chosen ? colors['ring']! : lit && on ? colors['edgeLit']! : colors['edge']!;
+      ctx.lineWidth = (lineWidth(link.link) + (chosen ? 1.5 : 0)) / k;
+      ctx.setLineDash(isGuess(link.link) ? [3 / k, 3 / k] : []);
       ctx.beginPath();
       ctx.moveTo(a.x ?? 0, a.y ?? 0);
       ctx.lineTo(b.x ?? 0, b.y ?? 0);
@@ -338,4 +379,20 @@ export class GraphCanvas {
       ctx.fillText(text, node.x ?? 0, top);
     }
   }
+}
+
+/** How far a point is from a line segment. */
+function segmentDistance(
+  x: number,
+  y: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+): number {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const length = dx * dx + dy * dy;
+  const t = length ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / length)) : 0;
+  return Math.hypot(x - (ax + t * dx), y - (ay + t * dy));
 }

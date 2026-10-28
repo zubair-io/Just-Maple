@@ -130,6 +130,9 @@
           <div class="min-w-0 flex-1">
             <p class="m-0 font-sans text-xs text-[var(--color-text-muted)]">
               {{ kindLabel(node) }}
+              @if (node.isOwner) {
+                · Member
+              }
               @if (node.ownerName) {
                 · {{ node.ownerName }}'s
               }
@@ -152,12 +155,20 @@
           <p class="m-0 font-sans text-xs text-[var(--color-text-main)]">
             {{ node.at * 1000 | date: 'EEE, MMM d, y, h:mm a' }}
             @if (node.endAt !== undefined && node.endAt !== node.at) {
-              – {{ node.endAt * 1000 | date: 'h:mm a' }}
+              –
+              {{
+                node.endAt * 1000
+                  | date
+                    : 'h:mm
+    a'
+              }}
             }
           </p>
         }
         @if (node.location) {
-          <p class="m-0 font-sans text-xs text-[var(--color-text-muted)]">{{ node.location }}</p>
+          <p class="m-0 font-sans text-xs text-[var(--color-text-muted)]">
+            {{ node.location }}
+          </p>
         }
         @if (node.snippet) {
           <p
@@ -166,13 +177,42 @@
             {{ node.snippet }}
           </p>
         }
-        @if (node.kind === 'item' && node.pageId) {
+        @if (node.kind === 'person') {
+          <dl
+            class="m-0 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-sans text-xs"
+            data-testid="person"
+          >
+            @if (node.organization || node.jobTitle) {
+              <dt class="text-[var(--color-text-muted)]">Work</dt>
+              <dd class="m-0 text-[var(--color-text-main)]">
+                {{ workLine(node) }}
+              </dd>
+            }
+            @if (node.birthday) {
+              <dt class="text-[var(--color-text-muted)]">Birthday</dt>
+              <dd class="m-0 text-[var(--color-text-main)]">{{ node.birthday }}</dd>
+            }
+            @for (handle of node.handles ?? []; track handle) {
+              <dt class="text-[var(--color-text-muted)]">
+                {{ handle.includes('@') ? 'Email' : 'Phone' }}
+              </dt>
+              <dd class="m-0 break-all text-[var(--color-text-main)]">{{ handle }}</dd>
+            }
+            @for (relation of node.relations ?? []; track $index) {
+              <dt class="text-[var(--color-text-muted)] capitalize">
+                {{ relation.label || 'Related' }}
+              </dt>
+              <dd class="m-0 text-[var(--color-text-main)]">{{ relation.name }}</dd>
+            }
+          </dl>
+        }
+        @if (node.pageId) {
           <button
             type="button"
             class="h-8 w-fit rounded-lg border-none bg-[var(--color-primary)] px-3 font-sans text-xs font-medium text-white hover:bg-[var(--color-primary-hover)]"
             (click)="open(node)"
           >
-            Open
+            {{ node.kind === 'person' ? 'Open contact' : 'Open' }}
           </button>
         }
 
@@ -185,39 +225,157 @@
         <ul class="m-0 flex list-none flex-col gap-1 p-0" data-testid="links">
           @for (entry of selectedLinks(); track entry.link.id) {
             <li
-              class="group flex items-start gap-2 rounded-lg px-2 py-1.5 hover:bg-[var(--color-surface-hover)]"
+              class="flex flex-col gap-0.5 rounded-lg px-2 py-1.5 hover:bg-[var(--color-surface-hover)]"
             >
-              <span [class]="dotClass(colorKey(entry.other)) + ' mt-1'" aria-hidden="true"></span>
-              <button
-                type="button"
-                class="min-w-0 flex-1 cursor-pointer border-none bg-transparent p-0 text-left"
-                (click)="select(entry.other.id, true)"
-              >
-                <span class="block truncate font-sans text-xs text-[var(--color-text-main)]">{{
-                  entry.other.label
-                }}</span>
-                <span class="block font-sans text-[11px] text-[var(--color-text-muted)]">
-                  {{ entry.link.evidence }} ·
-                  @if (entry.link.madeBy === 'model') {
-                    model, {{ entry.link.confidence * 100 | number: '1.0-0' }}%
-                  } @else {
-                    certain
-                  }
-                </span>
-              </button>
-              <button
-                type="button"
-                class="graph-tool opacity-60 group-hover:opacity-100"
-                [disabled]="busy()"
-                (click)="removeLink(entry)"
-                [attr.aria-label]="'Remove link to ' + entry.other.label"
-                title="Remove link"
-              >
-                <span class="material-symbols-rounded text-base" aria-hidden="true">link_off</span>
-              </button>
+              <div class="flex items-start gap-2">
+                <span [class]="dotClass(colorKey(entry.other)) + ' mt-1'" aria-hidden="true"></span>
+                <button
+                  type="button"
+                  class="min-w-0 flex-1 cursor-pointer border-none bg-transparent p-0 text-left"
+                  (click)="select(entry.other.id, true)"
+                >
+                  <span class="block truncate font-sans text-xs text-[var(--color-text-main)]">{{
+                    entry.other.label
+                  }}</span>
+                </button>
+                <button
+                  type="button"
+                  class="graph-tool opacity-60 hover:opacity-100"
+                  (click)="selectLink(entry.link.id)"
+                  [attr.aria-label]="'Why linked to ' + entry.other.label"
+                  title="Why linked"
+                >
+                  <span class="material-symbols-rounded text-base" aria-hidden="true">info</span>
+                </button>
+              </div>
+              @for (reason of entry.link.reasons; track reason.id) {
+                <div class="group flex items-center gap-1 pl-4">
+                  <span class="min-w-0 flex-1 font-sans text-[11px] text-[var(--color-text-muted)]">
+                    {{ reason.evidence }} · {{ reasonSource(reason) }}
+                  </span>
+                  <button
+                    type="button"
+                    class="graph-tool opacity-60 group-hover:opacity-100"
+                    [disabled]="busy()"
+                    (click)="removeReason(entry.link, reason)"
+                    [attr.aria-label]="'Remove “' + reason.evidence + '”'"
+                    title="Remove this reason"
+                  >
+                    <span class="material-symbols-rounded text-base" aria-hidden="true"
+                      >link_off</span
+                    >
+                  </button>
+                </div>
+              }
             </li>
           } @empty {
             <li class="font-sans text-xs text-[var(--color-text-muted)]">No links shown.</li>
+          }
+        </ul>
+      </aside>
+    } @else if (selectedLink(); as pair) {
+      <aside
+        class="flex w-80 shrink-0 flex-col gap-3 overflow-y-auto border-l border-[var(--color-border)] bg-[var(--color-surface)] p-4 max-md:max-h-[50%] max-md:w-full max-md:border-l-0 max-md:border-t"
+        data-testid="reasons"
+        aria-label="Why they're linked"
+      >
+        <div class="flex items-start gap-2">
+          <div class="min-w-0 flex-1">
+            <p class="m-0 font-sans text-xs text-[var(--color-text-muted)]">
+              Linked by {{ pair.link.reasons.length }}
+              {{ pair.link.reasons.length === 1 ? 'reason' : 'reasons' }}
+            </p>
+            <h2
+              class="m-0 flex flex-wrap items-center gap-1 font-sans text-sm! font-bold text-[var(--color-text-main)]"
+            >
+              @for (end of [pair.source, pair.target]; track end.id; let last = $last) {
+                <button
+                  type="button"
+                  class="inline-flex cursor-pointer items-center gap-1 border-none bg-transparent p-0 text-left font-sans text-sm font-bold text-[var(--color-text-main)] hover:underline"
+                  (click)="select(end.id, true)"
+                >
+                  <span [class]="dotClass(colorKey(end))" aria-hidden="true"></span>
+                  {{ end.label }}
+                </button>
+                @if (!last) {
+                  <span class="text-[var(--color-text-muted)]" aria-hidden="true">↔</span>
+                }
+              }
+            </h2>
+          </div>
+          <button
+            type="button"
+            class="graph-tool"
+            (click)="selectLink(null)"
+            aria-label="Close reasons"
+          >
+            <span class="material-symbols-rounded text-lg" aria-hidden="true">close</span>
+          </button>
+        </div>
+        @if (actionError(); as error) {
+          <p class="m-0 font-sans text-xs text-[var(--color-error)]">{{ error }}</p>
+        }
+        <ul class="m-0 flex list-none flex-col gap-2 p-0">
+          @for (reason of pair.link.reasons; track reason.id) {
+            <li
+              class="group flex flex-col gap-1 rounded-lg border border-[var(--color-border)] px-3 py-2"
+              data-testid="reason"
+            >
+              <div class="flex items-start gap-2">
+                <div class="min-w-0 flex-1">
+                  <p
+                    class="m-0 font-sans text-[11px] font-bold uppercase tracking-wide text-[var(--color-text-muted)]"
+                  >
+                    {{ reasonKind(reason) }}
+                  </p>
+                  <p class="m-0 font-sans text-xs text-[var(--color-text-main)]">
+                    {{ reason.evidence }}
+                  </p>
+                  <p class="m-0 font-sans text-[11px] text-[var(--color-text-muted)]">
+                    @if (reason.lastAt !== undefined && reason.count !== undefined) {
+                      @if (reason.firstAt !== undefined && reason.firstAt !== reason.lastAt) {
+                        {{ reason.firstAt * 1000 | date: 'MMM d' }} –
+                      }
+                      last {{ reason.lastAt * 1000 | date: 'MMM d, h:mm a' }} ·
+                    }
+                    {{ reasonSource(reason) }}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  class="graph-tool opacity-60 group-hover:opacity-100"
+                  [disabled]="busy()"
+                  (click)="removeReason(pair.link, reason)"
+                  [attr.aria-label]="'Remove “' + reason.evidence + '”'"
+                  title="Remove this reason"
+                >
+                  <span class="material-symbols-rounded text-base" aria-hidden="true"
+                    >link_off</span
+                  >
+                </button>
+              </div>
+              @if (reason.examples?.length) {
+                <ul class="m-0 flex list-none flex-col gap-0.5 p-0" aria-label="Evidence">
+                  @for (example of reason.examples; track example.id) {
+                    <li class="flex items-center gap-1.5">
+                      <span [class]="dotClass(example.source ?? 'item')" aria-hidden="true"></span>
+                      <button
+                        type="button"
+                        class="min-w-0 flex-1 cursor-pointer truncate border-none bg-transparent p-0 text-left font-sans text-[11px] text-[var(--color-text-main)] hover:underline"
+                        (click)="open(example)"
+                      >
+                        {{ example.label }}
+                        @if (example.at !== undefined) {
+                          <span class="text-[var(--color-text-muted)]"
+                            >· {{ example.at * 1000 | date: 'MMM d' }}</span
+                          >
+                        }
+                      </button>
+                    </li>
+                  }
+                </ul>
+              }
+            </li>
           }
         </ul>
       </aside>

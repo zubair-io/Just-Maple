@@ -72,4 +72,84 @@ describe('ProactiveBotPanelComponent', () => {
     expect(fixture.componentInstance.briefTime()).toBe('07:15');
     expect(fixture.componentInstance.instructions()).toBe('Track school');
   });
+
+  it('starts from the default timing: wait up to 2 hours, quiet 10pm to 7am', () => {
+    const { fixture, root } = setup([]);
+    const panel = fixture.componentInstance;
+    expect(panel.everyItem()).toBe(false);
+    expect(panel.maxWaitMinutes()).toBe(120);
+    expect([panel.quietOn(), panel.quietStart(), panel.quietEnd()]).toEqual([
+      true,
+      '22:00',
+      '07:00',
+    ]);
+    const select = root.querySelector<HTMLSelectElement>('#proactive-max-wait')!;
+    expect(select.selectedOptions[0]!.textContent!.trim()).toBe('2 hours');
+  });
+
+  it('starts from the saved timing for this bot', () => {
+    const { fixture } = setup([], {
+      userBotId: 'bot1',
+      instructions: '',
+      enabled: true,
+      ownerUserId: 'u1',
+      maxWaitMinutes: 45,
+      quietHours: { enabled: false, start: '23:00', end: '06:30' },
+      everyItem: true,
+      updatedAt: '2026-10-26T00:00:00Z',
+    });
+    const panel = fixture.componentInstance;
+    expect(panel.maxWaitMinutes()).toBe(45);
+    expect(panel.waitOptions().map((o) => o.label)).toContain('45 minutes');
+    expect([panel.quietOn(), panel.quietStart(), panel.quietEnd()]).toEqual([
+      false,
+      '23:00',
+      '06:30',
+    ]);
+    expect(panel.everyItem()).toBe(true);
+  });
+
+  it('saves max wait, quiet hours and "every item"', async () => {
+    const { fixture, service, root } = setup([]);
+    const select = root.querySelector<HTMLSelectElement>('#proactive-max-wait')!;
+    select.value = '240';
+    select.dispatchEvent(new Event('change'));
+    const start = root.querySelector<HTMLInputElement>('[aria-label="Quiet hours start"]')!;
+    start.value = '21:30';
+    start.dispatchEvent(new Event('input'));
+    await fixture.componentInstance.save();
+    expect(service.save).toHaveBeenLastCalledWith(
+      'chat',
+      expect.objectContaining({
+        everyItem: false,
+        maxWaitMinutes: 240,
+        quietHours: { enabled: true, start: '21:30', end: '07:00' },
+      }),
+    );
+
+    // "Every item" hides the timing choices.
+    const everything = [...root.querySelectorAll('label')].find((l) =>
+      l.textContent!.includes('everything right away'),
+    )!;
+    const box = everything.querySelector('input')!;
+    box.checked = true;
+    box.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    expect(root.querySelector('#proactive-max-wait')).toBeNull();
+    await fixture.componentInstance.save();
+    expect(service.save).toHaveBeenLastCalledWith(
+      'chat',
+      expect.objectContaining({ everyItem: true }),
+    );
+  });
+
+  it('does not overwrite edits in progress when nothing it tracks changed', () => {
+    const { fixture } = setup([]);
+    fixture.componentInstance.maxWaitMinutes.set(480);
+    fixture.componentInstance.quietOn.set(false);
+    fixture.detectChanges();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.maxWaitMinutes()).toBe(480);
+    expect(fixture.componentInstance.quietOn()).toBe(false);
+  });
 });
