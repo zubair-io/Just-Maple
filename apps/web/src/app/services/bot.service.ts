@@ -75,6 +75,8 @@ export class BotService {
   // User bots (user-registered template bots)
   private readonly _userBots = signal<EnrichedUserBot[]>([]);
   private readonly _userBotsLoading = signal(false);
+  /** Whether the server has a web search key, so bots can be given web search. */
+  private readonly _webSearchAvailable = signal(false);
 
   // Custom bots (user-created webhook bots)
   private readonly _customBots = signal<CustomBot[]>([]);
@@ -85,6 +87,7 @@ export class BotService {
   readonly templatesLoading = this._templatesLoading.asReadonly();
   readonly userBots = this._userBots.asReadonly();
   readonly userBotsLoading = this._userBotsLoading.asReadonly();
+  readonly webSearchAvailable = this._webSearchAvailable.asReadonly();
   readonly customBots = this._customBots.asReadonly();
   readonly customBotsLoading = this._customBotsLoading.asReadonly();
 
@@ -135,17 +138,20 @@ export class BotService {
   loadUserBots(): Observable<EnrichedUserBot[]> {
     this._userBotsLoading.set(true);
 
-    return this.http.get<{ userBots: EnrichedUserBot[] }>('/api/user-bots').pipe(
-      tap((response) => {
-        this._userBots.set(response.userBots);
-        this._userBotsLoading.set(false);
-      }),
-      map((response) => response.userBots),
-      catchError((err) => {
-        this._userBotsLoading.set(false);
-        return of([]);
-      }),
-    );
+    return this.http
+      .get<{ userBots: EnrichedUserBot[]; webSearchAvailable?: boolean }>('/api/user-bots')
+      .pipe(
+        tap((response) => {
+          this._userBots.set(response.userBots);
+          this._webSearchAvailable.set(response.webSearchAvailable === true);
+          this._userBotsLoading.set(false);
+        }),
+        map((response) => response.userBots),
+        catchError((err) => {
+          this._userBotsLoading.set(false);
+          return of([]);
+        }),
+      );
   }
 
   registerBot(data: CreateUserBotInput): Observable<EnrichedUserBot> {

@@ -37,3 +37,4 @@ export * from './data-graph';
 export * from './calendar-proposal';
 export * from './bot-action';
 export * from './reply-draft';
+export * from './follow-up';

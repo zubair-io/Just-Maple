@@ -361,7 +361,8 @@ export interface PageDoc {
         | 'json'
         | 'canvas'
         | 'gmail'
-        | 'graph';
+        | 'graph'
+        | 'followups';
     title: string;
     content: any;
     version: number;
@@ -387,7 +388,8 @@ export interface CreatePageOptions {
         | 'json'
         | 'canvas'
         | 'gmail'
-        | 'graph';
+        | 'graph'
+        | 'followups';
     title?: string;
     content?: any;
     id?: string;

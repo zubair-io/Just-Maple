@@ -82,3 +82,6 @@ export const GraphPageGuard = createPageTypeGuard('graph');
 
 /** Guard that matches Activity pages (what bots did and proposed in the notebook) */
 export const ActivityPageGuard = createPageTypeGuard('activity');
+
+/** Guard that matches Follow-ups pages (promises and replies owed) */
+export const FollowUpsPageGuard = createPageTypeGuard('followups');

@@ -118,6 +118,24 @@ describe.runIf(mongoAvailable)('Bot Routes', () => {
             expect(data.userBots[0].templateName).toBe('Claude');
         });
 
+        it('says whether web search is available on this server', async () => {
+            const user = await createUserFixture();
+            const token = await getAuthToken(user._id.toString(), user.email);
+            const list = async () => {
+                const response = await app.handle(
+                    new Request('http://localhost/api/user-bots', {
+                        headers: { Authorization: `Bearer ${token}` },
+                    }),
+                );
+                return ((await response.json()) as any).webSearchAvailable;
+            };
+            vi.stubEnv('BRAVE_SEARCH_API_KEY', '');
+            expect(await list()).toBe(false);
+            vi.stubEnv('BRAVE_SEARCH_API_KEY', 'test-key');
+            expect(await list()).toBe(true);
+            vi.unstubAllEnvs();
+        });
+
         it('should not return other users bots', async () => {
             const user1 = await createUserFixture();
             const user2 = await createUserFixture();
@@ -363,6 +381,45 @@ describe.runIf(mongoAvailable)('Bot Routes', () => {
             expect(response.status).toBe(200);
             const data: any = await response.json();
             expect(data.userBot.config?.apiKey).toBe('***REDACTED***');
+        });
+
+        it('saves the web search switches and keeps the rest of the config', async () => {
+            const user = await createUserFixture();
+            const template = await createBotTemplateFixture();
+            const userBot = await createUserBotFixture({
+                userId: user._id.toString(),
+                templateId: template._id.toString(),
+                config: { apiKey: 'old-key', model: 'claude-haiku-5-5' },
+            });
+            const token = await getAuthToken(user._id.toString(), user.email);
+            const patch = (config: Record<string, unknown>) =>
+                app.handle(
+                    new Request(`http://localhost/api/user-bots/${userBot._id.toString()}`, {
+                        method: 'PATCH',
+                        headers: {
+                            Authorization: `Bearer ${token}`,
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ config }),
+                    }),
+                );
+
+            let response = await patch({ webSearch: true, webSearchProactive: false });
+            expect(response.status).toBe(200);
+            let data: any = await response.json();
+            expect(data.userBot.config).toMatchObject({
+                webSearch: true,
+                webSearchProactive: false,
+                model: 'claude-haiku-5-5',
+                apiKey: '***REDACTED***',
+            });
+
+            response = await patch({ webSearch: false });
+            data = await response.json();
+            expect(data.userBot.config.webSearch).toBe(false);
+
+            response = await patch({ webSearch: 'yes' });
+            expect(response.status).toBe(422);
         });
 
         it('should toggle bot enabled status', async () => {

@@ -27,6 +27,7 @@ export const PAGE_TYPE_LABELS: Record<string, string> = {
   aboutme: 'About me',
   graph: 'Graph',
   activity: 'Activity',
+  followups: 'Follow-ups',
 };
 
 /**
@@ -44,6 +45,7 @@ export const PAGE_TYPE_ICONS: Record<string, string> = {
   aboutme: 'person_heart',
   graph: 'hub',
   activity: 'history',
+  followups: 'assignment_return',
 };
 
 /**

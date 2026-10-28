@@ -32,6 +32,7 @@ import {
     type CreateBotTokenInput,
 } from '../repositories/bot-token.repo';
 import { botExecutor } from '../services/bot-executor.service';
+import { isWebSearchAvailable } from '../services/web-search.service';
 
 export const botRoutes = new Elysia({ prefix: '/api' })
     .use(jwtPlugin)
@@ -113,7 +114,8 @@ export const botRoutes = new Elysia({ prefix: '/api' })
             };
         });
 
-        return { userBots: enrichedBots };
+        // The web search switch only shows when the server has a search key.
+        return { userBots: enrichedBots, webSearchAvailable: isWebSearchAvailable() };
     })
 
     // Load available models for a draft or an owned bot. Saved keys stay on the server.
@@ -241,6 +243,8 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                         apiKey: t.Optional(t.String()),
                         isOAuthToken: t.Optional(t.Boolean()),
                         baseUrl: t.Optional(t.String({ maxLength: 2048 })),
+                        webSearch: t.Optional(t.Boolean()),
+                        webSearchProactive: t.Optional(t.Boolean()),
                         customSettings: t.Optional(t.Record(t.String(), t.Any())),
                     }),
                 ),
@@ -309,6 +313,8 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                         apiKey: t.Optional(t.String()),
                         isOAuthToken: t.Optional(t.Boolean()),
                         baseUrl: t.Optional(t.String({ maxLength: 2048 })),
+                        webSearch: t.Optional(t.Boolean()),
+                        webSearchProactive: t.Optional(t.Boolean()),
                         customSettings: t.Optional(t.Record(t.String(), t.Any())),
                     }),
                 ),
