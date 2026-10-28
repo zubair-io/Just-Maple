@@ -9,6 +9,8 @@ import type {
     UpdateMessageInput,
     SenderType,
     Mention,
+    MessageRevision,
+    ProactiveMessageMeta,
 } from '@maple/shared';
 import { findUsersByIds } from './user.repo';
 import { findPageById } from './page.repo';
@@ -41,6 +43,9 @@ interface MessageDocument {
     updatedAt: Date;
     editedAt?: Date;
     deletedAt?: Date;
+    proactiveMeta?: ProactiveMessageMeta;
+    revisedAt?: Date;
+    revisions?: Array<Omit<MessageRevision, 'at'> & { at: Date }>;
 }
 
 function getCollection(): Collection<MessageDocument> {
@@ -83,6 +88,16 @@ function toMessageResponse(
         updatedAt: doc.updatedAt.toISOString(),
         editedAt: doc.editedAt?.toISOString(),
         deletedAt: doc.deletedAt?.toISOString(),
+        ...(doc.proactiveMeta ? { proactiveMeta: doc.proactiveMeta } : {}),
+        ...(doc.revisedAt ? { revisedAt: doc.revisedAt.toISOString() } : {}),
+        ...(doc.revisions?.length
+            ? {
+                  revisions: doc.revisions.map((revision) => ({
+                      ...revision,
+                      at: revision.at.toISOString(),
+                  })),
+              }
+            : {}),
     };
 }
 
@@ -530,6 +545,7 @@ export async function createTopLevelBotMessage(data: {
     content: PageContent;
     botUI?: BotUIResponse;
     botModel?: string;
+    proactiveMeta?: ProactiveMessageMeta;
 }): Promise<Message> {
     const now = new Date();
     const messageId = generateMessageId();
@@ -545,6 +561,7 @@ export async function createTopLevelBotMessage(data: {
         content: data.content,
         botUI: data.botUI,
         botModel: data.botModel,
+        ...(data.proactiveMeta ? { proactiveMeta: data.proactiveMeta } : {}),
         createdAt: now,
         updatedAt: now,
     };
@@ -564,7 +581,64 @@ export async function createTopLevelBotMessage(data: {
         content: data.content,
         botUI: data.botUI,
         botModel: data.botModel,
+        ...(data.proactiveMeta ? { proactiveMeta: data.proactiveMeta } : {}),
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
     };
+}
+
+/** Earlier versions kept on a revised message: the first one, then the latest ones. */
+const MAX_REVISIONS = 10;
+
+/**
+ * A proactive bot rewrites its own top-level post in place (it was still unread and
+ * nothing came after it). The version it replaces is kept in `revisions`, the first
+ * version always. Null when the post is gone, isn't this bot's, has thread replies, or
+ * changed while the revision was written (the caller then posts a new message instead).
+ */
+export async function reviseBotMessage(
+    id: string,
+    userBotId: string,
+    update: {
+        content: PageContent;
+        botUI?: BotUIResponse;
+        botModel?: string;
+        proactiveMeta?: ProactiveMessageMeta;
+    },
+): Promise<Message | null> {
+    const current = await getCollection().findOne({
+        id,
+        userBotId: new ObjectId(userBotId),
+        deletedAt: { $exists: false },
+    });
+    // Only top-level posts without replies.
+    if (!current || current.threadId || current.hasThread) return null;
+    const previous = {
+        content: current.content,
+        ...(current.botUI ? { botUI: current.botUI } : {}),
+        at: current.revisedAt ?? current.createdAt,
+    };
+    const all = [...(current.revisions ?? []), previous];
+    const revisions =
+        all.length > MAX_REVISIONS ? [all[0]!, ...all.slice(-(MAX_REVISIONS - 1))] : all;
+    const now = new Date();
+    const result = await getCollection().findOneAndUpdate(
+        // Unchanged since it was read, and still without replies.
+        { _id: current._id, updatedAt: current.updatedAt, hasThread: { $ne: true } },
+        {
+            $set: {
+                content: update.content,
+                ...(update.botUI ? { botUI: update.botUI } : {}),
+                ...(update.botModel ? { botModel: update.botModel } : {}),
+                ...(update.proactiveMeta ? { proactiveMeta: update.proactiveMeta } : {}),
+                revisions,
+                revisedAt: now,
+                updatedAt: now,
+            },
+            // A revision without a card drops the old card.
+            ...(update.botUI ? {} : { $unset: { botUI: '' as const } }),
+        },
+        { returnDocument: 'after' },
+    );
+    return result ? toMessageResponse(result) : null;
 }

@@ -7,6 +7,7 @@ import type {
     PageContent,
     Message,
     Page,
+    ProactiveMessageMeta,
 } from '@maple/shared';
 import { isBotModel } from '@maple/shared';
 import { botUIPrompt, parseBotResponse, botUIToText } from './bot-ui.service';
@@ -31,6 +32,7 @@ import {
     markMessageHasThread,
     findMessagesByThreadId,
     findMessageById,
+    reviseBotMessage,
 } from '../repositories/message.repo';
 import { sendMessageReceivedNotification } from './notification.service';
 import { broadcastChatEvent } from './realtime.service';
@@ -1040,6 +1042,7 @@ export class BotExecutorService {
         content: PageContent,
         ctx: ExecutionContext,
         notify?: { ownerUserId: string },
+        proactiveMeta?: ProactiveMessageMeta,
     ): Promise<Message> {
         const message = await createTopLevelBotMessage({
             pageId: page.id,
@@ -1051,6 +1054,7 @@ export class BotExecutorService {
             content,
             botUI: ctx.variables.$botUI as Message['botUI'],
             botModel: ctx.variables.$model as string | undefined,
+            ...(proactiveMeta ? { proactiveMeta } : {}),
         });
         await this.attachProposalCards(ctx, page.id, message.id);
         if (page.notebookId) {
@@ -1082,6 +1086,11 @@ export class BotExecutorService {
      * One proactive pass for a page: the bot reads new Mac data with its standing
      * instructions and either posts a message or stays quiet (replies NO_UPDATE).
      * Returns the posted message, or null when there was nothing worth saying.
+     *
+     * With `revise`, the reply replaces that earlier post in place (it was still unread):
+     * open clients get the normal edit event and nobody gets a new notification, unless
+     * `revise.push` says what changed (urgency rose), which goes to the owner as one push.
+     * If the post can no longer be revised (someone replied meanwhile), a new one goes out.
      */
     async runProactive(params: {
         page: Page;
@@ -1091,6 +1100,8 @@ export class BotExecutorService {
         system: string;
         prompt: string;
         previousMessages: Message[];
+        proactiveMeta?: ProactiveMessageMeta;
+        revise?: { messageId: string; push?: string };
     }): Promise<Message | null> {
         const llm = params.template.definition.actions.find((action) => action.type === 'llm');
         if (!llm || !params.page.notebookId) return null;
@@ -1121,9 +1132,66 @@ export class BotExecutorService {
         const raw = String(ctx.variables.$response || '').trim();
         if (!raw || /^NO_UPDATE\b/i.test(raw)) return null;
         const content = await this.prepareResponse(ctx);
-        return this.postTopLevel(params.page, params.userBot, params.template, content, ctx, {
-            ownerUserId: params.macData.userId,
+        if (params.revise) {
+            const revised = await this.reviseTopLevel(params, content, ctx);
+            if (revised) return revised;
+        }
+        return this.postTopLevel(
+            params.page,
+            params.userBot,
+            params.template,
+            content,
+            ctx,
+            { ownerUserId: params.macData.userId },
+            params.proactiveMeta,
+        );
+    }
+
+    /** Rewrites an unread proactive post; null when it can't be (it then posts anew). */
+    private async reviseTopLevel(
+        params: {
+            page: Page;
+            userBot: UserBot;
+            template: BotTemplate;
+            macData: MacDataToolContext;
+            proactiveMeta?: ProactiveMessageMeta;
+            revise?: { messageId: string; push?: string };
+        },
+        content: PageContent,
+        ctx: ExecutionContext,
+    ): Promise<Message | null> {
+        const { page, userBot, template, revise } = params;
+        if (!revise || !page.notebookId) return null;
+        const message = await reviseBotMessage(revise.messageId, userBot._id, {
+            content,
+            botUI: ctx.variables.$botUI as Message['botUI'],
+            botModel: ctx.variables.$model as string | undefined,
+            ...(params.proactiveMeta ? { proactiveMeta: params.proactiveMeta } : {}),
         });
+        if (!message) return null;
+        await this.attachProposalCards(ctx, page.id, message.id);
+        // The normal edit path: open clients replace the message, card included.
+        await broadcastChatEvent(page.notebookId, {
+            pageId: page.id,
+            action: 'edited',
+            data: message,
+            notebookId: page.notebookId,
+            userId: userBot.userId,
+            timestamp: new Date().toISOString(),
+        });
+        if (revise.push) {
+            await sendMessageReceivedNotification(
+                params.macData.userId,
+                page.notebookId,
+                page.id,
+                message._id,
+                undefined,
+                userBot.displayName || template.name,
+                template.avatar,
+                markdownToProseMirror(`Updated: ${revise.push}`),
+            ).catch(() => {});
+        }
+        return message;
     }
 
     /**

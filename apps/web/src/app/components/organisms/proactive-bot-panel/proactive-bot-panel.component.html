@@ -73,6 +73,71 @@
     <span class="text-[var(--color-text-muted)]">Today's schedule and what needs you.</span>
   </div>
 
+  <fieldset
+    class="m-0 flex flex-col gap-2 border-0 p-0 font-sans text-xs text-[var(--color-text-main)]"
+  >
+    <legend class="mb-1 p-0 font-semibold">When to tell you</legend>
+    <p class="m-0 leading-relaxed text-[var(--color-text-muted)]">
+      Urgent news (a question for you, a schedule change, something happening soon) comes right
+      away. The rest is saved up and sent together. If you haven't read the last update yet, it's
+      revised instead of adding another.
+    </p>
+    <label class="flex items-center gap-1.5">
+      <input
+        type="checkbox"
+        [checked]="everyItem()"
+        (change)="everyItem.set($any($event.target).checked)"
+      />
+      Tell me about everything right away
+    </label>
+    @if (!everyItem()) {
+      <div class="flex flex-wrap items-center gap-2">
+        <label for="proactive-max-wait">Wait at most</label>
+        <select
+          id="proactive-max-wait"
+          [value]="maxWaitMinutes()"
+          (change)="maxWaitMinutes.set(+$any($event.target).value)"
+          class="h-7 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 font-sans text-xs text-[var(--color-text-main)]"
+        >
+          @for (option of waitOptions(); track option.value) {
+            <option [value]="option.value" [selected]="option.value === maxWaitMinutes()">
+              {{ option.label }}
+            </option>
+          }
+        </select>
+        <span class="text-[var(--color-text-muted)]">before sending what's saved up.</span>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <label class="flex items-center gap-1.5 font-semibold">
+          <input
+            type="checkbox"
+            [checked]="quietOn()"
+            (change)="quietOn.set($any($event.target).checked)"
+          />
+          Quiet hours
+        </label>
+        <input
+          type="time"
+          aria-label="Quiet hours start"
+          [value]="quietStart()"
+          [disabled]="!quietOn()"
+          (input)="quietStart.set($any($event.target).value)"
+          class="h-7 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 font-sans text-xs text-[var(--color-text-main)] disabled:opacity-50"
+        />
+        <span>to</span>
+        <input
+          type="time"
+          aria-label="Quiet hours end"
+          [value]="quietEnd()"
+          [disabled]="!quietOn()"
+          (input)="quietEnd.set($any($event.target).value)"
+          class="h-7 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 font-sans text-xs text-[var(--color-text-main)] disabled:opacity-50"
+        />
+        <span class="text-[var(--color-text-muted)]">Only urgent news then.</span>
+      </div>
+    }
+  </fieldset>
+
   @if (error()) {
     <p class="m-0 font-sans text-xs text-[var(--color-primary)]" role="alert">{{ error() }}</p>
   }

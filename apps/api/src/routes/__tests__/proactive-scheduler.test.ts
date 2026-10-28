@@ -17,10 +17,13 @@ vi.mock('../../services/proactive-bot.service', () => ({
     runDailyBrief: vi.fn().mockResolvedValue(true),
     sendLeaveReminder: vi.fn().mockResolvedValue(true),
     askAboutMeQuestion: vi.fn().mockResolvedValue(true),
+    flushPendingNews: vi.fn().mockResolvedValue(true),
 }));
 
+import { mergeIntoPile, savePile } from '../../repositories/proactive-pile.repo';
 import {
     askAboutMeQuestion,
+    flushPendingNews,
     runDailyBrief,
     sendLeaveReminder,
 } from '../../services/proactive-bot.service';
@@ -464,6 +467,65 @@ describe.runIf(mongoAvailable)('scheduled proactive messages and named places', 
             } as never);
             await tick(at('17:32'));
             expect(askAboutMeQuestion).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('news that waited its maximum', () => {
+        const waitSince = (local: string) =>
+            savePile(
+                chatPageId,
+                userId,
+                mergeIntoPile(
+                    [],
+                    [
+                        {
+                            kind: 'added',
+                            item: {
+                                id: 'mail:1',
+                                source: 'mail',
+                                when: '',
+                                snippet: 'Hi',
+                                score: 0,
+                            },
+                        },
+                    ],
+                    at(local),
+                ),
+                { urgency: 1 },
+                at(local),
+            );
+
+        it('sends one summary two hours after the oldest item arrived', async () => {
+            await waitSince('10:00');
+            await tick(at('11:59'));
+            expect(flushPendingNews).not.toHaveBeenCalled();
+            await tick(at('12:00'));
+            await tick(at('12:01')); // claimed once
+            expect(flushPendingNews).toHaveBeenCalledTimes(1);
+            expect(vi.mocked(flushPendingNews).mock.calls[0]![0].id).toBe(chatPageId);
+        });
+
+        it('waits through quiet hours, and for a brief coming up soon', async () => {
+            await waitSince('19:00');
+            await tick(at('23:00'));
+            await tick(new Date('2026-10-27T06:59:00-04:00'));
+            // Quiet hours are over, but the 07:30 brief takes the pile in.
+            await tick(new Date('2026-10-27T07:05:00-04:00'));
+            expect(flushPendingNews).not.toHaveBeenCalled();
+            await testDb!
+                .collection('pages')
+                .updateOne({ id: chatPageId }, { $unset: { 'proactive.briefTime': '' } });
+            await tick(new Date('2026-10-27T07:06:00-04:00'));
+            expect(flushPendingNews).toHaveBeenCalledTimes(1);
+        });
+
+        it("uses the chat's own maximum", async () => {
+            await testDb!
+                .collection('pages')
+                .updateOne({ id: chatPageId }, { $set: { 'proactive.maxWaitMinutes': 30 } });
+            await waitSince('10:00');
+            await tick(at('10:31'));
+            expect(flushPendingNews).toHaveBeenCalledTimes(1);
         });
     });
 });

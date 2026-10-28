@@ -696,6 +696,20 @@ Key files: `calendar-proposal.service.ts` / `.repo.ts` / `routes/calendar-propos
 
 ---
 
+## Proactive Timing ("now or wait")
+
+A proactive bot doesn't post about every batch of device news. It decides whether the user needs to hear it now.
+
+1. Each batch (about 60 seconds of uploads) joins the chat's **pending pile** (`proactive_piles`, one per chat, in the database). The whole pile is then re-scored: one cheap triage call (`proactive-triage.service.ts`, server key, `PROACTIVE_TRIAGE_MODEL`) over short summaries of each item, plus signals found in code (calendar clashes, events changed that start within a day, threads waiting on the user, big piles).
+2. **Now** means time-sensitive, a direct question or request, a schedule change or conflict, or something from a close person that needs a reply. A calendar clash is always now. Then the bot writes one message about the whole pile, and the covered items leave it.
+3. Otherwise the pile waits: until a later arrival tips it, its oldest item has waited `maxWaitMinutes` (default 2 hours; the scheduler's `flushWaitingNews` sends a summary), or the morning brief takes it in. **Quiet hours** (default 22:00–07:00, owner's zone) and the hour before the brief hold everything except "now".
+4. **Revising:** if the bot's latest post in the chat is a news post the **owner** hasn't read (read marker older than its last version), nothing was posted after it, nobody replied in its thread, and it's under 12 hours old, the new message replaces it (`reviseBotMessage`, broadcast as `edited`, shown as "Updated 3:40 PM"). Earlier versions stay in `revisions`. No new notification, unless urgency rose: then one push, "Updated: <what changed>". Briefs, leave reminders and About me questions are never revised.
+5. Triage calls are capped per chat per day (`PROACTIVE_TRIAGE_BUDGET`, default 60); past it, or without a key, only the code signals decide (so only clashes go now). **Every item** (`everyItem`) turns all of this off for a chat.
+
+Settings live on `page.proactive` (`maxWaitMinutes`, `quietHours`, `everyItem`), edited in the proactive bot panel. Key files: `proactive-bot.service.ts` ("Now or wait"), `proactive-triage.service.ts`, `proactive-pile.repo.ts`, `proactive-scheduler.service.ts`, `bot-executor.service.ts` (`runProactive` `revise`).
+
+---
+
 ## Quick Reference
 
 | Do                             | Don't                               |

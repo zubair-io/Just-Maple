@@ -31,6 +31,22 @@ vi.mock('../calendar-overlap.service', () => ({
     overlapNewsFor: vi.fn(),
     briefOverlapsFor: vi.fn().mockResolvedValue({ notes: [], release: vi.fn() }),
 }));
+// Timing is covered in proactive-timing.test.ts; here every batch is triaged "now".
+vi.mock('../../repositories/proactive-pile.repo', async (importOriginal) => ({
+    ...(await importOriginal<object>()),
+    getPile: vi.fn().mockResolvedValue(null),
+    savePile: vi.fn(),
+    removeFromPile: vi.fn(),
+    takeTriageCall: vi.fn().mockResolvedValue(true),
+}));
+vi.mock('../../repositories/unread.repo', () => ({
+    getLastReadAtByPageId: vi.fn().mockResolvedValue(null),
+}));
+vi.mock('../proactive-triage.service', async (importOriginal) => ({
+    ...(await importOriginal<object>()),
+    triageModelAvailable: () => true,
+    triagePile: vi.fn().mockResolvedValue({ now: true, urgency: 2, drop: [] }),
+}));
 
 import { maybeAutoReply, handleDeviceDataChanges, runDailyBrief } from '../proactive-bot.service';
 import { briefOverlapsFor, overlapNewsFor } from '../calendar-overlap.service';
