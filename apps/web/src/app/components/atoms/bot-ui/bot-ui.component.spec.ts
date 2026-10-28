@@ -4,6 +4,7 @@ import { signal } from '@angular/core';
 import type { BotUIResponse } from '@maple/shared';
 import { CalendarProposalService } from '../../../services/calendar-proposal.service';
 import { HomeProposalService } from '../../../services/home-proposal.service';
+import { BotActionService } from '../../../services/bot-action.service';
 
 const savedResponse: BotUIResponse = {
   version: 1,
@@ -126,6 +127,32 @@ describe('saved OpenUI replies', () => {
     expect(host.querySelector('app-home-proposal-card h3')?.textContent).toBe('Run Movie');
     expect(load).toHaveBeenCalledWith('9a1e3a52-6c55-4a8e-9b1a-0d4f3c2b1a00');
     expect(host.querySelector('[role=status]')?.textContent ?? '').not.toContain('respond as text');
+    fixture.destroy();
+  });
+
+  it('renders "Done · Undo" cards from the server, with the saved summary', async () => {
+    const load = vi.fn();
+    await TestBed.configureTestingModule({
+      imports: [BotUIComponent],
+      providers: [{ provide: BotActionService, useValue: { actions: signal({}), load } }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(BotUIComponent);
+    fixture.componentRef.setInput('response', {
+      version: 1,
+      format: 'openui',
+      blocks: [
+        {
+          type: 'action_receipt',
+          actionId: '7d1e3a52-6c55-4a8e-9b1a-0d4f3c2b1a00',
+          summary: '“Pizza party” · Wed, Oct 28',
+        },
+      ],
+    } satisfies BotUIResponse);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const host: HTMLElement = fixture.nativeElement;
+    expect(host.querySelector('app-action-receipt-card')?.textContent).toContain('Pizza party');
+    expect(load).toHaveBeenCalledWith('7d1e3a52-6c55-4a8e-9b1a-0d4f3c2b1a00');
     fixture.destroy();
   });
 });

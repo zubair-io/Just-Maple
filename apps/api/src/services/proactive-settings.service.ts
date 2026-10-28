@@ -2,6 +2,7 @@ import type { Page, ProactiveBotSettings, UpdateProactiveBotInput } from '@maple
 import { findPageByIdForBot, setPageProactive } from '../repositories/page.repo';
 import { findUserBotById } from '../repositories/user-bot.repo';
 import { findBotTemplateById } from '../repositories/bot-template.repo';
+import { clearPile } from '../repositories/proactive-pile.repo';
 
 export const MAX_PROACTIVE_INSTRUCTIONS = 8000;
 
@@ -51,11 +52,42 @@ export async function saveProactiveSettings(
         enabled: input.enabled,
         ownerUserId: userId,
         ...(input.briefTime ? { briefTime: input.briefTime } : {}),
+        ...timingSettings(input, page.proactive),
         updatedAt: new Date().toISOString(),
     };
     const updated = await setPageProactive(page.id, settings);
     if (!updated) throw new ProactiveSettingsError('Page not found.', 404);
+    // Turned off: news it was holding back isn't told later.
+    if (!settings.enabled) await clearPile(page.id);
     return updated;
+}
+
+/**
+ * The timing options: what the request sets, else what the chat had (older clients don't
+ * send them, and saving instructions alone shouldn't reset them).
+ */
+function timingSettings(
+    input: UpdateProactiveBotInput,
+    current: ProactiveBotSettings | undefined,
+): Pick<ProactiveBotSettings, 'maxWaitMinutes' | 'quietHours' | 'everyItem'> {
+    const maxWaitMinutes = input.maxWaitMinutes ?? current?.maxWaitMinutes;
+    const quietHours = input.quietHours ?? current?.quietHours;
+    const everyItem = input.everyItem ?? current?.everyItem;
+    return {
+        ...(maxWaitMinutes !== undefined
+            ? { maxWaitMinutes: Math.min(Math.max(Math.round(maxWaitMinutes), 5), 1440) }
+            : {}),
+        ...(quietHours
+            ? {
+                  quietHours: {
+                      enabled: quietHours.enabled,
+                      start: quietHours.start,
+                      end: quietHours.end,
+                  },
+              }
+            : {}),
+        ...(everyItem !== undefined ? { everyItem } : {}),
+    };
 }
 
 export async function clearProactiveSettings(
@@ -66,6 +98,7 @@ export async function clearProactiveSettings(
     assertCanChange(page, userId, options.isNotebookOwner);
     const updated = await setPageProactive(page.id, null);
     if (!updated) throw new ProactiveSettingsError('Page not found.', 404);
+    await clearPile(page.id);
     return updated;
 }
 

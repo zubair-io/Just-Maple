@@ -256,6 +256,30 @@
                     <span>Graph</span>
                   </button>
                 }
+                <!-- One Activity per notebook: what bots did and proposed here -->
+                @if (!hasActivityPage()) {
+                  <button
+                    (click)="newPageDropdownOpen.set(false); createActivityPage()"
+                    class="flex items-center gap-2 w-full h-8 px-2 box-border font-sans text-xs text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] border-none bg-transparent rounded-lg cursor-pointer text-left transition-colors"
+                  >
+                    <span class="material-symbols-rounded text-sm text-[var(--color-text-muted)]"
+                      >history</span
+                    >
+                    <span>Activity</span>
+                  </button>
+                }
+                <!-- One Follow-ups per notebook: promises and replies owed -->
+                @if (!hasFollowUpsPage()) {
+                  <button
+                    (click)="newPageDropdownOpen.set(false); createFollowUpsPage()"
+                    class="flex items-center gap-2 w-full h-8 px-2 box-border font-sans text-xs text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] border-none bg-transparent rounded-lg cursor-pointer text-left transition-colors"
+                  >
+                    <span class="material-symbols-rounded text-sm text-[var(--color-text-muted)]"
+                      >assignment_return</span
+                    >
+                    <span>Follow-ups</span>
+                  </button>
+                }
               }
             </div>
           }

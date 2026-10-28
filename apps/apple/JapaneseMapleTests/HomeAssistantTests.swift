@@ -828,6 +828,7 @@ private final class NoCalendar: CalendarWriting, @unchecked Sendable {
     func create(_ event: DeviceAction.Event, calendarId: String?, marker: URL) throws -> WrittenCalendarEvent {
         throw CalendarActionError.noCalendar
     }
+    func remove(identifier: String, marker: URL, around start: Date) throws -> Bool { false }
 }
 
 private final class RecordingPerformer: HomeActionPerforming, @unchecked Sendable {

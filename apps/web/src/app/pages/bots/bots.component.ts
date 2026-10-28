@@ -20,6 +20,8 @@ import {
 import { Clipboard } from '@angular/cdk/clipboard';
 import { ProfileAvatarComponent } from '../../components/atoms/profile-avatar/profile-avatar.component';
 import { SettingsHeaderComponent, DialogService } from '../../components';
+import { BotAutonomyComponent } from '../../components/organisms/bot-autonomy/bot-autonomy.component';
+import { ActionLogComponent } from '../../components/organisms/action-log/action-log.component';
 import {
   type BotModelOption,
   type BotTemplate,
@@ -31,7 +33,14 @@ import { environment } from '../../../environments/environment';
 @Component({
   selector: 'app-bots',
   standalone: true,
-  imports: [CommonModule, FormsModule, ProfileAvatarComponent, SettingsHeaderComponent],
+  imports: [
+    CommonModule,
+    FormsModule,
+    ProfileAvatarComponent,
+    SettingsHeaderComponent,
+    BotAutonomyComponent,
+    ActionLogComponent,
+  ],
   templateUrl: './bots.component.html',
   changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './bots.component.scss',
@@ -79,6 +88,10 @@ export class BotsComponent implements OnInit, OnDestroy {
   readonly responseMode = signal<'auto' | 'text'>('auto');
   readonly editModel = signal('');
   readonly editResponseMode = signal<'auto' | 'text'>('auto');
+  /** Web search is off by default; the owner turns it on per bot. */
+  readonly editWebSearch = signal(false);
+  readonly editWebSearchProactive = signal(false);
+  readonly webSearchAvailable = this.botService.webSearchAvailable;
 
   readonly registerModels = signal<BotModelOption[]>([]);
   readonly editModels = signal<BotModelOption[]>([]);
@@ -106,6 +119,10 @@ export class BotsComponent implements OnInit, OnDestroy {
   }
   supportsModelSelection(templateId?: string): boolean {
     return ['anthropic', 'openai', 'openai-compatible'].includes(this.providerOf(templateId) ?? '');
+  }
+  /** AI bots that call tools can search the web (not Inception, which has no tools). */
+  supportsWebSearch(templateId?: string): boolean {
+    return this.supportsModelSelection(templateId);
   }
   /** Custom-server bots take a server URL and a typed model name. */
   usesCustomServer(templateId?: string): boolean {
@@ -367,6 +384,8 @@ export class BotsComponent implements OnInit, OnDestroy {
         ),
     );
     this.editResponseMode.set(bot.config?.responseMode || 'auto');
+    this.editWebSearch.set(bot.config?.webSearch === true);
+    this.editWebSearchProactive.set(bot.config?.webSearchProactive === true);
     this.editApiKey.set('');
     this.editDisplayName.set(bot.displayName ?? '');
     this.editBaseUrl.set(bot.config?.baseUrl ?? '');
@@ -402,6 +421,12 @@ export class BotsComponent implements OnInit, OnDestroy {
     updateData.config = {
       model: this.editModel().trim() || undefined,
       responseMode: this.editResponseMode(),
+      ...(this.webSearchAvailable() && this.supportsWebSearch(bot.templateId)
+        ? {
+            webSearch: this.editWebSearch(),
+            webSearchProactive: this.editWebSearch() && this.editWebSearchProactive(),
+          }
+        : {}),
       ...(this.editApiKey().trim() ? { apiKey: this.editApiKey().trim() } : {}),
       ...(this.usesCustomServer(bot.templateId) ? { baseUrl: this.editBaseUrl().trim() } : {}),
     };

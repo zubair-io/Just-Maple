@@ -7,11 +7,13 @@ import type {
     PageContent,
     Message,
     Page,
+    ProactiveMessageMeta,
 } from '@maple/shared';
 import { isBotModel } from '@maple/shared';
 import { botUIPrompt, parseBotResponse, botUIToText } from './bot-ui.service';
 import { attachProposals, withProposalCards } from './calendar-proposal.service';
 import { attachHomeProposalCards, withHomeProposalCards } from './home.service';
+import { attachActions, withActionReceipts } from './bot-action.service';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { SDKAssistantMessage } from '@anthropic-ai/claude-agent-sdk';
 import { findBotTemplateById } from '../repositories/bot-template.repo';
@@ -32,8 +34,10 @@ import {
     markMessageHasThread,
     findMessagesByThreadId,
     findMessageById,
+    reviseBotMessage,
 } from '../repositories/message.repo';
 import { sendMessageReceivedNotification } from './notification.service';
+import { getLastReadAtByPageId } from '../repositories/unread.repo';
 import { broadcastChatEvent } from './realtime.service';
 import { extractTextFromContent } from '../utils/content-utils';
 import { markdownToProseMirror } from '../utils/markdown-to-prosemirror';
@@ -57,6 +61,15 @@ import {
 import { resolveEndpoint, validateUrl } from '../utils/url-safety';
 import { findPageByIdForBot } from '../repositories/page.repo';
 import { appendProactiveInstruction } from './proactive-settings.service';
+import {
+    executeWebTool,
+    isWebTool,
+    webSearchSystemPrompt,
+    webSearchToolDefinitions,
+    webToolContextFor,
+    withSourcesList,
+    type WebToolContext,
+} from './web-search.service';
 
 // Configuration constants
 const DEFAULT_LLM_MODEL = process.env.DEFAULT_LLM_MODEL || 'claude-sonnet-4-20250514';
@@ -71,6 +84,8 @@ interface ExecutionContext {
     variables: Record<string, unknown>;
     /** Local Mac data for this run; undefined until looked up, null when there is none. */
     macData?: MacDataToolContext | null;
+    /** Set for proactive runs, which may search the web only with their own switch. */
+    proactive?: boolean;
 }
 
 /**
@@ -452,15 +467,31 @@ export class BotExecutorService {
         // iMessage, Mail and Calendar on the user's Mac, when this notebook has Mac pages.
         const macData = await this.macDataContextFor(ctx);
         if (macData) systemPrompt = `${systemPrompt || ''}\n\n${macDataSystemPrompt(macData)}`;
+        // Web search, for bots that have it turned on (and a server search key).
+        const web = this.webToolsFor(ctx, provider);
+        // Without tool calling there is no web access, so that prompt never mentions it.
+        const systemWithoutWeb = systemPrompt;
+        if (web) systemPrompt = `${systemPrompt || ''}\n\n${webSearchSystemPrompt(web)}`;
+        // One tool set for every provider: local data and web tools side by side.
+        const tools = [
+            ...(macData ? macDataToolDefinitions(macData) : []),
+            ...(web ? webSearchToolDefinitions(web) : []),
+        ];
+        const execute = (name: string, input: Record<string, unknown>) =>
+            web && isWebTool(name)
+                ? executeWebTool(web, name, input)
+                : macData
+                  ? executeMacDataTool(macData, name, input)
+                  : Promise.resolve(JSON.stringify({ error: `Unknown tool ${name}` }));
         // Without tool calling, search once with the request and include the results.
         const withSearchResults = async () =>
             macData?.sources.length
-                ? `${systemPrompt}\n\nSearch results for the user's request:\n${await executeMacDataTool(
+                ? `${systemWithoutWeb}\n\nSearch results for the user's request:\n${await executeMacDataTool(
                       macData,
                       'search_local_data',
                       { query: userPrompt.slice(0, 500) },
                   )}`
-                : systemPrompt;
+                : systemWithoutWeb;
 
         if (endpoint) {
             const call = {
@@ -476,13 +507,13 @@ export class BotExecutorService {
                     ctx.config?.responseMode === 'text' ? 1024 : 4096,
                 ),
             };
-            if (macData && provider === 'openai-compatible') {
+            if (tools.length && provider === 'openai-compatible') {
                 try {
                     response = await runChatCompletionsWithTools({
                         ...call,
                         system: systemPrompt,
-                        tools: macDataToolDefinitions(macData),
-                        execute: (name, input) => executeMacDataTool(macData, name, input),
+                        tools,
+                        execute,
                     });
                 } catch (error) {
                     // Many servers or models reject tools; answer from one search instead.
@@ -496,7 +527,7 @@ export class BotExecutorService {
             } else {
                 response = await runChatCompletions({ ...call, system: await withSearchResults() });
             }
-        } else if (macData) {
+        } else if (tools.length) {
             const isOAuthToken = provider === 'anthropic' && (ctx.config?.isOAuthToken || false);
             const loop = {
                 apiKey,
@@ -509,9 +540,8 @@ export class BotExecutorService {
                     { role: 'user' as const, content: userPrompt },
                 ],
                 maxTokens: Math.max(config.maxTokens || 1024, 4096),
-                tools: macDataToolDefinitions(macData),
-                execute: (name: string, input: Record<string, unknown>) =>
-                    executeMacDataTool(macData, name, input),
+                tools,
+                execute,
             };
             response =
                 provider === 'openai'
@@ -552,6 +582,9 @@ export class BotExecutorService {
                 ),
             });
         }
+
+        // Answers built on web results always link their sources.
+        response = withSourcesList(response, web);
 
         // Store result in output variable
         if (action.outputVariable) {
@@ -606,6 +639,23 @@ export class BotExecutorService {
         }
         ctx.macData = macData;
         return macData;
+    }
+
+    /**
+     * Web tools for one LLM action, new each time so limits and sources don't carry over.
+     * Proactive runs need their own switch and never open pages. Inception's server gets
+     * no tools at all, so it gets no web tools either.
+     */
+    private webToolsFor(ctx: ExecutionContext, provider: string): WebToolContext | null {
+        if (provider === 'inception') return null;
+        const proactive = ctx.proactive === true;
+        return webToolContextFor({
+            config: ctx.config,
+            ownerId: ctx.userBot.userId,
+            proactive,
+            // Only the user's own message: links in notes or fetched text don't count.
+            userMessage: proactive ? undefined : ctx.invocation.context.mentionText,
+        });
     }
 
     private toTurns(
@@ -950,11 +1000,14 @@ export class BotExecutorService {
         const homeActions = ctx.macData?.proposedHomeActions ?? [];
         let ui = proposals.length ? await withProposalCards(parsed.ui, proposals) : parsed.ui;
         if (homeActions.length) ui = await withHomeProposalCards(ui, homeActions);
+        // So do "Done · Undo" cards, from actions done without a tap (bot-action.service).
+        const receipts = ctx.macData?.actionReceipts ?? [];
+        if (receipts.length) ui = await withActionReceipts(ui, receipts);
         ctx.variables.$botUI = ui;
         return markdownToProseMirror(parsed.markdown || (ui ? botUIToText(ui) : ''));
     }
 
-    /** Points the run's proposals at the message that shows their cards. */
+    /** Points the run's proposals and logged actions at the message that shows their cards. */
     private async attachProposalCards(
         ctx: ExecutionContext,
         pageId: string,
@@ -969,6 +1022,12 @@ export class BotExecutorService {
         if (homeActions.length)
             await attachHomeProposalCards(homeActions, pageId, messageId).catch((error) =>
                 console.error('[BotExecutor] Could not attach home proposals:', error),
+            );
+        // Calendar proposals share their id with their action log row.
+        const actions = [...proposals, ...(ctx.macData?.actionReceipts ?? [])];
+        if (actions.length)
+            await attachActions(actions, pageId, messageId).catch((error) =>
+                console.error('[BotExecutor] Could not attach actions:', error),
             );
     }
 
@@ -1048,6 +1107,7 @@ export class BotExecutorService {
         content: PageContent,
         ctx: ExecutionContext,
         notify?: { ownerUserId: string },
+        proactiveMeta?: ProactiveMessageMeta,
     ): Promise<Message> {
         const message = await createTopLevelBotMessage({
             pageId: page.id,
@@ -1059,6 +1119,7 @@ export class BotExecutorService {
             content,
             botUI: ctx.variables.$botUI as Message['botUI'],
             botModel: ctx.variables.$model as string | undefined,
+            ...(proactiveMeta ? { proactiveMeta } : {}),
         });
         await this.attachProposalCards(ctx, page.id, message.id);
         if (page.notebookId) {
@@ -1090,6 +1151,11 @@ export class BotExecutorService {
      * One proactive pass for a page: the bot reads new Mac data with its standing
      * instructions and either posts a message or stays quiet (replies NO_UPDATE).
      * Returns the posted message, or null when there was nothing worth saying.
+     *
+     * With `revise`, the reply replaces that earlier post in place (it was still unread):
+     * open clients get the normal edit event and nobody gets a new notification, unless
+     * `revise.push` says what changed (urgency rose), which goes to the owner as one push.
+     * If the post can no longer be revised (someone replied meanwhile), a new one goes out.
      */
     async runProactive(params: {
         page: Page;
@@ -1099,6 +1165,8 @@ export class BotExecutorService {
         system: string;
         prompt: string;
         previousMessages: Message[];
+        proactiveMeta?: ProactiveMessageMeta;
+        revise?: { messageId: string; push?: string };
     }): Promise<Message | null> {
         const llm = params.template.definition.actions.find((action) => action.type === 'llm');
         if (!llm || !params.page.notebookId) return null;
@@ -1124,14 +1192,83 @@ export class BotExecutorService {
             config: params.userBot.config,
             variables: { $previousMessages: params.previousMessages },
             macData: params.macData,
+            proactive: true,
         };
         await this.executeLLM(llm, ctx, { system: params.system, user: params.prompt });
         const raw = String(ctx.variables.$response || '').trim();
         if (!raw || /^NO_UPDATE\b/i.test(raw)) return null;
         const content = await this.prepareResponse(ctx);
-        return this.postTopLevel(params.page, params.userBot, params.template, content, ctx, {
-            ownerUserId: params.macData.userId,
+        if (params.revise) {
+            const revised = await this.reviseTopLevel(params, content, ctx);
+            if (revised) return revised;
+        }
+        return this.postTopLevel(
+            params.page,
+            params.userBot,
+            params.template,
+            content,
+            ctx,
+            { ownerUserId: params.macData.userId },
+            params.proactiveMeta,
+        );
+    }
+
+    /** Rewrites an unread proactive post; null when it can't be (it then posts anew). */
+    private async reviseTopLevel(
+        params: {
+            page: Page;
+            userBot: UserBot;
+            template: BotTemplate;
+            macData: MacDataToolContext;
+            proactiveMeta?: ProactiveMessageMeta;
+            revise?: { messageId: string; push?: string };
+        },
+        content: PageContent,
+        ctx: ExecutionContext,
+    ): Promise<Message | null> {
+        const { page, userBot, template, revise } = params;
+        if (!revise || !page.notebookId) return null;
+        const message = await reviseBotMessage(
+            revise.messageId,
+            userBot._id,
+            {
+                content,
+                botUI: ctx.variables.$botUI as Message['botUI'],
+                botModel: ctx.variables.$model as string | undefined,
+                ...(params.proactiveMeta ? { proactiveMeta: params.proactiveMeta } : {}),
+            },
+            {
+                // Read by the owner while this was written: a new message instead.
+                stillUnread: async (postedAt) => {
+                    const readAt = await getLastReadAtByPageId(params.macData.userId, page.id);
+                    return !readAt || readAt < postedAt;
+                },
+            },
+        );
+        if (!message) return null;
+        await this.attachProposalCards(ctx, page.id, message.id);
+        // The normal edit path: open clients replace the message, card included.
+        await broadcastChatEvent(page.notebookId, {
+            pageId: page.id,
+            action: 'edited',
+            data: message,
+            notebookId: page.notebookId,
+            userId: userBot.userId,
+            timestamp: new Date().toISOString(),
         });
+        if (revise.push) {
+            await sendMessageReceivedNotification(
+                params.macData.userId,
+                page.notebookId,
+                page.id,
+                message._id,
+                undefined,
+                userBot.displayName || template.name,
+                template.avatar,
+                markdownToProseMirror(`Updated: ${revise.push}`),
+            ).catch(() => {});
+        }
+        return message;
     }
 
     /**

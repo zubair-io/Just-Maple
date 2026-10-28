@@ -26,6 +26,8 @@ export const PAGE_TYPE_LABELS: Record<string, string> = {
   devicedata: 'Device Data',
   aboutme: 'About me',
   graph: 'Graph',
+  activity: 'Activity',
+  followups: 'Follow-ups',
 };
 
 /**
@@ -42,6 +44,8 @@ export const PAGE_TYPE_ICONS: Record<string, string> = {
   devicedata: 'devices',
   aboutme: 'person_heart',
   graph: 'hub',
+  activity: 'history',
+  followups: 'assignment_return',
 };
 
 /**

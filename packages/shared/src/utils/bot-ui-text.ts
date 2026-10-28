@@ -28,6 +28,8 @@ export function botUIToText(ui: BotUIResponse): string {
                     return eventProposalText(block.event);
                 case 'home_proposal':
                     return `Proposed home action: ${describeHomeCall(block.call)}`;
+                case 'action_receipt':
+                    return `Done: ${block.summary}`;
             }
         })
         .join('\n\n');

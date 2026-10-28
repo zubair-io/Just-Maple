@@ -13,13 +13,19 @@ import { DeviceDataService } from '../../../services/device-data.service';
 import { DEVICE_DATA_SOURCES } from '../../../utils/device-sources';
 import { EventProposalCardComponent } from '../../molecules/event-proposal-card/event-proposal-card.component';
 import { HomeProposalCardComponent } from '../../molecules/home-proposal-card/home-proposal-card.component';
+import { ActionReceiptCardComponent } from '../../molecules/action-receipt-card/action-receipt-card.component';
 
 export const BOT_UI_DISABLED = new InjectionToken<() => boolean>('BOT_UI_DISABLED');
 
 @Component({
   selector: 'app-maple-ui-blocks',
   standalone: true,
-  imports: [FormsModule, EventProposalCardComponent, HomeProposalCardComponent],
+  imports: [
+    FormsModule,
+    EventProposalCardComponent,
+    HomeProposalCardComponent,
+    ActionReceiptCardComponent,
+  ],
   templateUrl: './maple-ui-blocks.component.html',
   changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './maple-ui-blocks.component.scss',

@@ -12,6 +12,8 @@ import {
   CanvasPageGuard,
   AboutMePageGuard,
   GraphPageGuard,
+  ActivityPageGuard,
+  FollowUpsPageGuard,
 } from './guards/page-type.guard';
 import { swUpdateGuard } from './guards/sw-update.guard';
 import {
@@ -316,6 +318,24 @@ export const routes: Routes = [
             canMatch: [GraphPageGuard],
             loadComponent: () =>
               import('./pages/graph-view/graph-view.component').then((m) => m.GraphViewComponent),
+          },
+          // Activity page - what bots did and proposed in the notebook
+          {
+            path: ':id',
+            canMatch: [ActivityPageGuard],
+            loadComponent: () =>
+              import('./pages/activity-view/activity-view.component').then(
+                (m) => m.ActivityViewComponent,
+              ),
+          },
+          // Follow-ups page - promises and replies owed, from the notebook's messages and mail
+          {
+            path: ':id',
+            canMatch: [FollowUpsPageGuard],
+            loadComponent: () =>
+              import('./pages/follow-ups-view/follow-ups-view.component').then(
+                (m) => m.FollowUpsViewComponent,
+              ),
           },
           // Memo-type page - shows collaborative notebook editor (default for pages)
           {

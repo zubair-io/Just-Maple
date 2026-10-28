@@ -9,12 +9,15 @@ import type {
 } from '@maple/shared';
 import {
     attachToMessage,
+    cancelQueued,
     completeAction,
     createProposal,
     expireStale,
     failProposal,
     findDuplicate,
     findProposal,
+    markNotFound,
+    markRemoved,
     OPEN_STATUSES,
     queueProposal,
     requeueStranded,
@@ -27,6 +30,18 @@ import { broadcastChatEvent } from './realtime.service';
 import { macDataRelay } from './mac-data-relay.service';
 import type { MacDataToolContext, ToolDefinition } from './mac-data-tools.service';
 import { toEpochSeconds } from '../utils/time-zone';
+import { ActionError, decideAutonomy } from './bot-action.service';
+import {
+    findAction as findActionDoc,
+    type BotActionDocument,
+} from '../repositories/bot-action.repo';
+import {
+    markCancelRequested,
+    recordCalendarProposal,
+    recordDeniedCalendarAction,
+    syncCalendarAction,
+    undoCalendarAdd,
+} from './calendar-action.service';
 
 /**
  * "Add to calendar"
@@ -44,6 +59,10 @@ import { toEpochSeconds } from '../utils/time-zone';
  *
  * Expiry and stranded actions are caught up lazily (`settle`) whenever a card is read,
  * tapped, proposed or polled; what changes is broadcast like any other change.
+ *
+ * Every proposal is also a row in the bot action log (calendar-action.service), kept in
+ * step on each change. The owner's autonomy setting for the bot decides whether the bot
+ * asks (the card), adds it without a tap ("Done · Undo" card), or may never add events.
  */
 
 /** After this long without hearing from the Mac, the card says it will be added later. */
@@ -75,20 +94,33 @@ export async function proposeEvent(params: {
     event: CalendarEventDraft;
 }): Promise<{
     proposal: CalendarProposalDocument;
-    outcome: 'created' | 'existing' | 'elsewhere' | 'added';
+    outcome: 'created' | DuplicateOutcome;
 }> {
+    const duplicate = await findExistingProposal(params);
+    if (duplicate) return duplicate;
+    return { proposal: await createProposal(params), outcome: 'created' };
+}
+
+type DuplicateOutcome = 'existing' | 'elsewhere' | 'added' | 'removed' | 'cancelled';
+
+/** The same event already proposed for this user (see `proposeEvent`), after catching up. */
+export async function findExistingProposal(params: {
+    userId: string;
+    notebookId: string;
+    event: CalendarEventDraft;
+}): Promise<{ proposal: CalendarProposalDocument; outcome: DuplicateOutcome } | null> {
     await settle(params.userId);
     const duplicate = await findDuplicate(params.userId, params.notebookId, params.event);
-    if (duplicate) {
-        const outcome =
-            duplicate.status === 'added'
-                ? 'added'
-                : duplicate.notebookId === params.notebookId
-                  ? 'existing'
-                  : 'elsewhere';
-        return { proposal: duplicate, outcome };
-    }
-    return { proposal: await createProposal(params), outcome: 'created' };
+    if (!duplicate) return null;
+    const outcome =
+        duplicate.status === 'added' ||
+        duplicate.status === 'removed' ||
+        duplicate.status === 'cancelled'
+            ? duplicate.status
+            : duplicate.notebookId === params.notebookId
+              ? 'existing'
+              : 'elsewhere';
+    return { proposal: duplicate, outcome };
 }
 
 /**
@@ -135,28 +167,72 @@ export async function executeProposeEvent(
     input: Record<string, unknown>,
 ): Promise<string> {
     if (!canProposeEvents(ctx)) return 'Unknown tool: propose_calendar_event';
-    if ((ctx.proposedEvents?.length ?? 0) >= MAX_PROPOSALS_PER_RUN)
+    if (
+        (ctx.proposedEvents?.length ?? 0) + (ctx.actionReceipts?.length ?? 0) >=
+        MAX_PROPOSALS_PER_RUN
+    )
         return `At most ${MAX_PROPOSALS_PER_RUN} events can be proposed in one reply.`;
     const event = toDraft(input, ctx.timeZone);
     if (typeof event === 'string') return event;
-    const { proposal, outcome } = await proposeEvent({
-        userId: ctx.userId,
-        notebookId: ctx.notebookId,
-        botId: ctx.botId!,
-        event,
-    });
-    switch (outcome) {
+    const where = { userId: ctx.userId, notebookId: ctx.notebookId, botId: ctx.botId! };
+    // Events already offered or added first: they never log a denied row.
+    const duplicate = await findExistingProposal({ ...where, event });
+    switch (duplicate?.outcome) {
         case 'added':
             return 'The user already added this event to their calendar from an earlier card. Do not offer it again.';
+        case 'removed':
+            return 'This event was added earlier and the user removed it again. Do not offer it again.';
+        case 'cancelled':
+            return 'The user cancelled adding this event. Do not offer it again.';
         case 'elsewhere':
             return 'This event was already offered in another chat and is waiting for the user there. Do not offer it again here.';
-        case 'existing':
-            ctx.proposedEvents = [...(ctx.proposedEvents ?? []), proposal._id];
-            return 'This event was already proposed and is still waiting for the user. The card is attached to your reply again.';
-        case 'created':
-            ctx.proposedEvents = [...(ctx.proposedEvents ?? []), proposal._id];
-            return 'Proposed. The card with an "Add to calendar" button is attached to your reply. Nothing is added until the user taps it, so say it is not on their calendar yet.';
     }
+    // The owner's setting for this bot decides; the bot never sees it.
+    const { autonomy } = await decideAutonomy({
+        ownerId: ctx.userId,
+        botId: ctx.botId!,
+        kind: 'calendar_add',
+        notebookId: ctx.notebookId,
+        params: { event },
+    });
+    if (autonomy === 'never') {
+        // Already offered before the setting changed: logged then, not again.
+        if (!duplicate)
+            await recordDeniedCalendarAction({
+                ownerId: ctx.userId,
+                botId: ctx.botId!,
+                botName: ctx.botName,
+                notebookId: ctx.notebookId,
+                event,
+            });
+        return 'The user has turned off adding calendar events for you. Do not offer this event; you may mention it in your reply.';
+    }
+    if (duplicate) {
+        ctx.proposedEvents = [...(ctx.proposedEvents ?? []), duplicate.proposal._id];
+        return 'This event was already proposed and is still waiting for the user. The card is attached to your reply again.';
+    }
+    const proposal = await createProposal({ ...where, event });
+    await recordCalendarProposal(proposal, autonomy, ctx.botName);
+    if (autonomy === 'auto') return autoAdd(ctx, proposal);
+    ctx.proposedEvents = [...(ctx.proposedEvents ?? []), proposal._id];
+    return 'Proposed. The card with an "Add to calendar" button is attached to your reply. Nothing is added until the user taps it, so say it is not on their calendar yet.';
+}
+
+/**
+ * "Do it and tell me": queued as if the owner had tapped. The reply gets a
+ * "Done · Undo" card; if it can't be queued (no Mac), the usual card with Try again.
+ */
+async function autoAdd(
+    ctx: MacDataToolContext,
+    proposal: CalendarProposalDocument,
+): Promise<string> {
+    const view = await confirmProposal(proposal._id, ctx.userId, { auto: true }).catch(() => null);
+    if (!view || view.status === 'failed') {
+        ctx.proposedEvents = [...(ctx.proposedEvents ?? []), proposal._id];
+        return `It could not be added: ${view?.error ?? 'something went wrong.'} A card with the details and a Try again button is attached to your reply.`;
+    }
+    ctx.actionReceipts = [...(ctx.actionReceipts ?? []), proposal._id];
+    return "Added to the user's calendar without asking, as they chose (their Mac finishes it shortly). A card saying so, with Undo, is attached to your reply: say you added it.";
 }
 
 function toDraft(input: Record<string, unknown>, timeZone: string): CalendarEventDraft | string {
@@ -225,9 +301,14 @@ export async function getProposalView(
 
 /**
  * The owner's tap. Repeated taps return the current state; only the owner may confirm,
- * and only while they're still in the notebook.
+ * and only while they're still in the notebook. `auto`: confirmed by the owner's
+ * "Do it and tell me" setting rather than a tap.
  */
-export async function confirmProposal(id: string, userId: string): Promise<CalendarProposal> {
+export async function confirmProposal(
+    id: string,
+    userId: string,
+    options: { auto?: boolean } = {},
+): Promise<CalendarProposal> {
     const doc = await settled(id);
     if (!doc || !(await isMemberOf(doc.notebookId, userId)))
         throw new ProposalError(404, 'Proposal not found');
@@ -236,7 +317,7 @@ export async function confirmProposal(id: string, userId: string): Promise<Calen
     if (doc.status === 'expired')
         throw new ProposalError(409, 'This proposal expired. Ask the bot to propose it again.');
 
-    const queued = await queueProposal(id, userId);
+    const queued = await queueProposal(id, userId, options);
     if (!queued) {
         // Already adding: nudge the Mac again in case it missed the first one.
         const current = (await findProposal(id))!;
@@ -293,6 +374,42 @@ export async function reportActionResult(
     return toView(outcome.doc, userId);
 }
 
+/** Undo finished on the Mac: the card says the event was removed. */
+export async function markProposalRemoved(id: string): Promise<void> {
+    await broadcastProposal(await markRemoved(id));
+}
+
+/** Undo found nothing on the Mac: the card says so, and the bot may offer it again. */
+export async function markProposalNotFound(id: string): Promise<void> {
+    await broadcastProposal(await markNotFound(id));
+}
+
+/**
+ * The owner's Cancel on a queued add (the action log's row `row`). Before a Mac has
+ * taken it, it isn't done at all; once one has, it's undone as soon as it's added; if
+ * it's already added, this is an Undo.
+ */
+export async function cancelCalendarAdd(
+    row: BotActionDocument,
+    userId: string,
+): Promise<BotActionDocument> {
+    const proposal = await findProposal(row._id);
+    if (!proposal) throw new ActionError(404, 'Action not found');
+    if (proposal.status === 'added') return undoCalendarAdd(row, userId);
+    if (proposal.status !== 'queued' && proposal.status !== 'delivered')
+        throw new ActionError(409, 'Only actions that are still waiting can be cancelled.');
+    // Recorded first, so an add that finishes anyway is undone.
+    await markCancelRequested(row);
+    const cancelled = await cancelQueued(row._id);
+    if (cancelled) await broadcastProposal(cancelled);
+    else {
+        // A Mac took it meanwhile, or even finished it.
+        const current = await findProposal(row._id);
+        if (current) await syncCalendarAction(current);
+    }
+    return (await findActionDoc(row._id)) ?? row;
+}
+
 // MARK: - Private
 
 /**
@@ -300,17 +417,38 @@ export async function reportActionResult(
  * go back to the queue. Every card that changed is told.
  */
 async function settle(userId: string): Promise<void> {
+    await settleProposals(userId);
+}
+
+/** `settle`, for the action log's reads. */
+export async function settleProposals(userId: string): Promise<void> {
     const expired = await expireStale(userId);
     const collector = await calendarCollector(userId);
     const requeued = await requeueStranded(userId, collector?.deviceId ?? null);
     await broadcastAll([...expired, ...requeued]);
 }
 
-/** The proposal after `settle`, when it may have moved on since it was last read. */
+/** `settle` for one proposal only: reading a single card doesn't catch up all of them. */
+export async function settleProposal(id: string): Promise<void> {
+    const doc = await findProposal(id);
+    if (!doc || !OPEN_STATUSES.includes(doc.status)) return;
+    const expired = await expireStale(doc.userId, id);
+    const requeued =
+        !expired.length && doc.status === 'delivered'
+            ? await requeueStranded(
+                  doc.userId,
+                  (await calendarCollector(doc.userId))?.deviceId ?? null,
+                  id,
+              )
+            : [];
+    await broadcastAll([...expired, ...requeued]);
+}
+
+/** The proposal after catching up, when it may have moved on since it was last read. */
 async function settled(id: string): Promise<CalendarProposalDocument | null> {
     const doc = await findProposal(id);
     if (!doc || !OPEN_STATUSES.includes(doc.status)) return doc;
-    await settle(doc.userId);
+    await settleProposal(id);
     return findProposal(id);
 }
 
@@ -369,6 +507,10 @@ async function toView(doc: CalendarProposalDocument, viewerId: string): Promise<
  * the owner from the card it loaded.
  */
 async function broadcastProposal(doc: CalendarProposalDocument | null): Promise<void> {
+    if (doc)
+        await syncCalendarAction(doc).catch((error) =>
+            console.error('[CalendarProposal] Could not update the action log:', error),
+        );
     if (!doc?.pageId) return;
     const { canConfirm: _, ...data } = await toView(doc, '');
     await broadcastChatEvent(doc.notebookId, {

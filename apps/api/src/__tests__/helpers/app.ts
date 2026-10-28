@@ -8,9 +8,11 @@ import { botRoutes } from '../../routes/bots';
 import { deviceDataRoutes } from '../../routes/device-data';
 import { calendarProposalRoutes } from '../../routes/calendar-proposals';
 import { homeRoutes } from '../../routes/home';
+import { botActionRoutes } from '../../routes/bot-actions';
 import { macDataRoutes } from '../../routes/mac-data';
 import { aboutMeRoutes } from '../../routes/about-me';
 import { graphRoutes } from '../../routes/graph';
+import { followUpRoutes } from '../../routes/follow-ups';
 import { aiRoutes } from '../../routes/ai';
 import { templateRoutes } from '../../routes/templates';
 import { linkRoutes } from '../../routes/links';
@@ -35,9 +37,11 @@ export function createTestApp() {
         .use(deviceDataRoutes)
         .use(calendarProposalRoutes)
         .use(homeRoutes)
+        .use(botActionRoutes)
         .use(macDataRoutes)
         .use(aboutMeRoutes)
         .use(graphRoutes)
+        .use(followUpRoutes)
         .use(aiRoutes)
         .use(templateRoutes)
         .use(linkRoutes)
