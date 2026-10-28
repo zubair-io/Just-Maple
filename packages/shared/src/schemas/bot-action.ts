@@ -24,11 +24,19 @@ export const BotActionKindSchema = Type.Union([
 export type BotActionKind = Static<typeof BotActionKindSchema>;
 
 /**
+ * Most kinds:
+ *
  * proposed ──tap──▶ approved ─┐
  *    │  └──setting: auto──▶ auto ─┼─▶ queued ──▶ done ──Undo (24 h)──▶ undone
  *    │                            │      └──────▶ failed ──tap again──▶ queued
  *    ├──setting: never──▶ denied  │
  *    └──── nobody acted in time ──┴──▶ expired
+ *
+ * Drafted replies (`send_reply`, see reply-draft.ts) are never sent by Maple:
+ *
+ * proposed (drafted) ──Open in Messages / Mail──▶ opened ──▶ (opened again, or discarded)
+ *    ├──Discard──▶ discarded
+ *    └──7 days──▶ expired
  */
 export const BotActionStatusSchema = Type.Union([
     Type.Literal('proposed'), // Waiting for the owner's tap
@@ -40,6 +48,9 @@ export const BotActionStatusSchema = Type.Union([
     Type.Literal('failed'),
     Type.Literal('undone'),
     Type.Literal('expired'),
+    // Drafted replies (`send_reply`): proposed (drafted) → opened / discarded / expired.
+    Type.Literal('opened'), // Handed to Messages or Mail; the owner sends it themselves
+    Type.Literal('discarded'), // The owner threw the draft away
 ]);
 export type BotActionStatus = Static<typeof BotActionStatusSchema>;
 
@@ -106,7 +117,8 @@ export const BOT_ACTION_KINDS: Record<BotActionKind, BotActionKindInfo> = {
     },
     send_reply: {
         label: 'Send messages and email',
-        description: 'Always asks before anything is sent.',
+        description:
+            'Replies the bot drafts in your voice. You open them in Messages or Mail and send them yourself.',
         autoAllowed: false,
         undoable: false,
         icon: 'send',

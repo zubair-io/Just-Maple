@@ -26,7 +26,7 @@ interface BotInvocationDocument {
         step?: string;
     };
     threadId?: ObjectId;
-    responseMessageId?: ObjectId;
+    responseMessageId?: ObjectId | string;
     executionTimeMs?: number;
     createdAt: Date;
     updatedAt: Date;
@@ -118,7 +118,11 @@ export async function updateInvocationStatus(
         if (updates?.error !== undefined) updateDoc.error = updates.error;
         if (updates?.threadId) updateDoc.threadId = new ObjectId(updates.threadId);
         if (updates?.responseMessageId) {
-            updateDoc.responseMessageId = new ObjectId(updates.responseMessageId);
+            // Messages have UUID ids now; only legacy ones are ObjectIds. Converting a UUID
+            // threw, and the catch below dropped the whole update (the run stayed "running").
+            updateDoc.responseMessageId = /^[0-9a-f]{24}$/i.test(updates.responseMessageId)
+                ? new ObjectId(updates.responseMessageId)
+                : updates.responseMessageId;
         }
         if (updates?.executionTimeMs !== undefined) {
             updateDoc.executionTimeMs = updates.executionTimeMs;

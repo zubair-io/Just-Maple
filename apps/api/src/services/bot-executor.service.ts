@@ -12,6 +12,7 @@ import type {
 import { isBotModel } from '@maple/shared';
 import { botUIPrompt, parseBotResponse, botUIToText } from './bot-ui.service';
 import { attachProposals, withProposalCards } from './calendar-proposal.service';
+import { draftRunNotice, expireUnpostedDrafts, withReplyDraftCards } from './reply-draft.service';
 import { attachHomeProposalCards, withHomeProposalCards } from './home.service';
 import { attachActions, withActionReceipts } from './bot-action.service';
 import { query } from '@anthropic-ai/claude-agent-sdk';
@@ -332,9 +333,11 @@ export class BotExecutorService {
                 executionTimeMs,
                 variables: ctx.variables as Record<string, unknown>,
             });
+            await expireUnpostedDrafts(ctx.macData?.draftedReplies);
 
             this.broadcastStatus(invocation, namedBot, 'completed', responseContent);
         } catch (error) {
+            await expireUnpostedDrafts(ctx.macData?.draftedReplies);
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             await updateInvocationStatus(invocationId, 'failed', {
                 error: {
@@ -622,6 +625,9 @@ export class BotExecutorService {
             name: ctx.userBot.displayName || ctx.template.name,
             ownerId: ctx.userBot.userId,
         }).catch(() => null);
+        // Drafted replies only when a person asked in chat (never proactive runs, which
+        // preset their context above).
+        if (macData && sourceType === 'message') macData.draftsAllowed = true;
         if (macData && sourceType === 'message') {
             const message = await findMessageById(sourceId).catch(() => null);
             const page = message ? await findPageByIdForBot(message.pageId) : null;
@@ -989,11 +995,29 @@ export class BotExecutorService {
     }
 
     /**
+     * After a run that drafted a reply in a shared notebook: the model's own words are
+     * dropped from the variables saved with the invocation (any member can read those),
+     * replaced by what the chat was shown.
+     */
+    private forgetModelOutput(ctx: ExecutionContext, notice: string): void {
+        const raw = ctx.variables.$response;
+        for (const [key, value] of Object.entries(ctx.variables))
+            if (key === '$response' || (raw !== undefined && value === raw))
+                ctx.variables[key] = notice;
+    }
+
+    /**
      * Prepare response content for posting
      */
     private async prepareResponse(ctx: ExecutionContext): Promise<PageContent> {
-        const response = String(ctx.variables.$response || '');
-        const parsed = parseBotResponse(response);
+        // Drafted replies are for their owner only. Where others read the chat, the
+        // run's text is replaced by a fixed line, and the raw output isn't kept.
+        const drafts = ctx.macData?.draftedReplies ?? [];
+        const notice = draftRunNotice(ctx.macData);
+        if (notice) this.forgetModelOutput(ctx, notice);
+        const parsed = notice
+            ? { markdown: notice, ui: undefined }
+            : parseBotResponse(String(ctx.variables.$response || ''));
         // "Add to calendar" cards come from the proposals saved in this run, never from
         // what the model wrote.
         const proposals = ctx.macData?.proposedEvents ?? [];
@@ -1003,6 +1027,8 @@ export class BotExecutorService {
         // So do "Done · Undo" cards, from actions done without a tap (bot-action.service).
         const receipts = ctx.macData?.actionReceipts ?? [];
         if (receipts.length) ui = await withActionReceipts(ui, receipts);
+        // And drafted replies' cards, which carry no text (reply-draft.service).
+        if (drafts.length) ui = await withReplyDraftCards(ui, drafts);
         ctx.variables.$botUI = ui;
         return markdownToProseMirror(parsed.markdown || (ui ? botUIToText(ui) : ''));
     }
@@ -1024,7 +1050,11 @@ export class BotExecutorService {
                 console.error('[BotExecutor] Could not attach home proposals:', error),
             );
         // Calendar proposals share their id with their action log row.
-        const actions = [...proposals, ...(ctx.macData?.actionReceipts ?? [])];
+        const actions = [
+            ...proposals,
+            ...(ctx.macData?.actionReceipts ?? []),
+            ...(ctx.macData?.draftedReplies ?? []),
+        ];
         if (actions.length)
             await attachActions(actions, pageId, messageId).catch((error) =>
                 console.error('[BotExecutor] Could not attach actions:', error),

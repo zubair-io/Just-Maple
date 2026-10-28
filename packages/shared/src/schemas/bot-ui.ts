@@ -56,6 +56,12 @@ export const BotUIBlockSchema = Type.Union([
         actionId: Type.String({ pattern: '^[0-9a-f-]{36}$' }),
         summary: Type.String({ maxLength: 500 }),
     }),
+    // A drafted reply (reply-draft.ts). Only the server adds it, and it carries no text:
+    // the card loads the draft by `actionId`, and only its owner gets the contents.
+    Type.Object({
+        type: Type.Literal('reply_draft'),
+        actionId: Type.String({ pattern: '^[0-9a-f-]{36}$' }),
+    }),
 ]);
 export const BotUIResponseSchema = Type.Object({
     version: Type.Literal(1),

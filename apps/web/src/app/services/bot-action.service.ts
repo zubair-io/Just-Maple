@@ -113,9 +113,61 @@ export class BotActionService {
       this.merge([action]);
       return action;
     } catch (error) {
-      const message = (error as { error?: { error?: string } })?.error?.error;
       void this.load(id, true);
-      throw new Error(message || 'Could not cancel it. Try again.');
+      throw new Error(serverMessage(error) || 'Could not cancel it. Try again.');
+    }
+  }
+
+  /**
+   * The owner's edits to a drafted reply. With `updatedAt` (the version the text was
+   * based on), the server refuses the save if the draft changed since (a redraft, or a
+   * save from another device), so a stale save can't overwrite a newer draft.
+   */
+  async saveDraft(id: string, body: string, updatedAt?: string): Promise<BotAction> {
+    return this.draftCall(id, '', { body, ...(updatedAt ? { updatedAt } : {}) });
+  }
+
+  /**
+   * The owner opened a drafted reply in Messages or Mail (the link does the opening):
+   * saves their text and records it. Returns the compose link the server built.
+   */
+  async openDraft(id: string, body: string): Promise<{ action: BotAction; url: string }> {
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ action: BotAction; url: string }>(
+          `/api/reply-drafts/${encodeURIComponent(id)}/open`,
+          { body },
+        ),
+      );
+      this.merge([result.action]);
+      return result;
+    } catch (error) {
+      void this.load(id, true);
+      throw new Error(serverMessage(error) || 'Could not save the draft. Try again.');
+    }
+  }
+
+  async discardDraft(id: string): Promise<BotAction> {
+    return this.draftCall(id, '/discard');
+  }
+
+  private async draftCall(
+    id: string,
+    path: '' | '/discard',
+    body?: { body: string; updatedAt?: string },
+  ): Promise<BotAction> {
+    const url = `/api/reply-drafts/${encodeURIComponent(id)}${path}`;
+    try {
+      const { action } = await firstValueFrom(
+        path
+          ? this.http.post<{ action: BotAction }>(url, {})
+          : this.http.patch<{ action: BotAction }>(url, body),
+      );
+      this.merge([action]);
+      return action;
+    } catch (error) {
+      void this.load(id, true);
+      throw new Error(serverMessage(error) || 'Could not update the draft. Try again.');
     }
   }
 
@@ -177,4 +229,8 @@ export class BotActionService {
       };
     });
   }
+}
+
+function serverMessage(error: unknown): string | undefined {
+  return (error as { error?: { error?: string } })?.error?.error;
 }

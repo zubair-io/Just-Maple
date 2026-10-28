@@ -24,6 +24,12 @@ import {
     proposeEventTool,
 } from './calendar-proposal.service';
 import {
+    canDraftReplies,
+    draftReplyPrompt,
+    draftReplyTool,
+    executeDraftReply,
+} from './reply-draft.service';
+import {
     canProposeHome,
     canReadHome,
     executeHomeStates,
@@ -85,6 +91,19 @@ export interface MacDataToolContext {
     botName?: string;
     /** Actions done without a tap in this run (bot-action.service); "Done · Undo" cards. */
     actionReceipts?: string[];
+    /** Replies drafted in this run (reply-draft.service); their cards go on the reply. */
+    draftedReplies?: string[];
+    /** Messages `draft_reply` has shown the bot (with the user's voice) in this run. */
+    replyContextSeen?: string[];
+    /**
+     * `draft_reply` is offered: only in chat runs a person started (bot-executor sets
+     * it), never in proactive runs.
+     */
+    draftsAllowed?: boolean;
+    /** Set once `draft_reply` runs: someone besides the user can read this notebook. */
+    draftsShared?: boolean;
+    /** The user's email addresses, once looked up (reply-draft.service). */
+    ownEmailAddresses?: string[];
     /** The notebook has a Follow-ups page: the bot can list and update follow-ups. */
     followUps?: boolean;
 }
@@ -246,6 +265,7 @@ export function macDataToolDefinitions(ctx: MacDataToolContext): ToolDefinition[
         });
     if (ctx.aboutMe) tools.push(...aboutMeToolDefinitions(ctx.aboutMe.notebook, ctx.userId));
     if (canProposeEvents(ctx)) tools.push(proposeEventTool);
+    if (canDraftReplies(ctx)) tools.push(draftReplyTool);
     if (canReadHome(ctx)) tools.push(homeStatesTool);
     if (canProposeHome(ctx)) tools.push(proposeHomeTool);
     tools.push(...followUpToolDefinitions(ctx));
@@ -292,6 +312,7 @@ export function macDataSystemPrompt(ctx: MacDataToolContext): string {
                       "When you find an upcoming event that isn't on the user's calendar (check with search_local_data), offer it with propose_calendar_event instead of only describing it.",
                   ]
                 : []),
+            ...(canDraftReplies(ctx) ? [draftReplyPrompt] : []),
             ...(canReadHome(ctx)
                 ? [
                       'For smart-home questions ("is the garage open?", "what is the temperature upstairs?") use get_home_states.' +
@@ -486,6 +507,8 @@ export async function executeMacDataTool(
                 );
             case 'propose_calendar_event':
                 return await executeProposeEvent(ctx, input);
+            case 'draft_reply':
+                return await executeDraftReply(ctx, input);
             case 'get_home_states':
                 return await executeHomeStates(ctx, input);
             case 'propose_home_action':

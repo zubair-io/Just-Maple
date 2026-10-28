@@ -174,6 +174,20 @@ export async function findExpiredOpen(
     );
 }
 
+/** The owner's drafts for this message in this notebook that are still waiting, newest first. */
+export async function findOpenReplyDrafts(
+    ownerId: string,
+    notebookId: string,
+    itemId: string,
+): Promise<BotActionDocument[]> {
+    const docs = await actions()
+        .find({ ownerId, notebookId, kind: 'send_reply', status: 'proposed' })
+        .toArray();
+    return docs
+        .filter((doc) => doc.params['itemId'] === itemId)
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+}
+
 // MARK: - Undo queue (for kinds whose undo runs on a device)
 
 export async function findPendingUndos(ownerId: string): Promise<BotActionDocument[]> {

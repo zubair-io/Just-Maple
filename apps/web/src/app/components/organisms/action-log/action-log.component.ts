@@ -15,6 +15,9 @@ import {
   type BotAction,
   type BotActionKind,
   type BotActionStatus,
+  type ReplyDraftParams,
+  replyChannelName,
+  replyComposeUrl,
 } from '@maple/shared';
 import { BotActionService } from '../../../services/bot-action.service';
 
@@ -28,6 +31,8 @@ export const ACTION_STATUS_LABELS: Record<BotActionStatus, string> = {
   failed: 'Failed',
   undone: 'Undone',
   expired: 'Expired',
+  opened: 'Opened to send',
+  discarded: 'Discarded',
 };
 
 /**
@@ -63,6 +68,8 @@ export class ActionLogComponent {
   readonly error = signal<string | null>(null);
   readonly undoing = signal<string | null>(null);
   readonly undoError = signal<{ id: string; message: string } | null>(null);
+  /** The drafted reply last copied, for the "Copied" label. */
+  readonly copied = signal<string | null>(null);
 
   /** Rows as the service holds them, so cards and the list agree; filters re-applied. */
   readonly rows = computed(() => {
@@ -106,6 +113,69 @@ export class ActionLogComponent {
     return undo.fallback
       ? ` on ${undo.deviceName} (the Mac that added it no longer collects your calendar)`
       : ` on ${undo.deviceName}`;
+  }
+
+  /** The owner's own drafted reply that is still waiting: they can open, copy or discard it. */
+  draftOf(row: BotAction): ReplyDraftParams | null {
+    if (row.kind !== 'send_reply' || !row.isOwner || !row.params) return null;
+    if (row.status !== 'proposed' && row.status !== 'opened') return null;
+    const draft = row.params as unknown as ReplyDraftParams;
+    return draft.body && draft.recipients?.length ? draft : null;
+  }
+
+  /** The prefilled compose in Messages or Mail. Nothing is sent from here. */
+  draftUrl(row: BotAction): string | null {
+    const draft = this.draftOf(row);
+    return draft ? replyComposeUrl(draft, draft.body) : null;
+  }
+
+  draftApp(row: BotAction): string {
+    const draft = this.draftOf(row);
+    return draft ? replyChannelName(draft.channel) : '';
+  }
+
+  /** The link opens Messages or Mail; this records it. */
+  openDraft(row: BotAction): void {
+    const draft = this.draftOf(row);
+    if (!draft) return;
+    this.undoError.set(null);
+    void this.service.openDraft(row.id, draft.body).catch((error: unknown) =>
+      this.undoError.set({
+        id: row.id,
+        message: error instanceof Error ? error.message : 'Could not record it.',
+      }),
+    );
+  }
+
+  async copyDraft(row: BotAction): Promise<void> {
+    const draft = this.draftOf(row);
+    if (!draft) return;
+    this.undoError.set(null);
+    try {
+      await navigator.clipboard.writeText(draft.body);
+      this.copied.set(row.id);
+    } catch {
+      this.undoError.set({
+        id: row.id,
+        message: "Couldn't copy. Open the chat it was drafted in and copy it there.",
+      });
+    }
+  }
+
+  async discardDraft(row: BotAction): Promise<void> {
+    if (this.undoing() || !this.draftOf(row)) return;
+    this.undoing.set(row.id);
+    this.undoError.set(null);
+    try {
+      await this.service.discardDraft(row.id);
+    } catch (error) {
+      this.undoError.set({
+        id: row.id,
+        message: error instanceof Error ? error.message : 'Could not discard it.',
+      });
+    } finally {
+      this.undoing.set(null);
+    }
   }
 
   isCancelling(row: BotAction): boolean {
