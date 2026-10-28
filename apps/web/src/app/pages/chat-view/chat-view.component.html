@@ -221,40 +221,33 @@
               <!-- Device data pages live in the cloud, so they need a cloud notebook -->
               @if (!isLocal()) {
                 <div class="h-px bg-[var(--color-border)] my-1 mx-1.5"></div>
-                @for (item of deviceSources; track item.source) {
-                  <button
-                    (click)="newPageDropdownOpen.set(false); createDeviceDataPage(item.source)"
-                    class="flex items-center gap-2 w-full h-8 px-2 box-border font-sans text-xs text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] border-none bg-transparent rounded-lg cursor-pointer text-left transition-colors"
+                <!-- Sources stay folded so the menu stays short; the Device Data tab lists them too -->
+                <button
+                  (click)="newPageDeviceSourcesOpen.update((open) => !open)"
+                  [attr.aria-expanded]="newPageDeviceSourcesOpen()"
+                  class="flex items-center gap-2 w-full h-8 px-2 box-border font-sans text-xs text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] border-none bg-transparent rounded-lg cursor-pointer text-left transition-colors"
+                >
+                  <span class="material-symbols-rounded text-sm text-[var(--color-text-muted)]"
+                    >devices</span
                   >
-                    <span class="material-symbols-rounded text-sm text-[var(--color-text-muted)]">{{
-                      item.icon
-                    }}</span>
-                    <span>New {{ item.label }}</span>
-                  </button>
-                }
-                <!-- One About me per notebook -->
-                @if (!hasAboutMePage()) {
-                  <button
-                    (click)="newPageDropdownOpen.set(false); createAboutMePage()"
-                    class="flex items-center gap-2 w-full h-8 px-2 box-border font-sans text-xs text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] border-none bg-transparent rounded-lg cursor-pointer text-left transition-colors"
-                  >
-                    <span class="material-symbols-rounded text-sm text-[var(--color-text-muted)]"
-                      >person_heart</span
+                  <span class="flex-1">New Device Data</span>
+                  <span class="material-symbols-rounded text-sm text-[var(--color-text-muted)]">{{
+                    newPageDeviceSourcesOpen() ? 'expand_less' : 'expand_more'
+                  }}</span>
+                </button>
+                @if (newPageDeviceSourcesOpen()) {
+                  @for (item of deviceSources; track item.source) {
+                    <button
+                      (click)="newPageDropdownOpen.set(false); createDeviceDataPage(item.source)"
+                      class="flex items-center gap-2 w-full h-8 pl-6 pr-2 box-border font-sans text-xs text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] border-none bg-transparent rounded-lg cursor-pointer text-left transition-colors"
                     >
-                    <span>About me</span>
-                  </button>
-                }
-                <!-- One Graph per notebook: links between what its data pages share -->
-                @if (!hasGraphPage()) {
-                  <button
-                    (click)="newPageDropdownOpen.set(false); createGraphPage()"
-                    class="flex items-center gap-2 w-full h-8 px-2 box-border font-sans text-xs text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] border-none bg-transparent rounded-lg cursor-pointer text-left transition-colors"
-                  >
-                    <span class="material-symbols-rounded text-sm text-[var(--color-text-muted)]"
-                      >hub</span
-                    >
-                    <span>Graph</span>
-                  </button>
+                      <span
+                        class="material-symbols-rounded text-sm text-[var(--color-text-muted)]"
+                        >{{ item.icon }}</span
+                      >
+                      <span>{{ item.label }}</span>
+                    </button>
+                  }
                 }
                 <!-- One Activity per notebook: what bots did and proposed here -->
                 @if (!hasActivityPage()) {
@@ -503,9 +496,7 @@
                 <span
                   class="font-sans text-[11px] font-semibold tracking-wider text-[var(--color-text-muted)] uppercase"
                 >
-                  {{
-                    activeTab().substring(5) === 'memo' ? 'Notes' : activeTab().substring(5) + 's'
-                  }}
+                  {{ getPageTypeTabLabel(activeTab().substring(5)) }}
                 </span>
 
                 <div class="flex items-center gap-4">
@@ -521,12 +512,55 @@
                   </div>
 
                   <!-- Add button for this specific type -->
-                  <button
-                    (click)="createNewPage($any(activeTab().substring(5)))"
-                    class="font-sans text-xs text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] bg-transparent border-none cursor-pointer p-0 font-semibold flex items-center gap-1"
-                  >
-                    + Create {{ getPageTypeLabel(activeTab().substring(5)) }}
-                  </button>
+                  @if (activeTab() === 'type-devicedata') {
+                    <!-- A device data page needs a source, so pick one first -->
+                    <div class="relative">
+                      <button
+                        (click)="createDeviceDataOpen.update((open) => !open)"
+                        aria-haspopup="menu"
+                        [attr.aria-expanded]="createDeviceDataOpen()"
+                        class="font-sans text-xs text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] bg-transparent border-none cursor-pointer p-0 font-semibold flex items-center gap-1"
+                      >
+                        + Create Device Data
+                        <span class="material-symbols-rounded text-sm" aria-hidden="true"
+                          >expand_more</span
+                        >
+                      </button>
+                      @if (createDeviceDataOpen()) {
+                        <div
+                          class="fixed inset-0 z-40 bg-transparent"
+                          (click)="createDeviceDataOpen.set(false)"
+                        ></div>
+                        <div
+                          role="menu"
+                          class="absolute right-0 top-[24px] z-50 w-40 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-1.5 shadow-lg flex flex-col gap-0.5 animate-maple-modal-in"
+                        >
+                          @for (item of deviceSources; track item.source) {
+                            <button
+                              role="menuitem"
+                              (click)="
+                                createDeviceDataOpen.set(false); createDeviceDataPage(item.source)
+                              "
+                              class="flex items-center gap-2 w-full h-8 px-2 box-border font-sans text-xs text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] border-none bg-transparent rounded-lg cursor-pointer text-left transition-colors"
+                            >
+                              <span
+                                class="material-symbols-rounded text-sm text-[var(--color-text-muted)]"
+                                >{{ item.icon }}</span
+                              >
+                              <span>{{ item.label }}</span>
+                            </button>
+                          }
+                        </div>
+                      }
+                    </div>
+                  } @else if (!singletonTypes.has(activeTab().substring(5))) {
+                    <button
+                      (click)="createNewPage($any(activeTab().substring(5)))"
+                      class="font-sans text-xs text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] bg-transparent border-none cursor-pointer p-0 font-semibold flex items-center gap-1"
+                    >
+                      + Create {{ getPageTypeLabel(activeTab().substring(5)) }}
+                    </button>
+                  }
                 </div>
               </div>
 
