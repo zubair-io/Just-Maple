@@ -6,7 +6,6 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { Subject } from 'rxjs';
 import type { BotAction, ChatEvent } from '@maple/shared';
 import { ActionLogComponent } from './action-log.component';
-import { BotAutonomyComponent } from '../bot-autonomy/bot-autonomy.component';
 import { RealtimeService } from '../../../services/realtime.service';
 import { AuthService } from '../../../services/auth.service';
 
@@ -56,12 +55,12 @@ const theirs = botAction({
   kind: 'home_service',
 });
 
-describe('Action log and autonomy', () => {
+describe('ActionLogComponent', () => {
   let http: HttpTestingController;
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      imports: [ActionLogComponent, BotAutonomyComponent],
+      imports: [ActionLogComponent],
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
@@ -146,28 +145,30 @@ describe('Action log and autonomy', () => {
     expect(host.querySelector('[data-testid=action-row] button')).toBeNull();
   });
 
-  it('offers "Do it and tell me" only where it is allowed, and saves changes', async () => {
-    const fixture = TestBed.createComponent(BotAutonomyComponent);
-    fixture.componentRef.setInput('botId', 'bot-1');
-    fixture.detectChanges();
-    http.expectOne('/api/bot-autonomy/bot-1').flush({
-      settings: { calendar_add: 'ask', home_service: 'ask', send_reply: 'ask' },
+  it('cancels from the list, and tells a cancelled row and a missing event apart', async () => {
+    const waiting = botAction({ id: '44444444-4444-4444-8444-444444444444', canCancel: true });
+    const missing = botAction({
+      id: '55555555-5555-4555-8555-555555555555',
+      status: 'done',
+      undo: { state: 'not_found', requestedAt: '2026-10-27T13:00:00.000Z' },
     });
-    await fixture.whenStable();
-    fixture.detectChanges();
-    const host: HTMLElement = fixture.nativeElement;
-    const options = (kind: string) =>
-      [...host.querySelectorAll(`[data-kind=${kind}] option`)].map((o) => o.textContent?.trim());
-    expect(options('calendar_add')).toEqual(['Ask every time', 'Do it and tell me', 'Never']);
-    expect(options('send_reply')).toEqual(['Ask every time', 'Never']);
+    const { host, settle } = await renderLog({ botId: 'bot-1' }, [waiting, missing]);
+    const rows = () => [...host.querySelectorAll('[data-testid=action-row]')];
+    expect(rows()[1]!.textContent).toContain("Couldn't find it on your Mac");
+    expect(rows()[1]!.querySelector('button')).toBeNull();
 
-    const select = host.querySelector<HTMLSelectElement>('[data-kind=calendar_add] select')!;
-    select.value = 'auto';
-    select.dispatchEvent(new Event('change'));
-    const save = http.expectOne({ method: 'PUT', url: '/api/bot-autonomy/bot-1' });
-    expect(save.request.body).toEqual({ kind: 'calendar_add', autonomy: 'auto' });
-    save.flush({ settings: { calendar_add: 'auto', home_service: 'ask', send_reply: 'ask' } });
-    await fixture.whenStable();
-    expect(fixture.componentInstance.settings().calendar_add).toBe('auto');
+    host.querySelector<HTMLButtonElement>('[data-testid=cancel]')!.click();
+    http.expectOne({ method: 'POST', url: `/api/bot-actions/${waiting.id}/cancel` }).flush({
+      action: {
+        ...waiting,
+        status: 'denied',
+        canCancel: false,
+        cancelRequestedAt: '2026-10-27T13:00:00.000Z',
+        updatedAt: '2026-10-27T13:00:00.000Z',
+      },
+    });
+    await settle();
+    expect(rows()[0]!.textContent).toContain('Cancelled');
+    expect(host.querySelector('[data-testid=cancel]')).toBeNull();
   });
 });

@@ -59,6 +59,12 @@
       @case ('removed') {
         <span class="event-muted">Added, then removed from the calendar (undone).</span>
       }
+      @case ('not_found') {
+        <span class="event-muted">Couldn't find it on your Mac to remove it.</span>
+      }
+      @case ('cancelled') {
+        <span class="event-muted">Cancelled before it was added.</span>
+      }
     }
     @if (tapError(); as message) {
       <span class="event-error">{{ message }}</span>

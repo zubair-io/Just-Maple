@@ -5,10 +5,21 @@
   <div class="receipt-body">
     @switch (status()) {
       @case ('done') {
-        <p>
-          <strong>Done:</strong> {{ kind()?.doneLabel ?? 'Done' }} ·
-          {{ action()?.summary ?? summary() }}
-        </p>
+        @if (notFound()) {
+          <p>
+            <strong>Couldn't find it on your Mac:</strong>
+            {{ action()?.summary ?? summary() }}
+            <span class="receipt-muted">It may have been removed or moved already.</span>
+          </p>
+        } @else {
+          <p>
+            <strong>Done:</strong> {{ kind()?.doneLabel ?? 'Done' }} ·
+            {{ action()?.summary ?? summary() }}
+          </p>
+        }
+      }
+      @case ('denied') {
+        <p><strong>Cancelled:</strong> {{ action()?.summary ?? summary() }}</p>
       }
       @case ('failed') {
         <p>
@@ -32,7 +43,9 @@
       }
     }
     @if (undoing()) {
-      <span class="receipt-muted">Undoing…</span>
+      <span class="receipt-muted">Undoing{{ undoWhere() }}…</span>
+    } @else if (cancelling()) {
+      <span class="receipt-muted">Cancelling… it will be removed once your Mac finishes.</span>
     } @else if (action()?.undo?.state === 'failed') {
       <span class="receipt-error">Couldn't undo: {{ action()?.undo?.error }}</span>
     }
@@ -40,7 +53,11 @@
       <span class="receipt-error">{{ message }}</span>
     }
   </div>
-  @if (action()?.canUndo) {
+  @if (action()?.canCancel) {
+    <button type="button" class="receipt-undo" [disabled]="tapping()" (click)="cancel()">
+      Cancel
+    </button>
+  } @else if (action()?.canUndo) {
     <button type="button" class="receipt-undo" [disabled]="tapping()" (click)="undo()">Undo</button>
   }
 </section>

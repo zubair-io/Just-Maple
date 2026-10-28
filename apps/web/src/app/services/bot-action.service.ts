@@ -101,6 +101,23 @@ export class BotActionService {
     }
   }
 
+  /** The owner's Cancel of a queued action. Throws with the server's reason. */
+  async cancel(id: string): Promise<BotAction> {
+    try {
+      const { action } = await firstValueFrom(
+        this.http.post<{ action: BotAction }>(
+          `/api/bot-actions/${encodeURIComponent(id)}/cancel`,
+          {},
+        ),
+      );
+      this.merge([action]);
+      return action;
+    } catch (error) {
+      void this.load(id, true);
+      throw new Error(serverMessage(error) || 'Could not cancel it. Try again.');
+    }
+  }
+
   /** The owner's edits to a drafted reply. */
   async saveDraft(id: string, body: string): Promise<BotAction> {
     return this.draftCall(id, '', body);
@@ -195,6 +212,11 @@ export class BotActionService {
           isOwner,
           // Whether Undo is offered comes from the full row.
           canUndo: isOwner && update.status === 'done' && !!current?.canUndo,
+          canCancel:
+            isOwner &&
+            (update.status === 'queued' || update.status === 'auto') &&
+            !update.cancelRequestedAt &&
+            !!current?.canCancel,
         } as BotAction,
       };
     });

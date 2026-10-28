@@ -222,11 +222,13 @@ struct CalendarActionTests {
         #expect(ledger.results[removal(of: party).id]?.ok == true)
     }
 
-    @Test func undoOfAnEventAlreadyGoneSucceeds() async throws {
+    @Test func undoOfAnEventAlreadyGoneReportsNotFound() async throws {
         let calendar = FakeCalendar()
         let server = FakeServer([removal(of: party)])
         try await runner(server, calendar, MemoryLedger()).run()
-        #expect(await server.reports.first?.result.ok == true)
+        let result = try #require(await server.reports.first?.result)
+        #expect(result.ok == true)
+        #expect(result.outcome == DeviceActionResult.notFound)
 
         // Repeated (a lost reply): still fine, nothing else touched.
         try await runner(FakeServer([party]), calendar, MemoryLedger()).run()
@@ -234,7 +236,7 @@ struct CalendarActionTests {
         other.id = "8e2f4b63-7d66-4b9f-8c2b-1e5a4d3c2b11"
         let again = FakeServer([removal(of: other)])
         try await runner(again, calendar, MemoryLedger()).run()
-        #expect(await again.reports.first?.result.ok == true)
+        #expect(await again.reports.first?.result.outcome == DeviceActionResult.notFound)
         #expect(calendar.events.count == 1)
     }
 

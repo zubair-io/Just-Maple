@@ -106,6 +106,7 @@ export async function createIndexes(database: Db): Promise<void> {
     // Bot action log and per-bot autonomy (bot-action.repo; sorted in code)
     await database.collection('bot_actions').createIndex({ ownerId: 1, botId: 1, createdAt: 1 }); // A bot's Activity
     await database.collection('bot_actions').createIndex({ notebookId: 1, createdAt: 1 }); // A notebook's Activity
+    await database.collection('bot_actions').createIndex({ createdAt: -1 }); // Activity: newest first
     await database.collection('bot_actions').createIndex({ ownerId: 1, status: 1 }); // Expiry
     await database.collection('bot_actions').createIndex({ ownerId: 1, 'undo.state': 1 }); // Undo queue
     await database.collection('bot_actions').createIndex({ 'undo.id': 1 }); // Undo results

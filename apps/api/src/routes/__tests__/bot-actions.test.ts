@@ -9,6 +9,7 @@ import {
 } from '../../__tests__/helpers/fixtures';
 import { mongoAvailable, testDb } from '../../__tests__/setup';
 import {
+    ALWAYS_ASK_HOME_DOMAINS,
     isAlwaysAsk,
     isSensitiveHomeService,
     type BotAction,
@@ -43,6 +44,11 @@ import {
     recordAction,
     withActionReceipts,
 } from '../../services/bot-action.service';
+import { syncCalendarAction } from '../../services/calendar-action.service';
+import {
+    findProposal,
+    type CalendarProposalDocument,
+} from '../../repositories/calendar-proposal.repo';
 import { macDataRelay } from '../../services/mac-data-relay.service';
 import { broadcastChatEvent } from '../../services/realtime.service';
 
@@ -311,26 +317,86 @@ describe.runIf(mongoAvailable)('Bot action log and autonomy', () => {
             await home({ domain: 'cover', service: 'open_cover', entityId: 'cover.garage_door' }),
         ).toMatchObject({ autonomy: 'ask', lowered: 'always_ask' });
 
-        expect(isSensitiveHomeService({ domain: 'lock', service: 'lock' })).toBe(false);
-        expect(isSensitiveHomeService({ domain: 'lock', service: 'open' })).toBe(true);
-        expect(
-            isSensitiveHomeService({
-                service: 'open_cover',
-                entityId: 'cover.side',
-                deviceClass: 'garage',
-            }),
-        ).toBe(true);
-        expect(
-            isSensitiveHomeService({
-                domain: 'cover',
-                service: 'open_cover',
-                entityId: 'cover.blinds',
-            }),
-        ).toBe(false);
         expect(isSensitiveHomeService({ domain: 'notify', service: 'mobile_app' })).toBe(true);
+        expect(isSensitiveHomeService({ entityId: 'notify.phone', service: 'send' })).toBe(true);
         expect(isSensitiveHomeService({})).toBe(true);
         expect(isAlwaysAsk('calendar_add', {})).toBe(false);
         expect(isAlwaysAsk('send_reply', {})).toBe(true);
+    });
+
+    it('takes the Home Assistant domain only from the entity id, never the bot', async () => {
+        const call = (params: Record<string, unknown>, known?: Parameters<typeof isAlwaysAsk>[2]) =>
+            isAlwaysAsk('home_service', params, known);
+        // A bot claiming a harmless domain or device class changes nothing.
+        expect(call({ domain: 'light', service: 'unlock', entityId: 'lock.front' })).toBe(true);
+        expect(call({ domain: 'light', service: 'turn_on', entityId: 'script.open_all' })).toBe(
+            true,
+        );
+        expect(call({ domain: 'light', service: 'turn_on' })).toBe(true); // No entity
+        expect(call({ service: 'turn_on', entityId: 'light' })).toBe(true); // No domain in it
+        expect(
+            call({ service: 'open_cover', entityId: 'cover.side', deviceClass: 'curtain' }),
+        ).toBe(true);
+        expect(call({ service: 'turn_on', entityId: 'light.kitchen', domain: 'lock' })).toBe(false);
+
+        // Every one of these asks unless the server vouches for the entity.
+        for (const domain of [
+            'homeassistant',
+            'script',
+            'scene',
+            'button',
+            'switch',
+            'valve',
+            'lock',
+            'alarm_control_panel',
+            'cover',
+        ]) {
+            expect(ALWAYS_ASK_HOME_DOMAINS).toContain(domain);
+            const service = domain === 'lock' ? 'lock' : 'turn_on';
+            expect(call({ service, entityId: `${domain}.thing` })).toBe(true);
+            expect(call({ service, entityId: `${domain}.thing` }, { safe: true })).toBe(false);
+        }
+        // Even a "safe" entity never unlocks, disarms or opens a door on its own.
+        expect(call({ service: 'unlock', entityId: 'lock.front' }, { safe: true })).toBe(true);
+        expect(call({ service: 'open', entityId: 'lock.front' }, { safe: true })).toBe(true);
+        expect(
+            call({ service: 'alarm_disarm', entityId: 'alarm_control_panel.home' }, { safe: true }),
+        ).toBe(true);
+        expect(call({ service: 'open_cover', entityId: 'cover.garage_door' }, { safe: true })).toBe(
+            true,
+        );
+        // The device class counts only when the server knows it.
+        expect(
+            call(
+                { service: 'open_cover', entityId: 'cover.side' },
+                { safe: true, deviceClass: 'garage' },
+            ),
+        ).toBe(true);
+        expect(
+            call(
+                { service: 'open_cover', entityId: 'cover.blinds' },
+                { safe: true, deviceClass: 'blind' },
+            ),
+        ).toBe(false);
+        expect(call({ service: 'mobile_app', entityId: 'notify.x' }, { safe: true })).toBe(true);
+
+        // Through decideAutonomy: the server's knowledge is an input, the bot's isn't.
+        await setAutonomy('home_service', 'auto');
+        const decide = (params: Record<string, unknown>, known?: { safe?: boolean }) =>
+            decideAutonomy({
+                ownerId: owner.id,
+                botId,
+                kind: 'home_service',
+                notebookId: privateNotebook,
+                params,
+                ...(known ? { known } : {}),
+            });
+        expect(
+            await decide({ service: 'turn_on', entityId: 'scene.movie', safe: true }),
+        ).toMatchObject({ autonomy: 'ask', lowered: 'always_ask' });
+        expect(
+            await decide({ service: 'turn_on', entityId: 'scene.movie' }, { safe: true }),
+        ).toMatchObject({ autonomy: 'auto' });
     });
 
     it('is auto only in the owner’s own private notebook', async () => {
@@ -513,6 +579,268 @@ describe.runIf(mongoAvailable)('Bot action log and autonomy', () => {
         expect((await undo(owner, open!)).status).toBe(409);
     });
 
+    // MARK: - Review fixes
+
+    it('never moves a row back, whatever order the syncs arrive in', async () => {
+        const id = await addedEvent();
+        const stale = (await findProposal(id))!;
+        // A sync carrying an older copy (queued) arrives after the Mac's report.
+        await syncCalendarAction({ ...stale, status: 'queued' } as CalendarProposalDocument);
+        expect((await row(id))!.status).toBe('done');
+
+        // Undone, then the proposal itself looks queued again: the row stays undone.
+        await undo(owner, id);
+        const [removal] = await macActions();
+        await report(removal!.id, { ok: true });
+        expect((await row(id))!.status).toBe('undone');
+        await testDb!
+            .collection('calendar_proposals')
+            .updateOne({ _id: id as never }, { $set: { status: 'queued' } });
+        await syncCalendarAction((await findProposal(id))!);
+        expect((await row(id))!.status).toBe('undone');
+
+        // Expired and denied are ends too.
+        const { id: other } = await propose(shared, { ...party, title: 'Practice' });
+        await testDb!
+            .collection('calendar_proposals')
+            .updateOne({ _id: other as never }, { $set: { expiresAt: new Date(Date.now() - 1) } });
+        await botActivity();
+        expect((await row(other!))!.status).toBe('expired');
+        await testDb!
+            .collection('calendar_proposals')
+            .updateOne({ _id: other as never }, { $set: { status: 'failed' } });
+        await syncCalendarAction((await findProposal(other!))!);
+        expect((await row(other!))!.status).toBe('expired');
+    });
+
+    it('Try again is the owner’s approval, not the setting’s', async () => {
+        await setAutonomy('calendar_add', 'auto');
+        await call(owner, '/api/collectors/mac-one-1', 'PATCH', { activeSources: [] });
+        const { id } = await propose(privateNotebook);
+        expect(await row(id!)).toMatchObject({
+            status: 'failed',
+            decision: 'auto',
+            approvedBy: 'auto',
+        });
+        await call(owner, '/api/collectors/mac-one-1', 'PATCH', { activeSources: ['calendar'] });
+        await confirm(id!);
+        expect(await row(id!)).toMatchObject({
+            status: 'queued',
+            decision: 'ask',
+            approvedBy: owner.id,
+        });
+        // A requeue of an automatic add keeps `auto`.
+        const { id: autoId } = await propose(privateNotebook, { ...party, title: 'Bake sale' });
+        await macActions();
+        await testDb!
+            .collection('calendar_proposals')
+            .updateOne(
+                { _id: autoId as never },
+                { $set: { deliveredAt: new Date(Date.now() - 16 * 60 * 1000) } },
+            );
+        await botActivity();
+        expect(await row(autoId!)).toMatchObject({ decision: 'auto', approvedBy: 'auto' });
+    });
+
+    it('dates rows for proposals from before the log by the proposal', async () => {
+        const { id } = await propose();
+        const proposedAt = new Date(Date.now() - 3 * 24 * HOUR);
+        await testDb!.collection('bot_actions').deleteMany({});
+        await testDb!
+            .collection('calendar_proposals')
+            .updateOne({ _id: id as never }, { $set: { createdAt: proposedAt } });
+        const { id: newer } = await propose(shared, { ...party, title: 'Practice' });
+        await confirm(id!);
+        expect((await row(id!))!.createdAt).toEqual(proposedAt);
+        // Newest first: the old proposal doesn't jump to the top.
+        expect((await botActivity()).map((a) => a.id)).toEqual([newer, id]);
+    });
+
+    it('Never: one row per bot and event, and none for events already added', async () => {
+        const added = await addedEvent(privateNotebook);
+        await setAutonomy('calendar_add', 'never');
+        // Already added: the bot is told so, nothing is logged as denied.
+        expect((await propose(privateNotebook)).result).toContain('already added');
+        expect(await testDb!.collection('bot_actions').countDocuments({ status: 'denied' })).toBe(
+            0,
+        );
+
+        // The same email seen 12 times: one denied row.
+        for (let i = 0; i < 12; i++)
+            await propose(privateNotebook, { ...party, title: 'Swim meet' });
+        const denied = await testDb!.collection('bot_actions').find({ status: 'denied' }).toArray();
+        expect(denied).toHaveLength(1);
+        // Different events are different rows, and they don't push the rest out.
+        for (let i = 0; i < 5; i++)
+            await propose(privateNotebook, { ...party, title: `Game ${i}` });
+        expect((await botActivity('&limit=3')).map((a) => a.status)).toEqual([
+            'denied',
+            'denied',
+            'denied',
+        ]);
+        expect((await botActivity('&status=done&limit=1')).map((a) => a.id)).toEqual([added]);
+        expect((await botActivity('&kind=calendar_add&status=denied')).length).toBe(6);
+    });
+
+    it('applies visibility and filters before the limit', async () => {
+        const posted = await addedEvent();
+        // Newer rows the member can't see.
+        for (let i = 0; i < 5; i++)
+            await recordAction({
+                kind: 'home_service',
+                ownerId: owner.id,
+                botId,
+                notebookId: shared,
+                summary: `Light ${i}`,
+                params: { entityId: 'light.kitchen' },
+            });
+        expect((await notebookActivity(member, shared, '&limit=1')).map((a) => a.id)).toEqual([
+            posted,
+        ]);
+        expect(
+            (await notebookActivity(owner, shared, '&kind=calendar_add&limit=1')).map((a) => a.id),
+        ).toEqual([posted]);
+        expect((await notebookActivity(owner, shared, '&limit=2')).length).toBe(2);
+    });
+
+    it('says when the Mac couldn’t find the event, and lets the bot offer it again', async () => {
+        const id = await addedEvent();
+        await undo(owner, id);
+        const [removal] = await macActions();
+        const reported = (await json(report(removal!.id, { ok: true, outcome: 'not_found' })))
+            .action as BotAction;
+        expect(reported).toMatchObject({
+            status: 'done',
+            canUndo: false,
+            undo: { state: 'not_found' },
+        });
+        // Repeated: nothing changes, and no second Undo.
+        await report(removal!.id, { ok: true });
+        expect((await action(owner, id)).undo?.state).toBe('not_found');
+        expect((await json(undo(owner, id))).error).toBeDefined();
+        const card = (await json(call(owner, `/api/calendar-proposals/${id}`)))
+            .proposal as CalendarProposal;
+        expect(card.status).toBe('not_found');
+        // It isn't on the calendar: the bot may propose it again.
+        const again = await propose();
+        expect(again.result).toContain('Proposed');
+        expect(again.id).not.toBe(id);
+    });
+
+    it('sends the undo to the Mac that added the event, or says it couldn’t', async () => {
+        // A second Mac; only one collects the calendar at a time (mac-one-1 here).
+        await call(owner, '/api/collectors', 'POST', {
+            deviceId: 'mac-two-2',
+            platform: 'macos',
+            name: 'Mac two',
+            sources: ['calendar'],
+            timeZone: 'America/New_York',
+        });
+        const moveCalendarTo = (deviceId: string) =>
+            call(owner, `/api/collectors/${deviceId}`, 'PATCH', { activeSources: ['calendar'] });
+
+        const id = await addedEvent(); // Added by mac-one-1
+        const queued = (await json(undo(owner, id))).action as BotAction;
+        expect(queued.undo).toMatchObject({ state: 'queued', deviceName: 'Mac one' });
+        expect(queued.undo).not.toHaveProperty('fallback');
+        expect(await macActions('mac-two-2')).toEqual([]);
+        const [removal] = await macActions('mac-one-1');
+        expect(removal).toMatchObject({ type: 'delete_event', eventIdentifier: 'EK-1' });
+        await report(removal!.id, { ok: true });
+        expect((await action(owner, id)).status).toBe('undone');
+
+        // The calendar moved to the other Mac before the undo: that one, and say so.
+        const later = await addedEvent(shared, 'Bake sale');
+        await moveCalendarTo('mac-two-2');
+        const fallback = (await json(undo(owner, later))).action as BotAction;
+        expect(fallback.undo).toMatchObject({ deviceName: 'Mac two', fallback: true });
+        expect(await macActions('mac-one-1')).toEqual([]);
+        expect((await macActions('mac-two-2')).map((a) => a.createdBy)).toEqual([later]);
+
+        // It moves after the undo was queued for the Mac that added it: rerouted, and said so.
+        await moveCalendarTo('mac-one-1');
+        const third = await addedEvent(shared, 'Recital');
+        expect((await json(undo(owner, third))).action.undo.deviceName).toBe('Mac one');
+        await moveCalendarTo('mac-two-2');
+        expect((await macActions('mac-two-2')).map((a) => a.createdBy)).toContain(third);
+        expect((await action(owner, third)).undo).toMatchObject({
+            state: 'delivered',
+            deviceName: 'Mac two',
+            fallback: true,
+        });
+    });
+
+    it('an older Mac refusing delete_event leaves the event and lets the owner retry', async () => {
+        const id = await addedEvent();
+        await undo(owner, id);
+        const [removal] = await macActions();
+        // What a Mac from before undo reports for an action type it doesn't know.
+        await report(removal!.id, {
+            ok: false,
+            error: 'This Mac doesn\'t know how to do "delete_event". Update Just Maple.',
+        });
+        expect(await action(owner, id)).toMatchObject({
+            status: 'done',
+            canUndo: true,
+            undo: { state: 'failed', error: expect.stringContaining('Update Just Maple') },
+        });
+        // Not offered again until the owner taps Undo again; the card still says added.
+        expect(await macActions()).toEqual([]);
+        const card = (await json(call(owner, `/api/calendar-proposals/${id}`)))
+            .proposal as CalendarProposal;
+        expect(card.status).toBe('added');
+        await undo(owner, id);
+        expect((await macActions()).map((a) => a.type)).toEqual(['delete_event']);
+    });
+
+    it('cancels an automatic add before the Mac takes it', async () => {
+        await setAutonomy('calendar_add', 'auto');
+        const { id } = await propose(privateNotebook);
+        expect(await action(owner, id!)).toMatchObject({ status: 'queued', canCancel: true });
+        expect((await call(member, `/api/bot-actions/${id}/cancel`, 'POST')).status).toBe(404);
+        const cancelled = (await json(call(owner, `/api/bot-actions/${id}/cancel`, 'POST')))
+            .action as BotAction;
+        expect(cancelled).toMatchObject({ status: 'denied', canCancel: false, canUndo: false });
+        expect(await macActions()).toEqual([]);
+        expect((await findProposal(id!))!.status).toBe('cancelled');
+        // Repeated: same answer. The bot doesn't offer it again.
+        expect((await call(owner, `/api/bot-actions/${id}/cancel`, 'POST')).status).toBe(200);
+        expect((await propose(privateNotebook)).result).toContain('cancelled');
+        // Done actions can't be cancelled.
+        const done = await addedEvent(shared, 'Bake sale');
+        expect((await call(owner, `/api/bot-actions/${done}/cancel`, 'POST')).status).toBe(409);
+    });
+
+    it('cancel after the Mac took it undoes it once it is added', async () => {
+        await setAutonomy('calendar_add', 'auto');
+        const { id } = await propose(privateNotebook);
+        expect((await macActions()).map((a) => a.id)).toEqual([id]);
+        const cancelling = (await json(call(owner, `/api/bot-actions/${id}/cancel`, 'POST')))
+            .action as BotAction;
+        expect(cancelling).toMatchObject({ status: 'queued', canCancel: false });
+        expect(cancelling.cancelRequestedAt).toBeDefined();
+        await report(id!, { ok: true, eventIdentifier: 'EK-7', itemId: 'calendar:A@7' });
+        expect(await action(owner, id!)).toMatchObject({
+            status: 'done',
+            undo: { state: 'queued' },
+        });
+        const removal = (await macActions()).find((a) => a.type === 'delete_event');
+        expect(removal).toMatchObject({ eventIdentifier: 'EK-7', createdBy: id });
+        await report(removal!.id, { ok: true });
+        expect((await action(owner, id!)).status).toBe('undone');
+    });
+
+    it('reading one card catches up only that card', async () => {
+        const done = await addedEvent();
+        const { id: open } = await propose(shared, { ...party, title: 'Practice' });
+        await testDb!
+            .collection('calendar_proposals')
+            .updateOne({ _id: open as never }, { $set: { expiresAt: new Date(Date.now() - 1) } });
+        await action(owner, done);
+        expect((await findProposal(open!))!.status).toBe('proposed');
+        expect((await action(owner, open!)).status).toBe('expired');
+    });
+
     // MARK: - Expiry of other kinds
 
     it('expires open actions of kinds without their own lifecycle', async () => {
@@ -620,6 +948,7 @@ describe.runIf(mongoAvailable)('Bot action log and autonomy', () => {
                 expect.arrayContaining([
                     { ownerId: 1, botId: 1, createdAt: 1 },
                     { notebookId: 1, createdAt: 1 },
+                    { createdAt: -1 },
                     { ownerId: 1, status: 1 },
                     { ownerId: 1, 'undo.state': 1 },
                     { 'undo.id': 1 },

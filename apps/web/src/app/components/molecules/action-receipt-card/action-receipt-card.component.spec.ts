@@ -117,6 +117,66 @@ describe('ActionReceiptCardComponent', () => {
     expect(undoButton()).toBeUndefined();
   });
 
+  it('cancels an automatic add that is still waiting', async () => {
+    const { text, settle, fixture } = await render(botAction({ canCancel: true }));
+    const host: HTMLElement = fixture.nativeElement;
+    const cancel = () =>
+      [...host.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Cancel');
+    cancel()!.click();
+    http.expectOne({ method: 'POST', url: `/api/bot-actions/${ID}/cancel` }).flush({
+      action: botAction({
+        status: 'denied',
+        canCancel: false,
+        cancelRequestedAt: '2026-10-27T12:02:00.000Z',
+        updatedAt: '2026-10-27T12:02:00.000Z',
+      }),
+    });
+    await settle();
+    expect(text()).toContain('Cancelled: “Pizza party”');
+    expect(cancel()).toBeUndefined();
+  });
+
+  it('says when a Mac already on it will remove it once it finishes', async () => {
+    const { text, undoButton } = await render(
+      botAction({ cancelRequestedAt: '2026-10-27T12:02:00.000Z', canCancel: false }),
+    );
+    expect(text()).toContain('Cancelling… it will be removed once your Mac finishes.');
+    expect(undoButton()).toBeUndefined();
+  });
+
+  it('says it couldn’t find the event on the Mac, not that it was undone', async () => {
+    const { text, undoButton } = await render(
+      botAction({
+        status: 'done',
+        undo: {
+          state: 'not_found',
+          requestedAt: '2026-10-27T12:02:00.000Z',
+          completedAt: '2026-10-27T12:03:00.000Z',
+        },
+      }),
+    );
+    expect(text()).toContain("Couldn't find it on your Mac: “Pizza party”");
+    expect(text()).not.toContain('Undone');
+    expect(undoButton()).toBeUndefined();
+  });
+
+  it('says which Mac is removing it, and why when it isn’t the one that added it', async () => {
+    const { text } = await render(
+      botAction({
+        status: 'done',
+        undo: {
+          state: 'queued',
+          requestedAt: '2026-10-27T12:02:00.000Z',
+          deviceName: 'Mac two',
+          fallback: true,
+        },
+      }),
+    );
+    expect(text()).toContain(
+      'Undoing on Mac two (the Mac that added it no longer collects your calendar)…',
+    );
+  });
+
   it('shows the server’s reason when it can’t undo', async () => {
     const { text, undoButton, settle } = await render(botAction({ status: 'done', canUndo: true }));
     undoButton()!.click();

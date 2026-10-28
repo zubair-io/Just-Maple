@@ -56,6 +56,11 @@ nonisolated struct DeviceActionResult: Codable, Equatable, Sendable {
     var eventIdentifier: String?
     var itemId: String?
     var error: String?
+    /// `delete_event` only: "not_found" when there was nothing to remove, so the server
+    /// doesn't show the event as removed.
+    var outcome: String? = nil
+
+    static let notFound = "not_found"
 }
 
 /// An event this Mac added.
@@ -157,17 +162,20 @@ nonisolated struct CalendarActionRunner: Sendable {
         }
     }
 
-    /// Undo of an added event. Gone already is a success: undo is safe to repeat.
+    /// Undo of an added event. Gone already is reported as `not_found` (nothing was
+    /// removed); a repeat after a lost reply sends the saved result again.
     private func remove(_ action: DeviceAction) -> DeviceActionResult {
         guard let createdBy = action.createdBy, let identifier = action.eventIdentifier else {
             return DeviceActionResult(
                 ok: false, error: CalendarActionError.notAddedByJustMaple.localizedDescription)
         }
         do {
-            _ = try writer.remove(
+            let removed = try writer.remove(
                 identifier: identifier, marker: Self.marker(for: createdBy),
                 around: Date(timeIntervalSince1970: action.event.start))
-            return DeviceActionResult(ok: true, eventIdentifier: identifier)
+            return DeviceActionResult(
+                ok: true, eventIdentifier: identifier,
+                outcome: removed ? nil : DeviceActionResult.notFound)
         } catch {
             return DeviceActionResult(ok: false, error: String(error.localizedDescription.prefix(500)))
         }
