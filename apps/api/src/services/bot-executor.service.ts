@@ -11,6 +11,7 @@ import type {
 import { isBotModel } from '@maple/shared';
 import { botUIPrompt, parseBotResponse, botUIToText } from './bot-ui.service';
 import { attachProposals, withProposalCards } from './calendar-proposal.service';
+import { attachActions, withActionReceipts } from './bot-action.service';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { SDKAssistantMessage } from '@anthropic-ai/claude-agent-sdk';
 import { findBotTemplateById } from '../repositories/bot-template.repo';
@@ -946,12 +947,15 @@ export class BotExecutorService {
         // "Add to calendar" cards come from the proposals saved in this run, never from
         // what the model wrote.
         const proposals = ctx.macData?.proposedEvents ?? [];
-        const ui = proposals.length ? await withProposalCards(parsed.ui, proposals) : parsed.ui;
+        let ui = proposals.length ? await withProposalCards(parsed.ui, proposals) : parsed.ui;
+        // So do "Done · Undo" cards, from actions done without a tap (bot-action.service).
+        const receipts = ctx.macData?.actionReceipts ?? [];
+        if (receipts.length) ui = await withActionReceipts(ui, receipts);
         ctx.variables.$botUI = ui;
         return markdownToProseMirror(parsed.markdown || (ui ? botUIToText(ui) : ''));
     }
 
-    /** Points the run's proposals at the message that shows their cards. */
+    /** Points the run's proposals and logged actions at the message that shows their cards. */
     private async attachProposalCards(
         ctx: ExecutionContext,
         pageId: string,
@@ -961,6 +965,12 @@ export class BotExecutorService {
         if (proposals.length)
             await attachProposals(proposals, pageId, messageId).catch((error) =>
                 console.error('[BotExecutor] Could not attach proposals:', error),
+            );
+        // Calendar proposals share their id with their action log row.
+        const actions = [...proposals, ...(ctx.macData?.actionReceipts ?? [])];
+        if (actions.length)
+            await attachActions(actions, pageId, messageId).catch((error) =>
+                console.error('[BotExecutor] Could not attach actions:', error),
             );
     }
 

@@ -1,0 +1,46 @@
+<section class="receipt-card" [attr.data-status]="status() ?? 'loading'" role="status">
+  <span class="material-symbols-rounded receipt-icon" aria-hidden="true">{{
+    kind()?.icon ?? 'bolt'
+  }}</span>
+  <div class="receipt-body">
+    @switch (status()) {
+      @case ('done') {
+        <p>
+          <strong>Done:</strong> {{ kind()?.doneLabel ?? 'Done' }} ·
+          {{ action()?.summary ?? summary() }}
+        </p>
+      }
+      @case ('failed') {
+        <p>
+          <strong>Couldn't do it:</strong> {{ action()?.summary ?? summary() }}
+          @if (action()?.error; as error) {
+            <span class="receipt-error">{{ error }}</span>
+          }
+        </p>
+      }
+      @case ('undone') {
+        <p><strong>Undone:</strong> {{ action()?.summary ?? summary() }}</p>
+      }
+      @case ('expired') {
+        <p><strong>Didn't happen:</strong> {{ action()?.summary ?? summary() }}</p>
+      }
+      @default {
+        <p>
+          <span class="spinner" aria-hidden="true"></span>
+          <strong>Doing it:</strong> {{ action()?.summary ?? summary() }}
+        </p>
+      }
+    }
+    @if (undoing()) {
+      <span class="receipt-muted">Undoing…</span>
+    } @else if (action()?.undo?.state === 'failed') {
+      <span class="receipt-error">Couldn't undo: {{ action()?.undo?.error }}</span>
+    }
+    @if (tapError(); as message) {
+      <span class="receipt-error">{{ message }}</span>
+    }
+  </div>
+  @if (action()?.canUndo) {
+    <button type="button" class="receipt-undo" [disabled]="tapping()" (click)="undo()">Undo</button>
+  }
+</section>

@@ -45,7 +45,7 @@ import {
 import { getPageTypeLabel as getLabel, getPageTypeIcon as getIcon } from '../../utils/page-types';
 import { isLocalNotebook } from '../../providers/data-provider.interface';
 import type { NotebookMember, Page, Message, MacDataSource } from '@maple/shared';
-import { aboutMePageId, graphPageId } from '@maple/shared';
+import { aboutMePageId, activityPageId, graphPageId } from '@maple/shared';
 
 interface NotebookSummary {
   pageCounts: Record<string, number>;
@@ -208,6 +208,8 @@ export class ChatViewComponent implements OnInit, OnDestroy {
         return 'Collectibles';
       case 'graph':
         return 'Graph';
+      case 'activity':
+        return 'Activity';
       default:
         return `${type.charAt(0).toUpperCase() + type.slice(1)}s`;
     }
@@ -315,6 +317,11 @@ export class ChatViewComponent implements OnInit, OnDestroy {
   /** "+ New" offers Graph only until the notebook has one. */
   readonly hasGraphPage = computed(() =>
     this.navigationPages().some((page) => page.type === 'graph'),
+  );
+
+  /** "+ New" offers Activity only until the notebook has one. */
+  readonly hasActivityPage = computed(() =>
+    this.navigationPages().some((page) => page.type === 'activity'),
   );
 
   /** Device data sources offered in "+ New" on every device (Mac and iPhone sources). */
@@ -603,6 +610,31 @@ export class ChatViewComponent implements OnInit, OnDestroy {
       console.error('Failed to create Graph page:', error);
       await this.dialogService.alert({
         title: 'Could not add Graph',
+        message:
+          'Only members who can edit this notebook can add it. Check your connection and try again.',
+      });
+    }
+  }
+
+  /** Adds the notebook's Activity page (what bots did and proposed here) and opens it. */
+  async createActivityPage(): Promise<void> {
+    const notebookId = this.selectedNotebookId();
+    if (!notebookId) return;
+    try {
+      const page = await lastValueFrom(
+        this.pageService.createPage({
+          // The server gives each notebook's Activity this fixed id.
+          id: activityPageId(notebookId),
+          type: 'activity',
+          title: 'Activity',
+          notebookId,
+        }),
+      );
+      await this.router.navigate(['/', notebookId, page.id]);
+    } catch (error) {
+      console.error('Failed to create Activity page:', error);
+      await this.dialogService.alert({
+        title: 'Could not add Activity',
         message:
           'Only members who can edit this notebook can add it. Check your connection and try again.',
       });

@@ -295,4 +295,10 @@ describe('EventProposalCardComponent', () => {
     });
     http.expectNone(`/api/calendar-proposals/${ID}`);
   });
+
+  it('says when an added event was undone', async () => {
+    const { text } = await render(proposal({ status: 'removed', canConfirm: true }));
+    expect(text()).toContain('removed from the calendar');
+    expect(text()).not.toContain('Add to calendar');
+  });
 });

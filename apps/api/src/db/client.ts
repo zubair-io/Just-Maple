@@ -103,6 +103,13 @@ export async function createIndexes(database: Db): Promise<void> {
     // "Add to calendar" proposals and the Mac action queue (sorted in code)
     await database.collection('calendar_proposals').createIndex({ userId: 1, status: 1 });
     await database.collection('calendar_proposals').createIndex({ userId: 1, 'event.start': 1 }); // Duplicate offers
+    // Bot action log and per-bot autonomy (bot-action.repo; sorted in code)
+    await database.collection('bot_actions').createIndex({ ownerId: 1, botId: 1, createdAt: 1 }); // A bot's Activity
+    await database.collection('bot_actions').createIndex({ notebookId: 1, createdAt: 1 }); // A notebook's Activity
+    await database.collection('bot_actions').createIndex({ ownerId: 1, status: 1 }); // Expiry
+    await database.collection('bot_actions').createIndex({ ownerId: 1, 'undo.state': 1 }); // Undo queue
+    await database.collection('bot_actions').createIndex({ 'undo.id': 1 }); // Undo results
+    await database.collection('bot_autonomy').createIndex({ userId: 1, botId: 1 });
     // About me
     await database.collection('profile_entities').createIndex({ userId: 1 });
     await database.collection('profile_relations').createIndex({ userId: 1 });

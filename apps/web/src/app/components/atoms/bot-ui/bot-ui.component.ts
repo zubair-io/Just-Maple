@@ -73,6 +73,11 @@ const library = createLibrary({
                   timeZone: z.string().max(100).optional(),
                 }),
               }),
+              z.object({
+                type: z.literal('action_receipt'),
+                actionId: z.string().regex(/^[0-9a-f-]{36}$/),
+                summary: z.string().max(500),
+              }),
             ]),
           )
           .min(1)

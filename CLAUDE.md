@@ -696,6 +696,22 @@ Key files: `calendar-proposal.service.ts` / `.repo.ts` / `routes/calendar-propos
 
 ---
 
+## Bot action log and autonomy
+
+Every action a bot proposes or performs is one row in `bot_actions`, and its owner decides per bot and per kind whether the bot asks, acts on its own, or never acts.
+
+1. A feature asks `decideAutonomy` (`bot-action.service.ts`) first. The owner's setting (`bot_autonomy`, default **Ask every time**) is lowered by hard floors: `isAlwaysAsk` in `@maple/shared` (sending messages or email, unlocking, opening garage doors or gates, disarming, `notify`) is always Ask, and **Do it and tell me** only applies in the owner's own private notebook; anywhere shared it's Ask. **Never** stays never. Bots never see or change settings (`/api/bot-autonomy/:botId` is for people only).
+2. It writes the log through `recordAction` / `updateAction`: proposed / auto / denied → queued → done / failed / undone / expired, with who approved, the result or error. Changes to rows posted in a chat are broadcast as `bot_action_updated`, without parameters.
+3. Auto actions get an `action_receipt` card ("Done: … · Undo") on the bot's reply (`withActionReceipts`, `attachActions`), added by the server only.
+4. Undo is offered to the owner for 24 hours after done (`POST /api/bot-actions/:id/undo`). For `calendar_add` it queues a `delete_event` for the Mac next to `create_event`; the Mac removes the event only if it still carries the `justmaple://calendar-action/<proposal id>` marker, and an event already gone counts as removed. The proposal then reads `removed`, and the bot won't offer it again.
+5. Reads: a bot's Activity (its settings, owner only) and a notebook's **Activity** page (one per notebook, from + New). Members see their own actions in full; other people's only if posted in that notebook's chats, and only the summary.
+
+Calendar proposals share their id with their log row; `syncCalendarAction` (`calendar-action.service.ts`) follows every proposal change. **Adding a kind:** add it to `BotActionKindSchema` and `BOT_ACTION_KINDS` (and `isAlwaysAsk` if some calls must always ask), call `decideAutonomy` → `recordAction` → `updateAction` from the feature, and register `settle` / `undo` / device-queue handlers in `bot-action-kinds.ts` if it has them.
+
+Key files: `packages/shared/src/schemas/bot-action.ts`, `bot-action.service.ts` / `bot-activity.service.ts` / `bot-action-kinds.ts` / `calendar-action.service.ts` / `bot-action.repo.ts` / `routes/bot-actions.ts` (API), `action-receipt-card`, `action-log`, `bot-autonomy`, `activity-view` (web).
+
+---
+
 ## Quick Reference
 
 | Do                             | Don't                               |

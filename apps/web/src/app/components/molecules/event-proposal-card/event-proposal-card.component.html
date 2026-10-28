@@ -56,6 +56,9 @@
       @case ('expired') {
         <span class="event-muted">This offer expired. Ask again if you still want it added.</span>
       }
+      @case ('removed') {
+        <span class="event-muted">Added, then removed from the calendar (undone).</span>
+      }
     }
     @if (tapError(); as message) {
       <span class="event-error">{{ message }}</span>

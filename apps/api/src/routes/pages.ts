@@ -23,6 +23,7 @@ import {
     publishPage,
     findAboutMePage,
     findGraphPage,
+    findActivityPage,
 } from '../repositories/page.repo';
 import { otService } from '../services/ot.service';
 import { realtimeWSService } from '../services/realtime-ws.service';
@@ -36,7 +37,7 @@ import {
     ProactiveSettingsError,
 } from '../services/proactive-settings.service';
 import { ensureProfile } from '../services/about-me.service';
-import { aboutMePageId, graphPageId } from '@maple/shared';
+import { aboutMePageId, activityPageId, graphPageId } from '@maple/shared';
 import { requestGraphPass, runGraphPass } from '../services/graph.service';
 import { updateLinksForPage, handlePageRename, handlePageDeletion } from '../services/link.service';
 import { indexPage, removeFromIndex } from '../repositories/search.repo';
@@ -286,6 +287,7 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                         t.Literal('devicedata'),
                         t.Literal('aboutme'),
                         t.Literal('graph'),
+                        t.Literal('activity'),
                     ]),
                 ),
                 title: t.Optional(t.String({ maxLength: 255 })),
@@ -744,6 +746,7 @@ const ONE_PER_NOTEBOOK: Record<
 > = {
     aboutme: { name: 'About me', id: aboutMePageId, find: findAboutMePage },
     graph: { name: 'Graph', id: graphPageId, find: findGraphPage },
+    activity: { name: 'Activity', id: activityPageId, find: findActivityPage },
 };
 
 /**
@@ -762,7 +765,7 @@ async function singlePageChangeError(
     if (changes.isTrashed === false && page.isTrashed) {
         const current = await single.find(page.notebookId);
         if (current && current.id !== page.id)
-            return `This notebook already has a${single.name === 'About me' ? 'n' : ''} ${single.name} page`;
+            return `This notebook already has a${/^[AEIOU]/.test(single.name) ? 'n' : ''} ${single.name} page`;
     }
     return null;
 }

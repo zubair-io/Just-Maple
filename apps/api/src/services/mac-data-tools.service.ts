@@ -68,6 +68,10 @@ export interface MacDataToolContext {
     botId?: string;
     /** Proposals made in this run; their cards are attached to the reply. */
     proposedEvents?: string[];
+    /** The bot's name, for the action log. */
+    botName?: string;
+    /** Actions done without a tap in this run (bot-action.service); "Done · Undo" cards. */
+    actionReceipts?: string[];
 }
 
 export interface ToolDefinition {
@@ -107,6 +111,7 @@ export async function getMacDataToolContext(
         pages,
         timeZone,
         botId: bot.id,
+        botName: bot.name,
         now: formatInZone(new Date(), timeZone),
         ...(about
             ? {

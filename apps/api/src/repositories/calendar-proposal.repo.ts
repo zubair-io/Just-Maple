@@ -14,6 +14,7 @@ import type { CalendarEventDraft, DeviceAction, DeviceActionResult } from '@mapl
 //    └─────────────────┴──── 7 days ──────────────┴──▶ expired
 //
 // failed ──tap again──▶ queued
+// added ──Undo in the action log, Mac removed it──▶ removed (calendar-action.service)
 //
 // Queries sort in code: Cosmos DB needs a matching index for every sort.
 
@@ -23,7 +24,8 @@ export type StoredProposalStatus =
     | 'delivered'
     | 'added'
     | 'failed'
-    | 'expired';
+    | 'expired'
+    | 'removed';
 
 export interface CalendarProposalDocument {
     _id: string;
@@ -99,7 +101,11 @@ export async function findDuplicate(
     event: Pick<CalendarEventDraft, 'title' | 'start'>,
 ): Promise<CalendarProposalDocument | null> {
     const docs = await getCollection()
-        .find({ userId, 'event.start': event.start, status: { $in: [...OPEN, 'added'] } })
+        .find({
+            userId,
+            'event.start': event.start,
+            status: { $in: [...OPEN, 'added', 'removed'] },
+        })
         .toArray();
     const title = event.title.trim().toLowerCase();
     const same = docs.filter((doc) => doc.event.title.trim().toLowerCase() === title);
@@ -244,7 +250,8 @@ export async function completeAction(
 ): Promise<{ doc: CalendarProposalDocument; changed: boolean } | null> {
     const doc = await getCollection().findOne({ _id: id, userId });
     if (!doc || (doc.deviceId !== deviceId && !doc.deliveredTo?.includes(deviceId))) return null;
-    if (doc.status === 'added') return { doc, changed: false };
+    // Added, or added and then removed by an undo: a repeated success changes nothing.
+    if (doc.status === 'added' || doc.status === 'removed') return { doc, changed: false };
     const now = new Date();
     const update = result.ok
         ? {
@@ -267,13 +274,22 @@ export async function completeAction(
           };
     // A failure only replaces an action still in flight.
     const filter = result.ok
-        ? { _id: id, status: { $ne: 'added' as const } }
+        ? { _id: id, status: { $nin: ['added' as const, 'removed' as const] } }
         : { _id: id, status: 'delivered' as const, deviceId };
     const updated = await getCollection().findOneAndUpdate(filter, update, {
         returnDocument: 'after',
     });
     if (updated) return { doc: updated, changed: true };
     return { doc: (await getCollection().findOne({ _id: id }))!, changed: false };
+}
+
+/** An added event the Mac removed again (undo). Null unless it was `added`. */
+export async function markRemoved(id: string): Promise<CalendarProposalDocument | null> {
+    return getCollection().findOneAndUpdate(
+        { _id: id, status: 'added' },
+        { $set: { status: 'removed', updatedAt: new Date() } },
+        { returnDocument: 'after' },
+    );
 }
 
 /** Open proposals past their date become `expired`. Returns the ones that changed. */

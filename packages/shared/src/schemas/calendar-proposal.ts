@@ -27,7 +27,8 @@ export type CalendarEventDraft = Static<typeof CalendarEventDraftSchema>;
  * - `adding`: tapped, waiting for the Mac;
  * - `added`: on the calendar (`itemId` opens it once the Mac uploads it);
  * - `failed`: the Mac couldn't add it (`error` says why); the owner can try again;
- * - `expired`: nobody tapped, or the Mac never picked it up, within 7 days.
+ * - `expired`: nobody tapped, or the Mac never picked it up, within 7 days;
+ * - `removed`: added, then undone from the action log; the Mac removed it again.
  */
 export const CalendarProposalStatusSchema = Type.Union([
     Type.Literal('proposed'),
@@ -35,6 +36,7 @@ export const CalendarProposalStatusSchema = Type.Union([
     Type.Literal('added'),
     Type.Literal('failed'),
     Type.Literal('expired'),
+    Type.Literal('removed'),
 ]);
 export type CalendarProposalStatus = Static<typeof CalendarProposalStatusSchema>;
 
@@ -66,7 +68,7 @@ export type CalendarProposal = Static<typeof CalendarProposalSchema>;
 // MARK: - Collector action queue
 
 /** A pending action for a collector. The id is stable across retries: the device uses it to avoid doing the same thing twice. */
-export const DeviceActionSchema = Type.Object({
+export const CreateEventActionSchema = Type.Object({
     id: Type.String(),
     type: Type.Literal('create_event'),
     source: Type.Literal('calendar'),
@@ -74,7 +76,30 @@ export const DeviceActionSchema = Type.Object({
     createdAt: Type.String(),
     expiresAt: Type.String(),
 });
+
+/**
+ * Undo of an added event (bot-action log). The Mac removes the event only when it still
+ * carries the marker of the `create_event` action `createdBy`, so it never removes an
+ * event Just Maple didn't add. Gone already counts as done. `event` is the one that was
+ * added, also so Macs from before undo decode the list (and refuse this action).
+ */
+export const DeleteEventActionSchema = Type.Object({
+    id: Type.String(),
+    type: Type.Literal('delete_event'),
+    source: Type.Literal('calendar'),
+    /** EventKit's `calendarItemIdentifier`, as the Mac reported it. */
+    eventIdentifier: Type.String(),
+    /** The id of the `create_event` action that added it. */
+    createdBy: Type.String(),
+    event: CalendarEventDraftSchema,
+    createdAt: Type.String(),
+    expiresAt: Type.String(),
+});
+
+export const DeviceActionSchema = Type.Union([CreateEventActionSchema, DeleteEventActionSchema]);
 export type DeviceAction = Static<typeof DeviceActionSchema>;
+export type CreateEventAction = Static<typeof CreateEventActionSchema>;
+export type DeleteEventAction = Static<typeof DeleteEventActionSchema>;
 
 export const DeviceActionResultSchema = Type.Object({
     ok: Type.Boolean(),

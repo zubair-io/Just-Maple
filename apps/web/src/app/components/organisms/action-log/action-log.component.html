@@ -1,0 +1,96 @@
+<div class="flex flex-col gap-3">
+  <div class="flex flex-wrap items-center gap-2" role="group" aria-label="Filter activity">
+    <label class="flex items-center gap-1 font-sans text-xs text-[var(--color-text-muted)]">
+      Kind
+      <select
+        data-testid="kind-filter"
+        class="h-8 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 font-sans text-xs text-[var(--color-text-main)]"
+        [value]="kind()"
+        (change)="kind.set($any($event.target).value)"
+      >
+        <option value="">All</option>
+        @for (option of kinds; track option.id) {
+          <option [value]="option.id">{{ option.label }}</option>
+        }
+      </select>
+    </label>
+    <label class="flex items-center gap-1 font-sans text-xs text-[var(--color-text-muted)]">
+      Status
+      <select
+        data-testid="status-filter"
+        class="h-8 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 font-sans text-xs text-[var(--color-text-main)]"
+        [value]="status()"
+        (change)="status.set($any($event.target).value)"
+      >
+        <option value="">All</option>
+        @for (option of statuses; track option.id) {
+          <option [value]="option.id">{{ option.label }}</option>
+        }
+      </select>
+    </label>
+  </div>
+
+  @if (error(); as message) {
+    <p class="m-0 font-sans text-sm text-[var(--color-error)]">{{ message }}</p>
+  } @else if (!rows().length) {
+    <p class="m-0 font-sans text-sm text-[var(--color-text-muted)]" data-testid="empty">
+      {{ loading() ? 'Loading…' : 'Nothing yet. What bots do or offer to do shows up here.' }}
+    </p>
+  }
+
+  <ul class="m-0 flex list-none flex-col gap-2 p-0">
+    @for (row of rows(); track row.id) {
+      <li
+        class="action-row flex items-start gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-3"
+        [attr.data-status]="row.status"
+        data-testid="action-row"
+      >
+        <span
+          class="material-symbols-rounded text-xl text-[var(--color-text-muted)]"
+          aria-hidden="true"
+          >{{ kindInfo(row.kind).icon }}</span
+        >
+        <div class="flex min-w-0 flex-1 flex-col gap-1">
+          <p class="m-0 font-sans text-sm text-[var(--color-text-main)] [overflow-wrap:anywhere]">
+            {{ row.summary }}
+          </p>
+          <p class="m-0 flex flex-wrap gap-x-2 font-sans text-xs text-[var(--color-text-muted)]">
+            <span class="action-status" [attr.data-status]="row.status">{{
+              statusLabels[row.status]
+            }}</span>
+            <span>{{ kindInfo(row.kind).label }}</span>
+            @if (row.botName) {
+              <span>{{ row.botName }}</span>
+            }
+            <span>{{ row.createdAt | date: 'MMM d, h:mm a' }}</span>
+          </p>
+          @if (row.error) {
+            <p class="m-0 font-sans text-xs text-[var(--color-error)]">{{ row.error }}</p>
+          }
+          @if (isUndoing(row)) {
+            <p class="m-0 font-sans text-xs text-[var(--color-text-muted)]">Undoing…</p>
+          } @else if (row.undo?.state === 'failed') {
+            <p class="m-0 font-sans text-xs text-[var(--color-error)]">
+              Couldn't undo: {{ row.undo?.error }}
+            </p>
+          }
+          @if (undoError()?.id === row.id) {
+            <p class="m-0 font-sans text-xs text-[var(--color-error)]">
+              {{ undoError()?.message }}
+            </p>
+          }
+        </div>
+        @if (row.canUndo) {
+          <button
+            type="button"
+            class="h-8 shrink-0 cursor-pointer rounded-lg border border-[var(--color-border)] bg-transparent px-3 font-sans text-xs font-semibold text-[var(--color-primary)] disabled:cursor-default disabled:opacity-50"
+            [disabled]="undoing() === row.id"
+            (click)="undo(row)"
+          >
+            Undo
+          </button>
+        }
+      </li>
+    }
+  </ul>
+</div>

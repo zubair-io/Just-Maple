@@ -41,6 +41,13 @@ export const BotUIBlockSchema = Type.Union([
         proposalId: Type.String({ pattern: '^[0-9a-f-]{36}$' }),
         event: CalendarEventDraftSchema,
     }),
+    // "Done: … · Undo" for an action a bot did on its own (the owner's "Do it and tell
+    // me" setting). Only the server adds it; the card reads live state by `actionId`.
+    Type.Object({
+        type: Type.Literal('action_receipt'),
+        actionId: Type.String({ pattern: '^[0-9a-f-]{36}$' }),
+        summary: Type.String({ maxLength: 500 }),
+    }),
 ]);
 export const BotUIResponseSchema = Type.Object({
     version: Type.Literal(1),

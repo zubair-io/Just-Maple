@@ -1359,6 +1359,17 @@ export async function findGraphPage(notebookId: string): Promise<Page | null> {
     return doc ? toPageResponse(doc) : null;
 }
 
+/** The notebook's Activity page (bot action log), if it has one (at most one per notebook). */
+export async function findActivityPage(notebookId: string): Promise<Page | null> {
+    if (!ObjectId.isValid(notebookId)) return null;
+    const doc = await getCollection().findOne({
+        type: 'activity',
+        notebookId: new ObjectId(notebookId),
+        isTrashed: { $ne: true },
+    });
+    return doc ? toPageResponse(doc) : null;
+}
+
 /** Notebooks with a graph page: the ones whose data gets linked. */
 export async function findGraphNotebookIds(limit = 1000): Promise<string[]> {
     const docs = await getCollection()
