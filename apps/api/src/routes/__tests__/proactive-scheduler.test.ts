@@ -18,11 +18,13 @@ vi.mock('../../services/proactive-bot.service', () => ({
     sendLeaveReminder: vi.fn().mockResolvedValue(true),
     askAboutMeQuestion: vi.fn().mockResolvedValue(true),
     flushPendingNews: vi.fn().mockResolvedValue(true),
+    checkWaitingReplies: vi.fn().mockResolvedValue(true),
 }));
 
 import { addToPile } from '../../repositories/proactive-pile.repo';
 import {
     askAboutMeQuestion,
+    checkWaitingReplies,
     flushPendingNews,
     runDailyBrief,
     sendLeaveReminder,
@@ -527,6 +529,37 @@ describe.runIf(mongoAvailable)('scheduled proactive messages and named places', 
             await tick(at('13:00'));
             await settle();
             expect(flushPendingNews).toHaveBeenCalledTimes(quick + 1);
+        });
+
+        it('looks again at an unanswered text once it may be overdue, every 15 minutes at most', async () => {
+            await addToPile(
+                chatPageId,
+                userId,
+                [
+                    {
+                        kind: 'added',
+                        item: {
+                            id: 'imessage:1',
+                            source: 'imessage',
+                            when: at('10:00').toISOString(),
+                            sender: 'Jen',
+                            snippet: 'Can you grab the cake?',
+                            score: 0,
+                        },
+                        conversation: { lastFromThem: at('10:00').toISOString(), recent: [] },
+                    },
+                ] as never,
+                at('10:00'),
+            );
+            await tick(at('10:59'));
+            expect(checkWaitingReplies).not.toHaveBeenCalled();
+            // The shorter (close person) delay has passed: the bot decides who is close.
+            await tick(at('11:01'));
+            await tick(at('11:05'));
+            expect(checkWaitingReplies).toHaveBeenCalledTimes(1);
+            await tick(at('11:16'));
+            expect(checkWaitingReplies).toHaveBeenCalledTimes(2);
+            expect(flushPendingNews).not.toHaveBeenCalled();
         });
 
         it("uses the chat's own maximum", async () => {

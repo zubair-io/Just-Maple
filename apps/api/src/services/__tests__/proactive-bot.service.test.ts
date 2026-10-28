@@ -40,6 +40,7 @@ vi.mock('../../repositories/device-item.repo', () => ({
     findDeviceItemsByIds: vi.fn(async (_userId: string, ids: string[]) =>
         ids.map((id) => ({ id })),
     ),
+    findDeviceItems: vi.fn(async () => ({ items: [], total: 0 })),
 }));
 vi.mock('../../repositories/unread.repo', () => ({
     getLastReadAtByPageId: vi.fn().mockResolvedValue(null),
@@ -201,8 +202,10 @@ describe.runIf(mongoAvailable)('handleDeviceDataChanges', () => {
             },
         ] as any);
 
+        // Two mails: one alone is something the user's phone already showed them.
+        const second = { ...entry, item: { ...entry.item, id: 'mail:2', snippet: 'FedEx' } };
         await handleDeviceDataChanges('u1', [
-            { notebookId: 'n1', entries: [entry] },
+            { notebookId: 'n1', entries: [entry, second] },
             { notebookId: 'no-access', entries: [entry] },
         ] as never);
         await vi.waitFor(() => expect(botExecutor.runProactive).toHaveBeenCalledTimes(1));

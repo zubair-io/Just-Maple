@@ -29,8 +29,10 @@ export interface PileItem {
     addedAt: Date;
     /** Bumped for each newer version, so a post only removes the version it covered. */
     rev: number;
-    /** A triage has seen this version. */
+    /** A triage (or the code check that held it back) has seen this version. */
     triaged?: boolean;
+    /** A triage has seen this version as unanswered past its reply delay. */
+    replyChecked?: boolean;
     /** Must go out now (a calendar clash, or the triage said now), even after a failed post. */
     urgent?: boolean;
     /**
@@ -254,12 +256,14 @@ const sameVersion = (covered: PileItem[]) => {
 /**
  * Records a triage: the versions it saw are marked triaged (and urgent when it said now),
  * the ones it dropped leave, and its view of the pile is kept. Newer versions that came
- * in meanwhile are untouched.
+ * in meanwhile are untouched. `replyChecked` names the seen items it looked at as overdue
+ * replies, so they aren't looked at again for that.
  */
 export function markTriaged(
     pageId: string,
     seen: PileItem[],
     verdict: { now: boolean; urgency: number; headline?: string; drop: string[] },
+    replyChecked: Set<string> = new Set(),
 ): Promise<Pile | null> {
     const wasSeen = sameVersion(seen);
     const dropped = new Set(verdict.drop);
@@ -274,6 +278,7 @@ export function markTriaged(
                         ? {
                               ...item,
                               triaged: true,
+                              ...(replyChecked.has(item.key) ? { replyChecked: true } : {}),
                               ...(verdict.now && !item.urgent
                                   ? { urgent: true, urgentRev: item.rev }
                                   : {}),

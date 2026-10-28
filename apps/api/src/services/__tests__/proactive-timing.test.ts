@@ -3,7 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // Now or wait, the pending pile, and revising unread posts (proactive-bot.service). The
 // pile, its lease and its compare-and-set writes are the real ones, in the test database.
 
-const store = vi.hoisted(() => ({ budgetLeft: 100, shared: null as Set<string> | null }));
+const store = vi.hoisted(() => ({
+    budgetLeft: 100,
+    shared: null as Set<string> | null,
+    /** The owner's calendar events today and tomorrow (device items). */
+    events: [] as Record<string, unknown>[],
+    /** About me: people related to the owner, as [name, relation]. */
+    people: [] as [string, string][],
+}));
 
 vi.mock('../bot-executor.service', () => ({
     botExecutor: { invoke: vi.fn(), runProactive: vi.fn().mockResolvedValue(null) },
@@ -46,6 +53,16 @@ vi.mock('../../repositories/device-item.repo', () => ({
     findDeviceItemsByIds: vi.fn(async (_userId: string, ids: string[]) =>
         ids.map((id) => ({ id })),
     ),
+    findDeviceItems: vi.fn(async () => ({ items: store.events, total: store.events.length })),
+}));
+vi.mock('../../repositories/profile.repo', () => ({
+    findMe: vi.fn(async () => ({ id: 'me', kind: 'person', name: 'Me', aliases: [] })),
+    listEntities: vi.fn(async () =>
+        store.people.map(([name], n) => ({ id: `p${n}`, kind: 'person', name, aliases: [] })),
+    ),
+    listRelations: vi.fn(async () =>
+        store.people.map(([, type], n) => ({ from: 'me', to: `p${n}`, type })),
+    ),
 }));
 vi.mock('../../repositories/proactive-pile.repo', async (importOriginal) => ({
     ...(await importOriginal<object>()),
@@ -58,9 +75,13 @@ vi.mock('../proactive-triage.service', async (importOriginal) => ({
 }));
 
 import {
+    briefPrompt,
+    checkWaitingReplies,
     flushPendingNews,
     handleDeviceDataChanges,
     processPile,
+    proactiveSystemPrompt,
+    proactiveUserPrompt,
     runDailyBrief,
     whenIdle,
 } from '../proactive-bot.service';
@@ -74,7 +95,7 @@ import { findBotTemplateById } from '../../repositories/bot-template.repo';
 import { findMessagesByPageId } from '../../repositories/message.repo';
 import { getLastReadAtByPageId } from '../../repositories/unread.repo';
 import { overlapNewsFor } from '../calendar-overlap.service';
-import { triagePile } from '../proactive-triage.service';
+import { triagePile, triageSystemPrompt } from '../proactive-triage.service';
 
 const page: any = {
     id: 'page',
@@ -103,6 +124,49 @@ const mail = (n: number, snippet = `Newsletter ${n}`) => ({
     },
 });
 
+/**
+ * A new calendar event: something no notification told the user, so it always gets a
+ * triage (unlike a lone text or email, which is held in code).
+ */
+const event = (n: number, snippet = `Event ${n}`) => ({
+    kind: 'added',
+    item: {
+        id: `calendar:${n}`,
+        source: 'calendar',
+        when: '2026-11-20T10:00:00-05:00',
+        snippet,
+        score: 0,
+    },
+});
+
+/** A text from someone else; `fromMe` for the user's own. Unanswered unless said otherwise. */
+const text = (
+    n: number,
+    snippet: string,
+    options: { sender?: string; when?: string; fromMe?: boolean; lastFromMe?: string } = {},
+) => {
+    const when = options.when ?? '2026-10-28T14:00:00-04:00';
+    const sender = options.sender ?? 'Jennifer Pelham';
+    return {
+        kind: 'added',
+        item: {
+            id: `imessage:${n}`,
+            source: 'imessage',
+            when,
+            sender: options.fromMe ? 'Me' : sender,
+            participants: [sender],
+            ...(options.fromMe ? { fromMe: true } : {}),
+            snippet,
+            score: 0,
+        },
+        conversation: {
+            ...(options.lastFromMe ? { lastFromMe: options.lastFromMe } : {}),
+            ...(options.fromMe ? { lastFromMe: when } : { lastFromThem: when }),
+            recent: [],
+        },
+    };
+};
+
 /** Wednesday 2 pm in New York: outside the default quiet hours. */
 const AFTERNOON = new Date('2026-10-28T14:00:00-04:00');
 /** 11:30 pm: inside them. */
@@ -124,6 +188,10 @@ beforeEach(() => {
     vi.clearAllMocks();
     store.budgetLeft = 100;
     store.shared = null;
+    store.events = [];
+    store.people = [];
+    // Calendar items get an overlap check; by default it finds nothing.
+    vi.mocked(overlapNewsFor).mockResolvedValue(undefined as never);
     vi.mocked(findUserBotByIdInternal).mockResolvedValue(bot);
     vi.mocked(findBotTemplateById).mockResolvedValue(template);
     vi.mocked(getMacDataToolContext).mockResolvedValue({ now: 'now', userId: 'u1' } as any);
@@ -139,24 +207,25 @@ afterEach(() => {
 describe.runIf(mongoAvailable)('now or wait', () => {
     it('posts right away when the triage says now, and empties the pile', async () => {
         vi.mocked(triagePile).mockResolvedValueOnce({ now: true, urgency: 3, drop: [] });
-        await arrive([mail(1, 'Can you pick up Sam at 4?')]);
+        await arrive([event(1, 'Pick up Sam at 4')]);
         await vi.waitFor(() => expect(botExecutor.runProactive).toHaveBeenCalledTimes(1));
-        expect(lastRun()!.prompt).toContain('pick up Sam');
+        expect(lastRun()!.prompt).toContain('Pick up Sam');
         expect(lastRun()!.proactiveMeta).toEqual({ kind: 'news', urgency: 3 });
         expect(await pileKeys()).toEqual([]);
     });
 
     it('keeps what can wait in the pile without posting', async () => {
         vi.mocked(triagePile).mockResolvedValueOnce({ now: false, urgency: 1, drop: [] });
-        await arrive([mail(1)]);
+        await arrive([event(1)]);
+        expect(triagePile).toHaveBeenCalledTimes(1);
         expect(botExecutor.runProactive).not.toHaveBeenCalled();
-        expect(await pileKeys()).toEqual(['mail:1']);
+        expect(await pileKeys()).toEqual(['calendar:1']);
     });
 
     it('re-scores the whole pile on every arrival, and posts once it tips', async () => {
-        vi.mocked(triagePile).mockResolvedValueOnce({ now: false, urgency: 0, drop: [] });
+        // One email alone is held in code: the user's phone already showed it to them.
         await arrive([mail(1, 'Team dinner idea')]);
-        vi.mocked(triagePile).mockClear();
+        expect(triagePile).not.toHaveBeenCalled();
         vi.mocked(triagePile).mockResolvedValueOnce({
             now: true,
             urgency: 2,
@@ -210,6 +279,210 @@ describe.runIf(mongoAvailable)('now or wait', () => {
     });
 });
 
+describe.runIf(mongoAvailable)('missed-only: no relaying what a notification showed', () => {
+    const JEN = "My last meeting was canceled, I'm done at 2:30 today";
+    const signalsSeen = () => vi.mocked(triagePile).mock.calls.at(-1)![0].signals;
+    /** 2 pm plus `minutes`. */
+    const later = (minutes: number) => new Date(+AFTERNOON + minutes * 60_000);
+
+    it('a single fresh text is neither triaged nor posted, and is dropped once due', async () => {
+        vi.mocked(triagePile).mockResolvedValue({ now: true, urgency: 3, drop: [] });
+        // She wrote last at 1:50; the user answered at 1:55. Nothing is owed.
+        await arrive([
+            text(1, JEN, {
+                when: '2026-10-28T13:50:00-04:00',
+                lastFromMe: '2026-10-28T13:55:00-04:00',
+            }),
+        ]);
+        expect(triagePile).not.toHaveBeenCalled();
+        expect(botExecutor.runProactive).not.toHaveBeenCalled();
+        expect(await pileKeys()).toEqual(['imessage:1']);
+        // The max-wait summary has nothing to say: the text leaves without a post.
+        vi.setSystemTime(later(125));
+        expect(await flushPendingNews(page, 'u1')).toBe(true);
+        expect(botExecutor.runProactive).not.toHaveBeenCalled();
+        expect(triagePile).not.toHaveBeenCalled();
+        expect(await pileKeys()).toEqual([]);
+    });
+
+    it('a single fresh email is held the same way', async () => {
+        vi.mocked(triagePile).mockResolvedValue({ now: true, urgency: 3, drop: [] });
+        await arrive([mail(1, 'Your flight is cancelled')]);
+        expect(triagePile).not.toHaveBeenCalled();
+        expect(botExecutor.runProactive).not.toHaveBeenCalled();
+    });
+
+    it('an unanswered question is told once its delay has passed, not before', async () => {
+        vi.mocked(triagePile).mockResolvedValue({ now: true, urgency: 2, drop: [] });
+        await arrive([text(1, 'Can you grab the cake on your way?')]);
+        expect(botExecutor.runProactive).not.toHaveBeenCalled();
+        // Two hours later: past the max wait, still inside the three-hour reply delay. It
+        // is kept (not dropped), and not told.
+        vi.setSystemTime(later(125));
+        expect(await flushPendingNews(page, 'u1')).toBe(true);
+        expect(await checkWaitingReplies(page, 'u1')).toBe(true);
+        expect(triagePile).not.toHaveBeenCalled();
+        expect(botExecutor.runProactive).not.toHaveBeenCalled();
+        expect(await pileKeys()).toEqual(['imessage:1']);
+        // Three hours, still unanswered: triaged with the signal, and told.
+        vi.setSystemTime(later(185));
+        expect(await checkWaitingReplies(page, 'u1')).toBe(true);
+        expect(signalsSeen()).toContain('Unanswered for over 3 h: imessage:1');
+        expect(botExecutor.runProactive).toHaveBeenCalledTimes(1);
+        expect(lastRun()!.prompt).toContain('grab the cake');
+        expect(lastRun()!.prompt).toContain('Unanswered for over 3 h');
+        expect(await pileKeys()).toEqual([]);
+    });
+
+    it('a close person waits an hour, not three', async () => {
+        store.people = [['Jennifer Pelham', 'spouse']];
+        vi.mocked(triagePile).mockResolvedValue({ now: true, urgency: 2, drop: [] });
+        await arrive([text(1, 'Can you call the school?')]);
+        vi.setSystemTime(later(55));
+        await checkWaitingReplies(page, 'u1');
+        expect(botExecutor.runProactive).not.toHaveBeenCalled();
+        vi.setSystemTime(later(65));
+        await checkWaitingReplies(page, 'u1');
+        expect(signalsSeen()).toContain('Unanswered for over 1 h, from a close person: imessage:1');
+        expect(botExecutor.runProactive).toHaveBeenCalledTimes(1);
+    });
+
+    it('a question the user has since answered is never told', async () => {
+        vi.mocked(triagePile).mockResolvedValue({ now: true, urgency: 2, drop: [] });
+        await arrive([text(1, 'Can you grab the cake on your way?')]);
+        await arrive(
+            [text(2, 'Sure', { fromMe: true, when: '2026-10-28T14:20:00-04:00' })],
+            later(20),
+        );
+        vi.setSystemTime(later(200));
+        await checkWaitingReplies(page, 'u1');
+        await flushPendingNews(page, 'u1');
+        expect(triagePile).not.toHaveBeenCalled();
+        expect(botExecutor.runProactive).not.toHaveBeenCalled();
+        expect(await pileKeys()).toEqual([]);
+    });
+
+    it("a text that moves one of today's events is posted now", async () => {
+        store.events = [
+            {
+                id: 'calendar:soccer',
+                source: 'calendar',
+                title: 'Soccer practice',
+                location: 'Eastside park',
+                occurredAt: Date.parse('2026-10-28T16:00:00-04:00') / 1000,
+            },
+        ];
+        vi.mocked(triagePile).mockResolvedValueOnce({
+            now: true,
+            urgency: 3,
+            headline: 'Practice moved to 5pm',
+            drop: [],
+        });
+        await arrive([text(1, 'Practice moved to 5pm tonight', { sender: 'Coach Dan' })]);
+        expect(signalsSeen()).toEqual([
+            'May change the user\'s plans: imessage:1 mentions their event "Soccer practice" (2026-10-28T16:00:00-04:00)',
+        ]);
+        await vi.waitFor(() => expect(botExecutor.runProactive).toHaveBeenCalledTimes(1));
+        expect(lastRun()!.prompt).toContain('Practice moved to 5pm');
+        expect(lastRun()!.prompt).toContain('May change the user');
+    });
+
+    it("the complaint's text, about someone else's day, touches none of the user's plans", async () => {
+        store.events = [
+            {
+                id: 'calendar:party',
+                source: 'calendar',
+                title: 'Greyson pizza party',
+                occurredAt: Date.parse('2026-10-28T15:00:00-04:00') / 1000,
+            },
+        ];
+        await arrive([text(1, JEN)]);
+        expect(triagePile).not.toHaveBeenCalled();
+        expect(botExecutor.runProactive).not.toHaveBeenCalled();
+    });
+
+    it('several related messages across threads go out as one post', async () => {
+        await arrive([text(1, 'Is the party still on Saturday?', { sender: 'Ana' })]);
+        expect(triagePile).not.toHaveBeenCalled();
+        vi.mocked(triagePile).mockResolvedValueOnce({
+            now: true,
+            urgency: 2,
+            headline: 'Three parents asking about the party',
+            drop: [],
+        });
+        await arrive(
+            [
+                text(2, 'Are we doing the party Saturday?', { sender: 'Ben' }),
+                mail(3, 'Party venue cancelled our booking'),
+            ],
+            later(10),
+        );
+        // The triage sees all three, the earlier held one too.
+        const pile = vi.mocked(triagePile).mock.calls[0]![0].items;
+        expect(pile.map((i) => i.text)).toEqual([
+            'Is the party still on Saturday?',
+            'Are we doing the party Saturday?',
+            'Party venue cancelled our booking',
+        ]);
+        await vi.waitFor(() => expect(botExecutor.runProactive).toHaveBeenCalledTimes(1));
+        expect(lastRun()!.prompt).toContain('Ana');
+        expect(lastRun()!.prompt).toContain('venue cancelled');
+        expect(await pileKeys()).toEqual([]);
+    });
+
+    it('"every item" still relays a single text, facts only', async () => {
+        const eager = { ...page, proactive: { ...page.proactive, everyItem: true } };
+        await arrive([text(1, JEN)], AFTERNOON, eager);
+        await vi.waitFor(() => expect(botExecutor.runProactive).toHaveBeenCalledTimes(1));
+        expect(triagePile).not.toHaveBeenCalled();
+        expect(lastRun()!.prompt).toContain('done at 2:30');
+        expect(lastRun()!.system).toContain("Never guess at people's availability");
+        expect(lastRun()!.system).not.toContain('never just repeat one');
+    });
+});
+
+describe('posting prompts: facts only', () => {
+    const rules = [
+        "Never guess at people's availability, intentions or feelings",
+        'No suggestions or advice. When there is a concrete conflict, name the conflict',
+        'No remarks about the message itself',
+        'she may be free to help with party prep or pickup', // the bad example
+    ];
+
+    it('the news posting prompt has the no-speculation rules and the missed-only rule', () => {
+        const system = proactiveSystemPrompt('Maple', page, '');
+        for (const rule of rules) expect(system).toContain(rule);
+        expect(system).toContain('never just repeat one');
+        expect(system).toContain('reply NO_UPDATE');
+        const prompt = proactiveUserPrompt('now', [], []);
+        expect(prompt).toContain('never restate one on its own');
+        expect(prompt).toContain('no guesses about people');
+    });
+
+    it('"every item" keeps relaying, with the same no-speculation rules', () => {
+        const eager = { ...page, proactive: { ...page.proactive, everyItem: true } };
+        const system = proactiveSystemPrompt('Maple', eager, '');
+        for (const rule of rules) expect(system).toContain(rule);
+        expect(system).not.toContain('never just repeat one');
+        expect(proactiveUserPrompt('now', [], [], { relay: true })).not.toContain('never restate');
+    });
+
+    it('revisions and the morning brief are held to them too', () => {
+        expect(proactiveUserPrompt('now', [], [], { revising: 'Practice at 5' })).toContain(
+            'The Facts only rules apply to the revision too',
+        );
+        const brief = briefPrompt('now');
+        expect(brief).toContain('never speculate');
+        expect(brief).toContain("no guesses about people's availability, intentions or feelings");
+    });
+
+    it('the triage is told the phone already notified the user', () => {
+        const triage = triageSystemPrompt();
+        expect(triage).toContain('only for what they may have MISSED');
+        expect(triage).toContain('A fresh one is never urgent');
+    });
+});
+
 describe.runIf(mongoAvailable)('limits', () => {
     it('flushes an item that has waited the maximum when the next one arrives', async () => {
         vi.mocked(triagePile).mockResolvedValue({ now: false, urgency: 1, drop: [] });
@@ -241,7 +514,7 @@ describe.runIf(mongoAvailable)('limits', () => {
 
     it('lets "now" news through quiet hours, and none when quiet hours are off', async () => {
         vi.mocked(triagePile).mockResolvedValueOnce({ now: true, urgency: 3, drop: [] });
-        await arrive([mail(1, 'Flight cancelled')], NIGHT);
+        await arrive([event(1, 'Flight cancelled')], NIGHT);
         await vi.waitFor(() => expect(botExecutor.runProactive).toHaveBeenCalledTimes(1));
 
         vi.mocked(triagePile).mockResolvedValue({ now: false, urgency: 1, drop: [] });
@@ -281,22 +554,22 @@ describe.runIf(mongoAvailable)('limits', () => {
 
     it('keeps the pile when the bot could not run', async () => {
         vi.mocked(triagePile).mockResolvedValue({ now: false, urgency: 1, drop: [] });
-        await arrive([mail(1)]);
+        await arrive([event(1)]);
         vi.mocked(findBotTemplateById).mockResolvedValueOnce(null);
         expect(await flushPendingNews(page, 'u1')).toBe(false);
-        expect(await pileKeys()).toEqual(['mail:1']);
+        expect(await pileKeys()).toEqual(['calendar:1']);
     });
 
     it('stops calling the model once the daily budget is spent, and goes by the signals', async () => {
         store.budgetLeft = 1;
         vi.mocked(triagePile).mockResolvedValue({ now: true, urgency: 2, drop: [] });
-        await arrive([mail(1)]);
+        await arrive([event(1)]);
         await vi.waitFor(() => expect(botExecutor.runProactive).toHaveBeenCalledTimes(1));
-        await arrive([mail(2)]);
+        await arrive([event(2)]);
         // Out of budget: no model call, no clash, so it waits.
         expect(triagePile).toHaveBeenCalledTimes(1);
         expect(botExecutor.runProactive).toHaveBeenCalledTimes(1);
-        expect(await pileKeys()).toEqual(['mail:2']);
+        expect(await pileKeys()).toEqual(['calendar:2']);
     });
 
     it('the "every item" escape hatch posts each batch without triage', async () => {
@@ -326,7 +599,7 @@ describe.runIf(mongoAvailable)('revising an unread post', () => {
 
     async function postNews(urgency: number, headline = 'Practice moved to Westside') {
         vi.mocked(triagePile).mockResolvedValueOnce({ now: true, urgency, headline, drop: [] });
-        await arrive([mail(9, 'Practice moved')]);
+        await arrive([event(9, 'Practice moved')]);
         await vi.waitFor(() => expect(botExecutor.runProactive).toHaveBeenCalledTimes(1));
         return lastRun()!;
     }
@@ -431,15 +704,15 @@ describe.runIf(mongoAvailable)('several API instances, filters and limits', () =
     it('keeps items another instance added during a pass, and tells them once', async () => {
         vi.setSystemTime(AFTERNOON);
         vi.mocked(triagePile).mockResolvedValue({ now: true, urgency: 2, drop: [] });
-        await addToPile('page', 'u1', [mail(1)] as never);
+        await addToPile('page', 'u1', [event(1)] as never);
         const finish = slowRun();
         const first = processPile(page, 'u1', tz);
         await vi.waitFor(() => expect(botExecutor.runProactive).toHaveBeenCalledTimes(1));
         // Arrives elsewhere at the same moment: both stored (no overwrite), and that pass
         // steps aside.
         await Promise.all([
-            addToPile('page', 'u1', [mail(2)] as never),
-            addToPile('page', 'u1', [mail(3)] as never),
+            addToPile('page', 'u1', [event(2)] as never),
+            addToPile('page', 'u1', [event(3)] as never),
         ]);
         expect(await processPile(page, 'u1', tz)).toBe('busy');
         finish();
@@ -447,10 +720,10 @@ describe.runIf(mongoAvailable)('several API instances, filters and limits', () =
         // The lease holder saw the new items after its post and told them too.
         expect(botExecutor.runProactive).toHaveBeenCalledTimes(2);
         const [one, two] = vi.mocked(botExecutor.runProactive).mock.calls.map((c) => c[0].prompt);
-        expect(one).not.toContain('Newsletter 2');
-        expect(two).toContain('Newsletter 2');
-        expect(two).toContain('Newsletter 3');
-        expect(two).not.toContain('Newsletter 1');
+        expect(one).not.toContain('Event 2');
+        expect(two).toContain('Event 2');
+        expect(two).toContain('Event 3');
+        expect(two).not.toContain('Event 1');
         expect(await pileKeys()).toEqual([]);
     });
 
@@ -458,11 +731,11 @@ describe.runIf(mongoAvailable)('several API instances, filters and limits', () =
         vi.setSystemTime(AFTERNOON);
         vi.mocked(triagePile).mockResolvedValueOnce({ now: true, urgency: 2, drop: [] });
         vi.mocked(triagePile).mockResolvedValueOnce({ now: false, urgency: 1, drop: [] });
-        await addToPile('page', 'u1', [mail(1, 'Practice at 5')] as never);
+        await addToPile('page', 'u1', [event(1, 'Practice at 5')] as never);
         const finish = slowRun();
         const first = processPile(page, 'u1', tz);
         await vi.waitFor(() => expect(botExecutor.runProactive).toHaveBeenCalledTimes(1));
-        await addToPile('page', 'u1', [{ ...mail(1, 'Practice at 6'), kind: 'changed' }] as never);
+        await addToPile('page', 'u1', [{ ...event(1, 'Practice at 6'), kind: 'changed' }] as never);
         finish();
         await first;
         const pile = await getPile('page');
@@ -471,10 +744,10 @@ describe.runIf(mongoAvailable)('several API instances, filters and limits', () =
 
     it('drops waiting items the chat no longer shares, before triage and before posting', async () => {
         vi.mocked(triagePile).mockResolvedValue({ now: false, urgency: 1, drop: [] });
-        await arrive([mail(1, 'From the school'), mail(2, 'From the bank')]);
-        expect(await pileKeys()).toEqual(['mail:1', 'mail:2']);
-        // The owner narrows the Mail page's filter while they wait.
-        store.shared = new Set(['mail:1']);
+        await arrive([event(1, 'From the school'), event(2, 'From the bank')]);
+        expect(await pileKeys()).toEqual(['calendar:1', 'calendar:2']);
+        // The owner narrows the Calendar page's filter while they wait.
+        store.shared = new Set(['calendar:1']);
         expect(await flushPendingNews(page, 'u1')).toBe(true);
         const prompt = lastRun()!.prompt;
         expect(prompt).toContain('From the school');
@@ -483,7 +756,7 @@ describe.runIf(mongoAvailable)('several API instances, filters and limits', () =
 
         store.shared = new Set();
         vi.mocked(triagePile).mockClear();
-        await arrive([mail(3, 'Hidden')]);
+        await arrive([event(3, 'Hidden')]);
         expect(triagePile).not.toHaveBeenCalled();
         expect(await pileKeys()).toEqual([]);
     });
@@ -558,10 +831,10 @@ describe.runIf(mongoAvailable)('several API instances, filters and limits', () =
     it('an earlier "now" whose post failed stays urgent', async () => {
         vi.mocked(triagePile).mockResolvedValueOnce({ now: true, urgency: 3, drop: [] });
         vi.mocked(botExecutor.runProactive).mockRejectedValueOnce(new Error('model down'));
-        await arrive([mail(1, 'Flight cancelled')], NIGHT);
+        await arrive([event(1, 'Flight cancelled')], NIGHT);
         expect((await getPile('page'))!.items[0]!.urgent).toBe(true);
         vi.mocked(triagePile).mockResolvedValueOnce({ now: false, urgency: 0, drop: [] });
-        await arrive([mail(2)], NIGHT);
+        await arrive([event(2)], NIGHT);
         expect(lastRun()!.prompt).toContain('Flight cancelled');
     });
 });
