@@ -1,6 +1,7 @@
 import { Type, Static } from '@sinclair/typebox';
 import { PageContentSchema } from './page';
 import { BotUIResponseSchema } from './bot-ui';
+import { ProactiveMessageMetaSchema } from './proactive';
 
 // Sender type - distinguishes between user and bot messages
 export const SenderTypeSchema = Type.Union([
@@ -21,6 +22,16 @@ export const MentionSchema = Type.Object({
 });
 
 export type Mention = Static<typeof MentionSchema>;
+
+// An earlier version of a message a bot revised in place (see `revisedAt`)
+export const MessageRevisionSchema = Type.Object({
+    content: PageContentSchema,
+    botUI: Type.Optional(BotUIResponseSchema),
+    // When this version was written (the post's creation, or an earlier revision)
+    at: Type.String({ format: 'date-time' }),
+});
+
+export type MessageRevision = Static<typeof MessageRevisionSchema>;
 
 // Message schema - chat messages per page
 export const MessageSchema = Type.Object({
@@ -44,6 +55,12 @@ export const MessageSchema = Type.Object({
     updatedAt: Type.Optional(Type.String({ format: 'date-time' })),
     editedAt: Type.Optional(Type.String({ format: 'date-time' })),
     deletedAt: Type.Optional(Type.String({ format: 'date-time' })),
+    // Proactive bot posts: what kind of post this is (news, brief, ...)
+    proactiveMeta: Type.Optional(ProactiveMessageMetaSchema),
+    // A proactive bot rewrote this unread post with newer news ("Updated 3:40 PM")
+    revisedAt: Type.Optional(Type.String({ format: 'date-time' })),
+    // Earlier versions, oldest first (the first version is always kept)
+    revisions: Type.Optional(Type.Array(MessageRevisionSchema)),
 });
 
 export type Message = Static<typeof MessageSchema>;

@@ -10,8 +10,9 @@ import { isIP } from 'node:net';
 export function isPrivateAddress(address: string): boolean {
     const ip = address.replace(/^\[|\]$/g, '').toLowerCase();
     if (isIP(ip) === 4) {
-        const [a = 0, b = 0] = ip.split('.').map(Number);
+        const [a = 0, b = 0, c = 0] = ip.split('.').map(Number);
         return (
+            ip === '168.63.129.16' || // Azure's host endpoint (wireserver: DNS, DHCP, health)
             a === 0 ||
             a === 10 ||
             a === 127 ||
@@ -19,6 +20,8 @@ export function isPrivateAddress(address: string): boolean {
             (a === 169 && b === 254) ||
             (a === 172 && b >= 16 && b <= 31) ||
             (a === 192 && b === 168) ||
+            (a === 192 && b === 0 && c === 0) || // IETF protocol assignments
+            (a === 198 && (b === 18 || b === 19)) || // benchmarking
             a >= 224 // multicast and reserved
         );
     }
@@ -26,10 +29,12 @@ export function isPrivateAddress(address: string): boolean {
         const groups = ipv6Groups(ip);
         if (!groups) return true; // unparseable: refuse
         // IPv6 forms that carry an IPv4 address are judged by that address:
-        // ::a.b.c.d (compatible), ::ffff:a.b.c.d (mapped), 64:ff9b::a.b.c.d (NAT64).
+        // ::a.b.c.d (compatible), ::ffff:a.b.c.d (mapped), ::ffff:0:a.b.c.d (translated),
+        // 64:ff9b::a.b.c.d (NAT64).
         const embedsV4 =
             groups.slice(0, 6).every((g) => g === 0) ||
             (groups.slice(0, 5).every((g) => g === 0) && groups[5] === 0xffff) ||
+            (groups.slice(0, 4).every((g) => g === 0) && groups[4] === 0xffff && groups[5] === 0) ||
             (groups[0] === 0x64 &&
                 groups[1] === 0xff9b &&
                 groups.slice(2, 6).every((g) => g === 0));

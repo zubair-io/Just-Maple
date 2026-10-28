@@ -120,6 +120,7 @@ export async function createIndexes(database: Db): Promise<void> {
     await database.collection('graph_links').createIndex({ notebookId: 1, a: 1 });
     await database.collection('graph_links').createIndex({ notebookId: 1, b: 1 });
     await database.collection('graph_nodes').createIndex({ notebookId: 1 });
+    await database.collection('proactive_triage_budget').createIndex({ createdAt: 1 }); // Cleanup
     await database
         .collection('graph_links')
         .createIndex({ notebookId: 1, status: 1, updatedAt: -1 }); // Reads, newest first

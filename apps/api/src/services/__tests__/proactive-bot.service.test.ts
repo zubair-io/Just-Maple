@@ -31,11 +31,32 @@ vi.mock('../calendar-overlap.service', () => ({
     overlapNewsFor: vi.fn(),
     briefOverlapsFor: vi.fn().mockResolvedValue({ notes: [], release: vi.fn() }),
 }));
+// Timing is covered in proactive-timing.test.ts; here every batch is triaged "now". The
+// pending pile is the real one, in the test database; every item is still shared.
+vi.mock('../device-data-access.service', () => ({
+    dataPageSlicesFor: vi.fn(async (userId: string) => [{ ownerId: userId, match: () => true }]),
+}));
+vi.mock('../../repositories/device-item.repo', () => ({
+    findDeviceItemsByIds: vi.fn(async (_userId: string, ids: string[]) =>
+        ids.map((id) => ({ id })),
+    ),
+}));
+vi.mock('../../repositories/unread.repo', () => ({
+    getLastReadAtByPageId: vi.fn().mockResolvedValue(null),
+}));
+vi.mock('../proactive-triage.service', async (importOriginal) => ({
+    ...(await importOriginal<object>()),
+    triageModelAvailable: () => true,
+    triagePile: vi.fn().mockResolvedValue({ now: true, urgency: 2, drop: [] }),
+}));
 
+import { mongoAvailable } from '../../__tests__/setup';
 import { maybeAutoReply, handleDeviceDataChanges, runDailyBrief } from '../proactive-bot.service';
 import { briefOverlapsFor, overlapNewsFor } from '../calendar-overlap.service';
+import { addToPile, getPile } from '../../repositories/proactive-pile.repo';
 import {
     appendProactiveInstruction,
+    clearProactiveSettings,
     saveProactiveSettings,
     ProactiveSettingsError,
 } from '../proactive-settings.service';
@@ -152,7 +173,7 @@ describe('maybeAutoReply', () => {
     });
 });
 
-describe('handleDeviceDataChanges', () => {
+describe.runIf(mongoAvailable)('handleDeviceDataChanges', () => {
     const entry = {
         kind: 'added',
         item: {
@@ -230,7 +251,7 @@ describe('handleDeviceDataChanges', () => {
     });
 });
 
-describe('calendar overlaps in proactive passes', () => {
+describe.runIf(mongoAvailable)('calendar overlaps in proactive passes', () => {
     const calendarEntry = {
         kind: 'changed',
         item: {
@@ -284,7 +305,11 @@ describe('calendar overlaps in proactive passes', () => {
         expect(release).not.toHaveBeenCalled();
     });
 
-    it('releases the flags when the bot replied NO_UPDATE', async () => {
+    // With "every item" the clash isn't kept in a pile, so it is flagged only once told.
+    const eager = { ...page, proactive: { ...page.proactive, everyItem: true } };
+
+    it('releases the flags when the bot replied NO_UPDATE (every item)', async () => {
+        vi.mocked(findProactivePages).mockResolvedValue([eager]);
         const release = vi.fn();
         const commit = vi.fn();
         vi.mocked(botExecutor.runProactive).mockResolvedValueOnce(null);
@@ -301,7 +326,8 @@ describe('calendar overlaps in proactive passes', () => {
         expect(commit).not.toHaveBeenCalled();
     });
 
-    it('releases the flags when the bot could not run, and skips the check without calendar items', async () => {
+    it('releases the flags when the bot could not run (every item), and skips the check without calendar items', async () => {
+        vi.mocked(findProactivePages).mockResolvedValue([eager]);
         const release = vi.fn();
         vi.mocked(overlapNewsFor).mockResolvedValue({
             flagged: [note as any],
@@ -405,6 +431,27 @@ describe('proactive settings', () => {
             { isNotebookOwner: true },
         );
         expect(setPageProactive).toHaveBeenCalled();
+    });
+
+    it.runIf(mongoAvailable)('turning the bot off, or removing it, clears its pile', async () => {
+        vi.mocked(setPageProactive).mockResolvedValue(page);
+        await addToPile('page', 'u1', [{ kind: 'added', item: { id: 'mail:1' } }] as never);
+        await saveProactiveSettings(page, 'u1', {
+            userBotId: 'bot',
+            instructions: '',
+            enabled: true,
+        });
+        expect(await getPile('page')).not.toBeNull();
+        await saveProactiveSettings(page, 'u1', {
+            userBotId: 'bot',
+            instructions: '',
+            enabled: false,
+        });
+        expect(await getPile('page')).toBeNull();
+
+        await addToPile('page', 'u1', [{ kind: 'added', item: { id: 'mail:2' } }] as never);
+        await clearProactiveSettings(page, 'u1');
+        expect(await getPile('page')).toBeNull();
     });
 
     it('appends corrections under a remembered section', async () => {

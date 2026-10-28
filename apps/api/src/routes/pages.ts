@@ -700,6 +700,16 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 briefTime: t.Optional(
                     t.Union([t.String({ pattern: '^([01]\\d|2[0-3]):[0-5]\\d$' }), t.Null()]),
                 ),
+                // Timing: how long news may wait, quiet hours, and "every item" right away
+                maxWaitMinutes: t.Optional(t.Number({ minimum: 5, maximum: 1440 })),
+                quietHours: t.Optional(
+                    t.Object({
+                        enabled: t.Boolean(),
+                        start: t.String({ pattern: '^([01]\\d|2[0-3]):[0-5]\\d$' }),
+                        end: t.String({ pattern: '^([01]\\d|2[0-3]):[0-5]\\d$' }),
+                    }),
+                ),
+                everyItem: t.Optional(t.Boolean()),
             }),
         },
     )
