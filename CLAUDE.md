@@ -696,6 +696,21 @@ Key files: `calendar-proposal.service.ts` / `.repo.ts` / `routes/calendar-propos
 
 ---
 
+## Bot Web Search
+
+Bots can search the web (`web_search`) and read pages (`fetch_page`). Both are our own tools, offered the same way to every provider through `llm-tool-loop.service.ts`; there are no provider-native search tools.
+
+1. The server needs `BRAVE_SEARCH_API_KEY`. Without it the tools are never offered and the settings switch is hidden (`GET /api/user-bots` returns `webSearchAvailable`).
+2. Each bot has a switch, `config.webSearch`, **off by default**. Proactive runs also need `config.webSearchProactive`.
+3. Searches per bot owner per UTC day are capped by `WEB_SEARCH_DAILY_LIMIT` (default 50), counted in `web_search_usage`. Each reply may run up to 5 searches and 5 page reads.
+4. `fetch_page` reads only http(s), checks every hop (first URL and each redirect) resolves to public addresses only, and has a timeout, a 1 MB read cap and a text-only content-type check. Scripts and styles are stripped.
+5. Search results and page text reach the model wrapped in `<untrusted_web_content>`, and the system prompt says text inside is never an instruction. The prompt also forbids personal details in queries; queries with email addresses or long account-like numbers are refused.
+6. Replies link their sources; if a reply used the web but has no links, a short **Sources** list is appended.
+
+Key files: `apps/api/src/services/web-search.service.ts` (provider interface, Brave, tools, page fetcher), `repositories/web-search-usage.repo.ts`, `bot-executor.service.ts` (tool assembly), web `bots.component.*`.
+
+---
+
 ## Quick Reference
 
 | Do                             | Don't                               |

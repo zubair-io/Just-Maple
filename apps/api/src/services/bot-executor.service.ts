@@ -56,6 +56,15 @@ import {
 import { resolveEndpoint, validateUrl } from '../utils/url-safety';
 import { findPageByIdForBot } from '../repositories/page.repo';
 import { appendProactiveInstruction } from './proactive-settings.service';
+import {
+    executeWebTool,
+    isWebTool,
+    webSearchSystemPrompt,
+    webSearchToolDefinitions,
+    webToolContextFor,
+    withSourcesList,
+    type WebToolContext,
+} from './web-search.service';
 
 // Configuration constants
 const DEFAULT_LLM_MODEL = process.env.DEFAULT_LLM_MODEL || 'claude-sonnet-4-20250514';
@@ -70,6 +79,10 @@ interface ExecutionContext {
     variables: Record<string, unknown>;
     /** Local Mac data for this run; undefined until looked up, null when there is none. */
     macData?: MacDataToolContext | null;
+    /** Set for proactive runs, which may search the web only with their own switch. */
+    proactive?: boolean;
+    /** Web search and page reading for this run; null when the bot doesn't have them. */
+    web?: WebToolContext | null;
 }
 
 /**
@@ -451,15 +464,31 @@ export class BotExecutorService {
         // iMessage, Mail and Calendar on the user's Mac, when this notebook has Mac pages.
         const macData = await this.macDataContextFor(ctx);
         if (macData) systemPrompt = `${systemPrompt || ''}\n\n${macDataSystemPrompt(macData)}`;
+        // Web search, for bots that have it turned on (and a server search key).
+        const web = this.webToolsFor(ctx, provider);
+        // Without tool calling there is no web access, so that prompt never mentions it.
+        const systemWithoutWeb = systemPrompt;
+        if (web) systemPrompt = `${systemPrompt || ''}\n\n${webSearchSystemPrompt()}`;
+        // One tool set for every provider: local data and web tools side by side.
+        const tools = [
+            ...(macData ? macDataToolDefinitions(macData) : []),
+            ...(web ? webSearchToolDefinitions() : []),
+        ];
+        const execute = (name: string, input: Record<string, unknown>) =>
+            web && isWebTool(name)
+                ? executeWebTool(web, name, input)
+                : macData
+                  ? executeMacDataTool(macData, name, input)
+                  : Promise.resolve(JSON.stringify({ error: `Unknown tool ${name}` }));
         // Without tool calling, search once with the request and include the results.
         const withSearchResults = async () =>
             macData?.sources.length
-                ? `${systemPrompt}\n\nSearch results for the user's request:\n${await executeMacDataTool(
+                ? `${systemWithoutWeb}\n\nSearch results for the user's request:\n${await executeMacDataTool(
                       macData,
                       'search_local_data',
                       { query: userPrompt.slice(0, 500) },
                   )}`
-                : systemPrompt;
+                : systemWithoutWeb;
 
         if (endpoint) {
             const call = {
@@ -475,13 +504,13 @@ export class BotExecutorService {
                     ctx.config?.responseMode === 'text' ? 1024 : 4096,
                 ),
             };
-            if (macData && provider === 'openai-compatible') {
+            if (tools.length && provider === 'openai-compatible') {
                 try {
                     response = await runChatCompletionsWithTools({
                         ...call,
                         system: systemPrompt,
-                        tools: macDataToolDefinitions(macData),
-                        execute: (name, input) => executeMacDataTool(macData, name, input),
+                        tools,
+                        execute,
                     });
                 } catch (error) {
                     // Many servers or models reject tools; answer from one search instead.
@@ -495,7 +524,7 @@ export class BotExecutorService {
             } else {
                 response = await runChatCompletions({ ...call, system: await withSearchResults() });
             }
-        } else if (macData) {
+        } else if (tools.length) {
             const isOAuthToken = provider === 'anthropic' && (ctx.config?.isOAuthToken || false);
             const loop = {
                 apiKey,
@@ -508,9 +537,8 @@ export class BotExecutorService {
                     { role: 'user' as const, content: userPrompt },
                 ],
                 maxTokens: Math.max(config.maxTokens || 1024, 4096),
-                tools: macDataToolDefinitions(macData),
-                execute: (name: string, input: Record<string, unknown>) =>
-                    executeMacDataTool(macData, name, input),
+                tools,
+                execute,
             };
             response =
                 provider === 'openai'
@@ -551,6 +579,9 @@ export class BotExecutorService {
                 ),
             });
         }
+
+        // Answers built on web results always link their sources.
+        response = withSourcesList(response, web);
 
         // Store result in output variable
         if (action.outputVariable) {
@@ -605,6 +636,24 @@ export class BotExecutorService {
         }
         ctx.macData = macData;
         return macData;
+    }
+
+    /**
+     * Web tools for this run. Proactive runs need their own switch. Inception's server
+     * gets no tools at all, so it gets no web tools either.
+     */
+    private webToolsFor(ctx: ExecutionContext, provider: string): WebToolContext | null {
+        if (ctx.web === undefined) {
+            ctx.web =
+                provider === 'inception'
+                    ? null
+                    : webToolContextFor({
+                          config: ctx.config,
+                          ownerId: ctx.userBot.userId,
+                          proactive: ctx.proactive === true,
+                      });
+        }
+        return ctx.web;
     }
 
     private toTurns(
@@ -1116,6 +1165,7 @@ export class BotExecutorService {
             config: params.userBot.config,
             variables: { $previousMessages: params.previousMessages },
             macData: params.macData,
+            proactive: true,
         };
         await this.executeLLM(llm, ctx, { system: params.system, user: params.prompt });
         const raw = String(ctx.variables.$response || '').trim();

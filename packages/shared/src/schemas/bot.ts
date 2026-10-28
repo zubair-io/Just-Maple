@@ -126,6 +126,10 @@ export const BotConfigSchema = Type.Object({
     isOAuthToken: Type.Optional(Type.Boolean()), // Whether apiKey is an OAuth token (vs API key)
     // OpenAI-compatible bots: the server's API root, e.g. https://openrouter.ai/api/v1
     baseUrl: Type.Optional(Type.String({ maxLength: 2048 })),
+    // Web search tools (web_search, fetch_page). Off unless turned on for this bot.
+    webSearch: Type.Optional(Type.Boolean()),
+    // Proactive runs may search too only with this second switch.
+    webSearchProactive: Type.Optional(Type.Boolean()),
     customSettings: Type.Optional(Type.Record(Type.String(), Type.Any())),
 });
 
