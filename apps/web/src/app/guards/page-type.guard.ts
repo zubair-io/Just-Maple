@@ -79,3 +79,6 @@ export const AboutMePageGuard = createPageTypeGuard('aboutme');
 
 /** Guard that matches Graph pages (links between the notebook's data) */
 export const GraphPageGuard = createPageTypeGuard('graph');
+
+/** Guard that matches Follow-ups pages (promises and replies owed) */
+export const FollowUpsPageGuard = createPageTypeGuard('followups');

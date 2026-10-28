@@ -12,6 +12,7 @@ import {
   CanvasPageGuard,
   AboutMePageGuard,
   GraphPageGuard,
+  FollowUpsPageGuard,
 } from './guards/page-type.guard';
 import { swUpdateGuard } from './guards/sw-update.guard';
 import {
@@ -309,6 +310,15 @@ export const routes: Routes = [
             canMatch: [GraphPageGuard],
             loadComponent: () =>
               import('./pages/graph-view/graph-view.component').then((m) => m.GraphViewComponent),
+          },
+          // Follow-ups page - promises and replies owed, from the notebook's messages and mail
+          {
+            path: ':id',
+            canMatch: [FollowUpsPageGuard],
+            loadComponent: () =>
+              import('./pages/follow-ups-view/follow-ups-view.component').then(
+                (m) => m.FollowUpsViewComponent,
+              ),
           },
           // Memo-type page - shows collaborative notebook editor (default for pages)
           {
