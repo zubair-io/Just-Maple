@@ -101,6 +101,51 @@ export class BotActionService {
     }
   }
 
+  /** The owner's edits to a drafted reply. */
+  async saveDraft(id: string, body: string): Promise<BotAction> {
+    return this.draftCall(id, '', body);
+  }
+
+  /**
+   * The owner opened a drafted reply in Messages or Mail (the link does the opening):
+   * saves their text and records it. Returns the compose link the server built.
+   */
+  async openDraft(id: string, body: string): Promise<{ action: BotAction; url: string }> {
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ action: BotAction; url: string }>(
+          `/api/reply-drafts/${encodeURIComponent(id)}/open`,
+          { body },
+        ),
+      );
+      this.merge([result.action]);
+      return result;
+    } catch (error) {
+      void this.load(id, true);
+      throw new Error(serverMessage(error) || 'Could not save the draft. Try again.');
+    }
+  }
+
+  async discardDraft(id: string): Promise<BotAction> {
+    return this.draftCall(id, '/discard');
+  }
+
+  private async draftCall(id: string, path: '' | '/discard', body?: string): Promise<BotAction> {
+    const url = `/api/reply-drafts/${encodeURIComponent(id)}${path}`;
+    try {
+      const { action } = await firstValueFrom(
+        path
+          ? this.http.post<{ action: BotAction }>(url, {})
+          : this.http.patch<{ action: BotAction }>(url, { body }),
+      );
+      this.merge([action]);
+      return action;
+    } catch (error) {
+      void this.load(id, true);
+      throw new Error(serverMessage(error) || 'Could not update the draft. Try again.');
+    }
+  }
+
   async autonomy(botId: string): Promise<Record<BotActionKind, BotAutonomy>> {
     const { settings } = await firstValueFrom(
       this.http.get<{ settings: Record<BotActionKind, BotAutonomy> }>(
@@ -154,4 +199,8 @@ export class BotActionService {
       };
     });
   }
+}
+
+function serverMessage(error: unknown): string | undefined {
+  return (error as { error?: { error?: string } })?.error?.error;
 }

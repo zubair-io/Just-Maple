@@ -22,6 +22,12 @@ import {
     executeProposeEvent,
     proposeEventTool,
 } from './calendar-proposal.service';
+import {
+    canDraftReplies,
+    draftReplyPrompt,
+    draftReplyTool,
+    executeDraftReply,
+} from './reply-draft.service';
 
 export { formatInZone, toEpochSeconds };
 
@@ -72,6 +78,10 @@ export interface MacDataToolContext {
     botName?: string;
     /** Actions done without a tap in this run (bot-action.service); "Done · Undo" cards. */
     actionReceipts?: string[];
+    /** Replies drafted in this run (reply-draft.service); their cards go on the reply. */
+    draftedReplies?: string[];
+    /** Messages `draft_reply` has shown the bot (with the user's voice) in this run. */
+    replyContextSeen?: string[];
 }
 
 export interface ToolDefinition {
@@ -227,6 +237,7 @@ export function macDataToolDefinitions(ctx: MacDataToolContext): ToolDefinition[
         });
     if (ctx.aboutMe) tools.push(...aboutMeToolDefinitions(ctx.aboutMe.notebook, ctx.userId));
     if (canProposeEvents(ctx)) tools.push(proposeEventTool);
+    if (canDraftReplies(ctx)) tools.push(draftReplyTool);
     if (ctx.rememberInstruction) {
         tools.push({
             name: 'remember_instruction',
@@ -265,6 +276,7 @@ export function macDataSystemPrompt(ctx: MacDataToolContext): string {
                       "When you find an upcoming event that isn't on the user's calendar (check with search_local_data), offer it with propose_calendar_event instead of only describing it.",
                   ]
                 : []),
+            ...(canDraftReplies(ctx) ? [draftReplyPrompt] : []),
             ...dataPagesPrompt(ctx),
         ].join('\n') + about
     );
@@ -447,6 +459,8 @@ export async function executeMacDataTool(
                 );
             case 'propose_calendar_event':
                 return await executeProposeEvent(ctx, input);
+            case 'draft_reply':
+                return await executeDraftReply(ctx, input);
             case 'remember_instruction': {
                 const instruction = String(input.instruction ?? '')
                     .trim()

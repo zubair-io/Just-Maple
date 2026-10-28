@@ -27,6 +27,9 @@ export function botUIToText(ui: BotUIResponse): string {
                     return eventProposalText(block.event);
                 case 'action_receipt':
                     return `Done: ${block.summary}`;
+                case 'reply_draft':
+                    // Never the draft itself: this text reaches everyone in the chat.
+                    return 'Drafted a reply (only the person it is for can see it).';
             }
         })
         .join('\n\n');

@@ -307,6 +307,18 @@ class WebViewController: NSObject, ObservableObject, WKNavigationDelegate, WKUID
 
     // MARK: - WKNavigationDelegate
 
+    /// "Open in Messages / Mail" on a drafted reply: the system opens the compose.
+    func webView(_ webView: WKWebView,
+                 decidePolicyFor navigationAction: WKNavigationAction,
+                 decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
+        if let url = navigationAction.request.url, ComposeLinks.isCompose(url) {
+            decisionHandler(.cancel)
+            ComposeLinks.open(url)
+            return
+        }
+        decisionHandler(.allow)
+    }
+
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         print("WebView finished loading")
 

@@ -1,0 +1,115 @@
+@if (draft(); as d) {
+  <section
+    class="draft-card flex flex-col gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-4 text-[var(--color-text-main)]"
+    [attr.data-status]="status()"
+    aria-label="Drafted reply"
+  >
+    <header class="flex items-center gap-2">
+      <span
+        class="material-symbols-rounded text-xl text-[var(--color-primary)]"
+        aria-hidden="true"
+        >{{ d.channel === 'mail' ? 'mail' : 'chat' }}</span
+      >
+      <h3 class="m-0 min-w-0 flex-1 font-sans text-base font-semibold [overflow-wrap:anywhere]">
+        Reply to {{ d.recipientLabel }}
+      </h3>
+      <span class="font-sans text-xs text-[var(--color-text-muted)]" data-testid="channel">{{
+        channelName()
+      }}</span>
+    </header>
+    @if (d.subject) {
+      <p class="m-0 font-sans text-sm text-[var(--color-text-muted)]" data-testid="subject">
+        {{ d.subject }}
+      </p>
+    }
+
+    <blockquote
+      class="m-0 border-l-2 border-[var(--color-border)] pl-3 font-sans text-sm text-[var(--color-text-muted)]"
+      data-testid="quoted"
+    >
+      <p class="m-0 text-xs">{{ d.quoted.from }} · {{ d.quoted.at | date: 'MMM d, h:mm a' }}</p>
+      <p class="quoted-text m-0 [overflow-wrap:anywhere]">{{ d.quoted.text }}</p>
+    </blockquote>
+
+    <label class="flex flex-col gap-1 font-sans text-xs text-[var(--color-text-muted)]">
+      Your reply
+      <textarea
+        class="draft-text min-h-24 w-full resize-y rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-2 font-sans text-sm text-[var(--color-text-main)] disabled:opacity-60"
+        rows="4"
+        [value]="body()"
+        [disabled]="closed()"
+        (input)="onInput($any($event.target).value)"
+        (blur)="onBlur()"
+      ></textarea>
+    </label>
+
+    @switch (status()) {
+      @case ('opened') {
+        <p class="m-0 font-sans text-xs text-[var(--color-text-muted)]" role="status">
+          Opened in {{ channelName() }}. Press send there when it's ready.
+        </p>
+      }
+      @case ('discarded') {
+        <p class="m-0 font-sans text-xs text-[var(--color-text-muted)]" role="status">Discarded.</p>
+      }
+      @case ('expired') {
+        <p class="m-0 font-sans text-xs text-[var(--color-text-muted)]" role="status">
+          This draft expired. Ask the bot to draft it again.
+        </p>
+      }
+      @default {
+        <p class="m-0 font-sans text-xs text-[var(--color-text-muted)]">
+          Nothing is sent until you send it yourself.
+        </p>
+      }
+    }
+    @if (error(); as message) {
+      <p class="m-0 font-sans text-xs text-[var(--color-error)]" role="alert">{{ message }}</p>
+    }
+
+    @if (!closed()) {
+      <div class="flex flex-wrap items-center gap-2">
+        @if (composeUrl(); as url) {
+          <a
+            class="draft-open inline-flex h-8 items-center rounded-lg bg-[var(--color-primary)] px-3 font-sans text-xs font-semibold text-white no-underline hover:bg-[var(--color-primary-hover)]"
+            [href]="url"
+            (click)="onOpen()"
+            data-testid="open"
+            >Open in {{ channelName() }}</a
+          >
+        }
+        <button
+          type="button"
+          class="h-8 cursor-pointer rounded-lg border border-[var(--color-border)] bg-transparent px-3 font-sans text-xs font-semibold text-[var(--color-text-main)]"
+          (click)="copy()"
+        >
+          {{ copied() ? 'Copied' : 'Copy' }}
+        </button>
+        <button
+          type="button"
+          class="h-8 cursor-pointer rounded-lg border border-[var(--color-border)] bg-transparent px-3 font-sans text-xs font-semibold text-[var(--color-text-muted)] disabled:cursor-default disabled:opacity-50"
+          [disabled]="busy()"
+          (click)="discard()"
+        >
+          Discard
+        </button>
+      </div>
+    }
+  </section>
+} @else {
+  <section
+    class="flex items-center gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-3 font-sans text-sm text-[var(--color-text-main)]"
+    role="status"
+    data-testid="private"
+  >
+    <span class="material-symbols-rounded text-xl text-[var(--color-text-muted)]" aria-hidden="true"
+      >edit_note</span
+    >
+    <span>
+      Drafted a reply
+      @if (action() && !action()!.isOwner) {
+        <span class="text-[var(--color-text-muted)]">· Only the person it's for can see it.</span>
+      }
+    </span>
+  </section>
+}

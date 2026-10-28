@@ -128,4 +128,23 @@ describe('saved OpenUI replies', () => {
     expect(load).toHaveBeenCalledWith('7d1e3a52-6c55-4a8e-9b1a-0d4f3c2b1a00');
     fixture.destroy();
   });
+  it('renders drafted replies from the saved id alone, loading the draft from the server', async () => {
+    const load = vi.fn();
+    await TestBed.configureTestingModule({
+      imports: [BotUIComponent],
+      providers: [{ provide: BotActionService, useValue: { actions: signal({}), load } }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(BotUIComponent);
+    fixture.componentRef.setInput('response', {
+      version: 1,
+      format: 'openui',
+      blocks: [{ type: 'reply_draft', actionId: '5b0c6f1e-3d2a-4c1b-9e8f-7a6b5c4d3e2f' }],
+    } satisfies BotUIResponse);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const host: HTMLElement = fixture.nativeElement;
+    expect(host.querySelector('app-reply-draft-card')?.textContent).toContain('Drafted a reply');
+    expect(load).toHaveBeenCalledWith('5b0c6f1e-3d2a-4c1b-9e8f-7a6b5c4d3e2f');
+    fixture.destroy();
+  });
 });

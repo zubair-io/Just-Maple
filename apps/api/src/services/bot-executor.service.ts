@@ -11,6 +11,7 @@ import type {
 import { isBotModel } from '@maple/shared';
 import { botUIPrompt, parseBotResponse, botUIToText } from './bot-ui.service';
 import { attachProposals, withProposalCards } from './calendar-proposal.service';
+import { withoutDraftText, withReplyDraftCards } from './reply-draft.service';
 import { attachActions, withActionReceipts } from './bot-action.service';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { SDKAssistantMessage } from '@anthropic-ai/claude-agent-sdk';
@@ -942,7 +943,9 @@ export class BotExecutorService {
      * Prepare response content for posting
      */
     private async prepareResponse(ctx: ExecutionContext): Promise<PageContent> {
-        const response = String(ctx.variables.$response || '');
+        // Drafted replies are for their owner only: the card shows them, the text doesn't.
+        const drafts = ctx.macData?.draftedReplies ?? [];
+        const response = await withoutDraftText(String(ctx.variables.$response || ''), drafts);
         const parsed = parseBotResponse(response);
         // "Add to calendar" cards come from the proposals saved in this run, never from
         // what the model wrote.
@@ -951,6 +954,8 @@ export class BotExecutorService {
         // So do "Done · Undo" cards, from actions done without a tap (bot-action.service).
         const receipts = ctx.macData?.actionReceipts ?? [];
         if (receipts.length) ui = await withActionReceipts(ui, receipts);
+        // And drafted replies' cards, which carry no text (reply-draft.service).
+        if (drafts.length) ui = await withReplyDraftCards(ui, drafts);
         ctx.variables.$botUI = ui;
         return markdownToProseMirror(parsed.markdown || (ui ? botUIToText(ui) : ''));
     }
@@ -967,7 +972,11 @@ export class BotExecutorService {
                 console.error('[BotExecutor] Could not attach proposals:', error),
             );
         // Calendar proposals share their id with their action log row.
-        const actions = [...proposals, ...(ctx.macData?.actionReceipts ?? [])];
+        const actions = [
+            ...proposals,
+            ...(ctx.macData?.actionReceipts ?? []),
+            ...(ctx.macData?.draftedReplies ?? []),
+        ];
         if (actions.length)
             await attachActions(actions, pageId, messageId).catch((error) =>
                 console.error('[BotExecutor] Could not attach actions:', error),

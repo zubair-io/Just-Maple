@@ -28,6 +28,8 @@ export const ACTION_STATUS_LABELS: Record<BotActionStatus, string> = {
   failed: 'Failed',
   undone: 'Undone',
   expired: 'Expired',
+  opened: 'Opened to send',
+  discarded: 'Discarded',
 };
 
 /**

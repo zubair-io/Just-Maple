@@ -712,6 +712,21 @@ Key files: `packages/shared/src/schemas/bot-action.ts`, `bot-action.service.ts` 
 
 ---
 
+## Drafted replies
+
+A bot drafts a reply in the user's voice; the user sends it themselves. Maple never sends anything.
+
+1. Bots get `draft_reply` only when the notebook has one of the **user's own** iMessage or Mail data pages (other members' shared pages don't count), and only the user's own bots get data tools at all. The message must pass that page's filter.
+2. The first call (just `item_id`) returns the message and up to five things the user wrote: in that thread, else elsewhere in what the notebook shares (sent mail for email). The second call, with `body`, saves a `send_reply` row in the action log (status `proposed`, decision `ask`, expires in 7 days). Drafting the same message again replaces the waiting draft. With the bot's setting at **Never**, a `denied` row is logged without the text.
+3. The recipient always comes from the message: an iMessage thread's participants (or its chat id), an email's sender. The bot can't pass one, so text in a message can't redirect a reply. The user's own messages and sent mail are refused.
+4. The reply gets a `reply_draft` card (`withReplyDraftCards`) carrying only the row id. The card loads the row (`GET /api/bot-actions/:id`): the owner gets recipient, channel, the quoted message and an editable draft with Copy, **Open in Messages / Mail** and Discard. Everyone else sees "Drafted a reply · Only the person it's for can see it": the summary is always just "Drafted a reply", and draft text the bot repeats in its reply is cut out of it (`withoutDraftText`).
+5. Open is a link (`replyComposeUrl` in `@maple/shared`): `sms:<number>&body=…` (a group: `sms:/open?addresses=…`) or `mailto:<address>?subject=Re: …&body=…`. It opens a prefilled compose on whichever Mac or iPhone the user taps; they press send. The native app passes these links to the system (`ComposeLinks.swift`, from the web view's navigation policy), which needs no entitlement. We chose links over a Mac collector action (NSSharingService or Mail AppleScript): AppleScript needs the Apple Events entitlement and a permission prompt, and a Mac action would pop a window on a Mac the user may not be sitting at. Mail can't thread the reply with In-Reply-To (the Mac doesn't upload Message-ID headers); the "Re:" subject keeps it together.
+6. The log: drafted (`proposed`) → `opened` (again: `result.openCount`) → `discarded`, or `expired`. Only the owner can save edits (`PATCH /api/reply-drafts/:id`), open (`POST .../open`, returns the link) or discard (`POST .../discard`); other members get 403, anyone else 404. `send_reply` is always Ask (`isAlwaysAsk`).
+
+Key files: `packages/shared/src/schemas/reply-draft.ts`, `packages/shared/src/utils/reply-draft.ts`, `reply-draft.service.ts` / `routes/reply-drafts.ts` (API), `reply-draft-card` (web), `ComposeLinks.swift` (Apple).
+
+---
+
 ## Quick Reference
 
 | Do                             | Don't                               |

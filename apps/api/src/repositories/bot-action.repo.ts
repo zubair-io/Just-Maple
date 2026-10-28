@@ -132,6 +132,18 @@ export async function findExpiredOpen(
     );
 }
 
+/** The owner's draft for this message in this notebook that is still waiting, if any. */
+export async function findOpenReplyDraft(
+    ownerId: string,
+    notebookId: string,
+    itemId: string,
+): Promise<BotActionDocument | null> {
+    const docs = await actions()
+        .find({ ownerId, notebookId, kind: 'send_reply', status: 'proposed' })
+        .toArray();
+    return docs.find((doc) => doc.params['itemId'] === itemId) ?? null;
+}
+
 // MARK: - Undo queue (for kinds whose undo runs on a device)
 
 export async function findPendingUndos(ownerId: string): Promise<BotActionDocument[]> {
