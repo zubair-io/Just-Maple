@@ -15,6 +15,8 @@ nonisolated enum MacDataSource: String, Codable, CaseIterable, Sendable {
     case mail
     case calendar
     case contacts
+    /// Home Assistant, read live over its WebSocket (HomeAssistant/), not from files.
+    case home
 
     /// The same source as the upload API names it.
     var deviceSource: DeviceSource {
@@ -23,6 +25,7 @@ nonisolated enum MacDataSource: String, Codable, CaseIterable, Sendable {
         case .mail: .mail
         case .calendar: .calendar
         case .contacts: .contacts
+        case .home: .home
         }
     }
 }

@@ -1,4 +1,5 @@
 import { Type, Static } from '@sinclair/typebox';
+import { HomeServiceCallSchema } from './home';
 
 /**
  * "Add to calendar" proposals.
@@ -101,7 +102,25 @@ export const DeleteEventActionSchema = Type.Object({
     expiresAt: Type.String(),
 });
 
-export const DeviceActionSchema = Type.Union([CreateEventActionSchema, DeleteEventActionSchema]);
+/**
+ * A Home Assistant service call the owner confirmed (see home.ts). The Mac refuses it after
+ * `expiresAt`. Only the Mac collecting `home` gets these, and that Mac's build knows them.
+ */
+export const HomeDeviceActionSchema = Type.Object({
+    id: Type.String(),
+    type: Type.Literal('home_service'),
+    source: Type.Literal('home'),
+    call: HomeServiceCallSchema,
+    createdAt: Type.String(),
+    expiresAt: Type.String(),
+});
+export type HomeDeviceAction = Static<typeof HomeDeviceActionSchema>;
+
+export const DeviceActionSchema = Type.Union([
+    CreateEventActionSchema,
+    DeleteEventActionSchema,
+    HomeDeviceActionSchema,
+]);
 export type DeviceAction = Static<typeof DeviceActionSchema>;
 export type CreateEventAction = Static<typeof CreateEventActionSchema>;
 export type DeleteEventAction = Static<typeof DeleteEventActionSchema>;

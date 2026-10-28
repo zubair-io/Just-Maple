@@ -5,9 +5,9 @@
     class="mx-auto box-border flex max-w-[800px] flex-col gap-8 p-6 pb-[calc(6rem+env(safe-area-inset-bottom))] max-md:p-4"
   >
     <p class="m-0 text-sm leading-relaxed text-[var(--color-text-muted)]">
-      Your Mac uploads Messages, Mail, Calendar and Contacts; your iPhone uploads Places and Health.
-      Each source comes from one device, so nothing is stored twice. Only you can see this data,
-      even in shared notebooks.
+      Your Mac uploads Messages, Mail, Calendar, Contacts and the Home Assistant devices you expose
+      to assistants; your iPhone uploads Places and Health. Each source comes from one device, so
+      nothing is stored twice. Only you can see this data, even in shared notebooks.
     </p>
 
     @if (error(); as message) {
@@ -89,6 +89,23 @@
                 </button>
               }
             </div>
+            <!-- Home Assistant's address and token are entered in a native window -->
+            @if (source === 'home' && macEnabled(status)) {
+              <div
+                class="flex items-center gap-3 px-4 pb-4 pl-[52px] text-xs text-[var(--color-text-muted)]"
+                data-testid="home-assistant"
+              >
+                <span class="min-w-0 flex-1 truncate">{{ homeLine() }}</span>
+                <button
+                  type="button"
+                  (click)="openHomeSettings()"
+                  [disabled]="!!busy()"
+                  class="h-8 cursor-pointer rounded-lg border border-[var(--color-border)] bg-transparent px-3 text-xs font-semibold text-[var(--color-text-main)] hover:border-[var(--color-text-muted)] disabled:opacity-60"
+                >
+                  {{ homeStatus()?.configured ? 'Change…' : 'Set up…' }}
+                </button>
+              </div>
+            }
             <!-- Where events added from bot cards ("Add to calendar") go on this Mac -->
             @if (
               source === 'calendar' && macEnabled(status) && actionCalendars()?.calendars?.length

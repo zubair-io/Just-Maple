@@ -268,13 +268,15 @@ nonisolated final class MacDataStore: @unchecked Sendable {
 
     /// Drops items that aged out of the 30-day window, matching the server's retention so
     /// they aren't uploaded again: contacts are kept, and calendar events until they end.
-    /// Nothing is logged as removed, since the server drops them on its own.
+    /// Nothing is logged as removed, since the server drops them on its own. A Home
+    /// Assistant entity's current state (`home:<entity>`, no `@`) is kept however old.
     @discardableResult
     func pruneExpired(now: Date = Date()) throws -> Int {
         let cutoff = now.timeIntervalSince1970 - macDataInitialWindow
         let expired = """
             source != 'contacts' AND occurred_at < ?
             AND (source != 'calendar' OR coalesce(json_extract(json, '$.endAt'), 0) < ?)
+            AND (source != 'home' OR instr(id, '@') > 0)
             """
         return try db.transaction {
             let count = Int(

@@ -35,5 +35,6 @@ export * from './about-me';
 export * from './proactive';
 export * from './data-graph';
 export * from './calendar-proposal';
+export * from './home';
 export * from './bot-action';
 export * from './follow-up';

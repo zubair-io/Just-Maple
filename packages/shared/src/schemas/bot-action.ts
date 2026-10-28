@@ -1,4 +1,5 @@
 import { Type, Static } from '@sinclair/typebox';
+import { isSensitiveHomeEntity } from './home';
 
 /**
  * The action log and per-bot autonomy.
@@ -97,7 +98,7 @@ export const BOT_ACTION_KINDS: Record<BotActionKind, BotActionKindInfo> = {
     home_service: {
         label: 'Control your home',
         description:
-            'Lights, scenes and other Home Assistant devices. Unlocking and opening doors always asks.',
+            'Lights, fans and other Home Assistant devices. Locks, doors, gates, scenes and scripts always ask.',
         autoAllowed: true,
         undoable: false,
         icon: 'home',
@@ -139,11 +140,14 @@ export const MESSAGE_HOME_DOMAINS: readonly string[] = ['notify', 'tts'];
 /**
  * What the server itself knows about an entity (from Home Assistant, never from the bot).
  * `safe: true` lets an `ALWAYS_ASK_HOME_DOMAINS` entity follow the setting; unlocking,
- * disarming and opening a garage, gate or door still always ask.
+ * disarming, opening a garage, gate or door, and anything `isSensitiveHomeEntity` marks
+ * (the Home Assistant card's double confirm) still always ask.
  */
 export interface KnownHomeEntity {
     safe?: boolean;
     deviceClass?: string | null;
+    /** The entity's name in Home Assistant, so a relay named "Gate opener" counts. */
+    name?: string | null;
 }
 
 /** The domain of a Home Assistant call, taken only from its entity id (`lock.front_door`). */
@@ -169,7 +173,17 @@ export function isSensitiveHomeService(params: unknown, known?: KnownHomeEntity)
     const service = typeof p['service'] === 'string' ? p['service'].toLowerCase() : '';
     const deviceClass = (known?.deviceClass ?? '').toLowerCase();
     if (MESSAGE_HOME_DOMAINS.includes(domain)) return true;
-    // Never safe, whatever the server knows:
+    // Never safe, whatever the server knows. One rule with the Home Assistant card: every
+    // call it asks twice for (locks, scenes, scripts, garage/gate/door covers and their
+    // opener switches) is always Ask here too.
+    if (
+        isSensitiveHomeEntity({
+            entityId: entity,
+            deviceClass: deviceClass || undefined,
+            name: known?.name ?? undefined,
+        })
+    )
+        return true;
     if (domain === 'lock' && service !== 'lock') return true; // unlock, open
     if (domain === 'alarm_control_panel' && service.includes('disarm')) return true;
     if (domain === 'cover') {

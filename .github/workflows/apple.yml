@@ -37,3 +37,24 @@ jobs:
             -destination "$DESTINATION" -derivedDataPath "$RUNNER_TEMP/DerivedData" \
             -skipPackagePluginValidation -skipMacroValidation \
             CODE_SIGNING_ALLOWED=NO build
+      # The Home Assistant unit tests (connector, rules, action queue, settings, local
+      # store). Ad hoc signed without entitlements, so the test host launches without a
+      # team's provisioning profile.
+      - name: Run macOS unit tests
+        if: matrix.platform == 'macos'
+        run: |
+          set -euo pipefail
+          xcodebuild -project apps/apple/JapaneseMaple.xcodeproj \
+            -scheme JapaneseMaple -configuration Debug \
+            -destination "platform=macOS" -derivedDataPath "$RUNNER_TEMP/DerivedDataTests" \
+            -skipPackagePluginValidation -skipMacroValidation \
+            -only-testing:JapaneseMapleTests/HomeExposureTests \
+            -only-testing:JapaneseMapleTests/HomeAssistantConnectionTests \
+            -only-testing:JapaneseMapleTests/HomeChangeCoalescerTests \
+            -only-testing:JapaneseMapleTests/HomeAssistantActionTests \
+            -only-testing:JapaneseMapleTests/HomeActionQueueTests \
+            -only-testing:JapaneseMapleTests/HomeAssistantSettingsTests \
+            -only-testing:JapaneseMapleTests/HomeEngineTests \
+            CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= \
+            PROVISIONING_PROFILE_SPECIFIER= CODE_SIGN_ENTITLEMENTS= \
+            test

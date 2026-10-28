@@ -23,6 +23,14 @@ import {
     executeProposeEvent,
     proposeEventTool,
 } from './calendar-proposal.service';
+import {
+    canProposeHome,
+    canReadHome,
+    executeHomeStates,
+    executeProposeHome,
+    homeStatesTool,
+    proposeHomeTool,
+} from './home.service';
 
 export { formatInZone, toEpochSeconds };
 
@@ -71,6 +79,8 @@ export interface MacDataToolContext {
     botName?: string;
     /** Proposals made in this run; their cards are attached to the reply. */
     proposedEvents?: string[];
+    /** Home Assistant actions proposed in this run (home.service); cards like the above. */
+    proposedHomeActions?: string[];
     /** The bot's name, for the action log. */
     botName?: string;
     /** Actions done without a tap in this run (bot-action.service); "Done · Undo" cards. */
@@ -236,6 +246,8 @@ export function macDataToolDefinitions(ctx: MacDataToolContext): ToolDefinition[
         });
     if (ctx.aboutMe) tools.push(...aboutMeToolDefinitions(ctx.aboutMe.notebook, ctx.userId));
     if (canProposeEvents(ctx)) tools.push(proposeEventTool);
+    if (canReadHome(ctx)) tools.push(homeStatesTool);
+    if (canProposeHome(ctx)) tools.push(proposeHomeTool);
     tools.push(...followUpToolDefinitions(ctx));
     if (ctx.rememberInstruction) {
         tools.push({
@@ -278,6 +290,14 @@ export function macDataSystemPrompt(ctx: MacDataToolContext): string {
             ...(canProposeEvents(ctx)
                 ? [
                       "When you find an upcoming event that isn't on the user's calendar (check with search_local_data), offer it with propose_calendar_event instead of only describing it.",
+                  ]
+                : []),
+            ...(canReadHome(ctx)
+                ? [
+                      'For smart-home questions ("is the garage open?", "what is the temperature upstairs?") use get_home_states.' +
+                          (canProposeHome(ctx)
+                              ? ' To change a device, use propose_home_action: it only offers a button, and nothing changes until the user taps it.'
+                              : ' You cannot change devices here.'),
                   ]
                 : []),
             ...dataPagesPrompt(ctx),
@@ -466,6 +486,10 @@ export async function executeMacDataTool(
                 );
             case 'propose_calendar_event':
                 return await executeProposeEvent(ctx, input);
+            case 'get_home_states':
+                return await executeHomeStates(ctx, input);
+            case 'propose_home_action':
+                return await executeProposeHome(ctx, input);
             case 'remember_instruction': {
                 const instruction = String(input.instruction ?? '')
                     .trim()
@@ -589,6 +613,7 @@ function describeSources(sources: MacDataSource[]): string {
         contacts: 'contacts',
         location: 'places visited (from their iPhone)',
         health: 'daily health and workout summaries',
+        home: 'smart-home devices (from Home Assistant)',
     };
     const names = sources.map((s) => label[s]);
     return names.length <= 1

@@ -10,6 +10,12 @@ import {
     reportActionResult,
     takeActions,
 } from '../services/calendar-proposal.service';
+import {
+    HomeError,
+    isHomeAction,
+    reportHomeActionResult,
+    takeHomeActions,
+} from '../services/home.service';
 import { takeLogDeviceActions, reportLogDeviceResult } from '../services/bot-activity.service';
 import { ActionError } from '../services/bot-action.service';
 
@@ -19,7 +25,8 @@ import { ActionError } from '../services/bot-action.service';
  * - `GET /api/calendar-proposals/:id` the card's state, for any notebook member.
  * - `POST /api/calendar-proposals/:id/confirm` the owner's tap; queues the action.
  * - `GET /api/collectors/:deviceId/actions` a device's pending actions, with any undo
- *   work from the bot action log (`delete_event`, bot-activity.service).
+ *   work from the bot action log (`delete_event`, bot-activity.service) and its Home
+ *   Assistant calls (see home.ts).
  * - `POST /api/collectors/:deviceId/actions/:id/result` its result; safe to repeat.
  */
 export const calendarProposalRoutes = new Elysia({ prefix: '/api' })
@@ -70,8 +77,11 @@ export const calendarProposalRoutes = new Elysia({ prefix: '/api' })
         async ({ auth, params, set }) => {
             if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
             try {
+                // Calendar events for the calendar's Mac; Home Assistant calls for home's;
+                // undo work from the action log.
                 const actions = [
                     ...(await takeActions(auth.user._id, params.deviceId)),
+                    ...(await takeHomeActions(auth.user._id, params.deviceId)),
                     ...(await takeLogDeviceActions(auth.user._id, params.deviceId)),
                 ];
                 await touchCollector(auth.user._id, params.deviceId, false);
@@ -88,6 +98,15 @@ export const calendarProposalRoutes = new Elysia({ prefix: '/api' })
         async ({ auth, params, body, set }) => {
             if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
             try {
+                if (await isHomeAction(params.id))
+                    return {
+                        proposal: await reportHomeActionResult(
+                            auth.user._id,
+                            params.deviceId,
+                            params.id,
+                            body,
+                        ),
+                    };
                 // An undo from the action log, or else an "Add to calendar" result.
                 const action = await reportLogDeviceResult(
                     auth.user._id,
@@ -115,7 +134,12 @@ export const calendarProposalRoutes = new Elysia({ prefix: '/api' })
     );
 
 function failure(error: unknown, set: { status?: number | string }) {
-    if (!(error instanceof ProposalError) && !(error instanceof ActionError)) throw error;
+    if (
+        !(error instanceof ProposalError) &&
+        !(error instanceof HomeError) &&
+        !(error instanceof ActionError)
+    )
+        throw error;
     set.status = error.status;
     return { error: error.message };
 }

@@ -44,6 +44,10 @@ actor MacDataEngine {
     // Calendar actions, used by CalendarActions.
     var isRunningActions = false
     var runActionsAgain = false
+    // Home Assistant, used by MacDataEngine+Home.
+    var homeConfigured = false
+    var homeStatus: HomeAssistantStatus?
+    var homePerformer: HomeActionPerforming?
 
     init(
         storePath: String = MacDataPaths.store.path,
@@ -101,6 +105,7 @@ actor MacDataEngine {
                 status.state = .needsAccess
                 status.message = ContactsReader.accessProblem
             }
+            if source == .home, enabled.contains(source) { applyHomeStatus(to: &status) }
             return status
         }
     }
@@ -132,6 +137,8 @@ actor MacDataEngine {
     /// Returns true when anything was added, changed or removed.
     @discardableResult
     func sync(_ source: MacDataSource, now: Date? = nil) async -> Bool {
+        // Home Assistant pushes its changes (applyHome); there is nothing to read.
+        if source == .home { return false }
         if running.contains(source) {
             rerun.insert(source)
             return false
@@ -168,6 +175,8 @@ actor MacDataEngine {
                 case .contacts:
                     let reader = contacts
                     result = try await Task.detached { try reader.read() }.value
+                case .home:
+                    return changed
                 }
                 let date = now ?? Date()
                 let applied = try store.apply(result, source: source, now: date)

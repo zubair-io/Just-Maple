@@ -31,6 +31,7 @@ export const DEVICE_DATA_SOURCES: readonly DeviceSourceInfo[] = [
   },
   { source: 'location', label: 'Places', icon: 'location_on', platform: 'ios', setting: 'Places' },
   { source: 'health', label: 'Health', icon: 'favorite', platform: 'ios', setting: 'Health' },
+  { source: 'home', label: 'Home', icon: 'home', platform: 'macos', setting: 'Home Assistant' },
 ];
 
 /** Sources the Mac collects. */
