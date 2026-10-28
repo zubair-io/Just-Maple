@@ -45,7 +45,7 @@ import {
 import { getPageTypeLabel as getLabel, getPageTypeIcon as getIcon } from '../../utils/page-types';
 import { isLocalNotebook } from '../../providers/data-provider.interface';
 import type { NotebookMember, Page, Message, MacDataSource } from '@maple/shared';
-import { aboutMePageId, activityPageId, followUpsPageId, graphPageId } from '@maple/shared';
+import { activityPageId, followUpsPageId } from '@maple/shared';
 
 interface NotebookSummary {
   pageCounts: Record<string, number>;
@@ -103,11 +103,15 @@ export class ChatViewComponent implements OnInit, OnDestroy {
   readonly selectedHeaderTab = computed(() => {
     const pageId = this.routePageId();
     const page = pageId ? this.pageService.pages().find((p) => p.id === pageId) : null;
-    return page ? `type-${page.type}` : this.activeTab();
+    return page ? `type-${this.tabTypeOf(page.type)}` : this.activeTab();
   });
   readonly switcherOpen = signal<boolean>(false);
   readonly pageSearchQuery = signal<string>('');
   readonly newPageDropdownOpen = signal<boolean>(false);
+  /** "+ New" lists the device data sources only after "New Device Data" is picked. */
+  readonly newPageDeviceSourcesOpen = signal<boolean>(false);
+  /** The source menu under "+ Create Device Data" on the Device Data tab. */
+  readonly createDeviceDataOpen = signal<boolean>(false);
 
   private readonly pinnedIds = signal<Set<string>>(this.loadPinnedIds());
 
@@ -170,7 +174,7 @@ export class ChatViewComponent implements OnInit, OnDestroy {
       ? this.localPages()
       : this.pageService.pages().filter((p) => p.notebookId === notebookId);
 
-    const types = [...new Set(pages.map((p) => p.type))];
+    const types = [...new Set(pages.map((p) => this.tabTypeOf(p.type)))];
 
     return types.map((type) => ({
       id: `type-${type}`,
@@ -185,12 +189,27 @@ export class ChatViewComponent implements OnInit, OnDestroy {
 
     if (tab.startsWith('type-')) {
       const targetType = tab.substring(5);
-      return pages.filter((p) => p.type === targetType);
+      const matching = pages.filter((p) => this.tabTypeOf(p.type) === targetType);
+      // About me and Graph lead the Device Data tab, ahead of the data pages.
+      return targetType === 'devicedata'
+        ? [
+            ...matching.filter((p) => p.type !== 'devicedata'),
+            ...matching.filter((p) => p.type === 'devicedata'),
+          ]
+        : matching;
     }
     return [];
   });
 
-  private getPageTypeTabLabel(type: string): string {
+  /** About me and Graph are built from device data, so they sit in its tab. */
+  private tabTypeOf(type: string): string {
+    return type === 'aboutme' || type === 'graph' ? 'devicedata' : type;
+  }
+
+  /** Types with one page per notebook: their tab has no "+ Create" button. */
+  readonly singletonTypes = new Set(['activity', 'followups']);
+
+  getPageTypeTabLabel(type: string): string {
     switch (type) {
       case 'memo':
         return 'Notes';
@@ -212,6 +231,8 @@ export class ChatViewComponent implements OnInit, OnDestroy {
         return 'Activity';
       case 'followups':
         return 'Follow-ups';
+      case 'devicedata':
+        return 'Device Data';
       default:
         return `${type.charAt(0).toUpperCase() + type.slice(1)}s`;
     }
@@ -309,16 +330,6 @@ export class ChatViewComponent implements OnInit, OnDestroy {
   /** This notebook's chats, for choosing where a bot is proactive. */
   readonly chatPages = computed(() =>
     this.navigationPages().filter((page) => page.type === 'message'),
-  );
-
-  /** "+ New" offers About me only until the notebook has one. */
-  readonly hasAboutMePage = computed(() =>
-    this.navigationPages().some((page) => page.type === 'aboutme'),
-  );
-
-  /** "+ New" offers Graph only until the notebook has one. */
-  readonly hasGraphPage = computed(() =>
-    this.navigationPages().some((page) => page.type === 'graph'),
   );
 
   /** "+ New" offers Activity only until the notebook has one. */
@@ -573,56 +584,6 @@ export class ChatViewComponent implements OnInit, OnDestroy {
     }
   }
 
-  /** Adds the notebook's About me page (bots fill it in) and opens it. */
-  async createAboutMePage(): Promise<void> {
-    const notebookId = this.selectedNotebookId();
-    if (!notebookId) return;
-    try {
-      const page = await lastValueFrom(
-        this.pageService.createPage({
-          // The server gives each notebook's About me this fixed id.
-          id: aboutMePageId(notebookId),
-          type: 'aboutme',
-          title: 'About me',
-          notebookId,
-        }),
-      );
-      await this.router.navigate(['/', notebookId, page.id]);
-    } catch (error) {
-      console.error('Failed to create About me page:', error);
-      await this.dialogService.alert({
-        title: 'Could not add About me',
-        message:
-          'Only members who can edit this notebook can add it. Check your connection and try again.',
-      });
-    }
-  }
-
-  /** Adds the notebook's Graph page (linking starts on the server) and opens it. */
-  async createGraphPage(): Promise<void> {
-    const notebookId = this.selectedNotebookId();
-    if (!notebookId) return;
-    try {
-      const page = await lastValueFrom(
-        this.pageService.createPage({
-          // The server gives each notebook's Graph this fixed id.
-          id: graphPageId(notebookId),
-          type: 'graph',
-          title: 'Graph',
-          notebookId,
-        }),
-      );
-      await this.router.navigate(['/', notebookId, page.id]);
-    } catch (error) {
-      console.error('Failed to create Graph page:', error);
-      await this.dialogService.alert({
-        title: 'Could not add Graph',
-        message:
-          'Only members who can edit this notebook can add it. Check your connection and try again.',
-      });
-    }
-  }
-
   /** Adds the notebook's Activity page (what bots did and proposed here) and opens it. */
   async createActivityPage(): Promise<void> {
     const notebookId = this.selectedNotebookId();
@@ -675,6 +636,7 @@ export class ChatViewComponent implements OnInit, OnDestroy {
 
   toggleNewPageDropdown(event: Event): void {
     event.stopPropagation();
+    this.newPageDeviceSourcesOpen.set(false);
     this.newPageDropdownOpen.update((v) => !v);
   }
 }

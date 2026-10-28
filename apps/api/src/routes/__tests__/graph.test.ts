@@ -53,7 +53,13 @@ import {
     removeGraphRelation,
     saveGraphRelations,
 } from '../../repositories/graph.repo';
-import { addRelation, createEntity } from '../../repositories/profile.repo';
+import { addRelation, createEntity, findMe } from '../../repositories/profile.repo';
+import {
+    findAboutMePage,
+    findGraphPage,
+    movePageToTrash,
+    restorePageFromTrash,
+} from '../../repositories/page.repo';
 import { executeMacDataTool, getMacDataToolContext } from '../../services/mac-data-tools.service';
 import { saveTravelEstimates } from '../../repositories/travel-estimate.repo';
 
@@ -183,13 +189,21 @@ describe.runIf(mongoAvailable)('connected-data graph', () => {
             );
             pages[source] = page.id;
         }
-        await createPageFixture({
-            id: graphPageId(notebookId),
-            userId: alex.id,
-            notebookId,
-            type: 'graph',
-            title: 'Graph',
-        });
+        if (sources.length) {
+            // The first data page adds Graph and About me: wait for both, and About me's start.
+            await vi.waitFor(async () => {
+                expect(await findGraphPage(notebookId)).toBeTruthy();
+                expect(await findMe({ userId: alex.id, notebookId })).toBeTruthy();
+            });
+        } else {
+            await createPageFixture({
+                id: graphPageId(notebookId),
+                userId: alex.id,
+                notebookId,
+                type: 'graph',
+                title: 'Graph',
+            });
+        }
         return { notebookId, pages };
     }
 
@@ -615,7 +629,7 @@ describe.runIf(mongoAvailable)('connected-data graph', () => {
 
     // MARK: - The page
 
-    it('adds one Graph page per notebook and starts linking', async () => {
+    it('adds one Graph page per notebook with its first data page', async () => {
         await upload(['calendar', 'location'], [visit, followUp]);
         const doc = await createNotebookFixture({
             createdBy: alex.id,
@@ -638,19 +652,34 @@ describe.runIf(mongoAvailable)('connected-data graph', () => {
                 notebookId,
             }),
         );
-        const first = await json(
-            call(alex, '/api/pages', 'POST', { type: 'graph', title: 'Graph', notebookId }),
+        await vi.waitFor(async () =>
+            expect((await findGraphPage(notebookId))?.id).toBe(graphPageId(notebookId)),
         );
-        expect(first.page.id).toBe(graphPageId(notebookId));
         const again = await json(
             call(alex, '/api/pages', 'POST', { type: 'graph', title: 'Graph', notebookId }),
         );
-        expect(again.page.id).toBe(first.page.id);
+        expect(again.page.id).toBe(graphPageId(notebookId));
 
-        await vi.waitFor(async () => {
-            const { graph } = await graphOf(alex, notebookId);
-            expect(graph.links.length).toBeGreaterThan(0);
-        });
+        expect((await findAboutMePage(notebookId))?.title).toBe('About me');
+
+        // A Graph someone trashed stays trashed when another data page is added.
+        await movePageToTrash(graphPageId(notebookId), alex.id);
+        await json(
+            call(alex, '/api/pages', 'POST', {
+                type: 'devicedata',
+                deviceSource: 'mail',
+                title: 'Email',
+                notebookId,
+            }),
+        );
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(await findGraphPage(notebookId)).toBeNull();
+        await restorePageFromTrash(graphPageId(notebookId), alex.id);
+
+        // The data pages asked for a pass; the next tick runs it.
+        await graphTick();
+        const { graph } = await graphOf(alex, notebookId);
+        expect(graph.links.length).toBeGreaterThan(0);
     });
 
     it('filters the graph by date', async () => {
@@ -1172,21 +1201,9 @@ describe.runIf(mongoAvailable)('connected-data graph', () => {
         await upload(familySources, family);
         const a = await notebook(familySources);
         const b = await notebook(familySources);
-        // About me in A: Jen is Alex's best friend too.
-        await createPageFixture({
-            id: `aboutme-${a.notebookId}`,
-            userId: alex.id,
-            notebookId: a.notebookId,
-            // The fixture's types predate About me pages.
-            type: 'aboutme' as never,
-            title: 'About me',
-        });
+        // About me in A (added with its data pages): Jen is Alex's best friend too.
         const scope = { userId: alex.id, notebookId: a.notebookId };
-        const me = await createEntity(scope, {
-            kind: 'person',
-            name: 'Alex',
-            isMe: true,
-        });
+        const me = (await findMe(scope))!;
         const jen = await createEntity(scope, {
             kind: 'person',
             name: 'Jennifer',

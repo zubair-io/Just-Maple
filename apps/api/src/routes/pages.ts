@@ -235,48 +235,14 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 throw error;
             }
 
-            // Broadcast new page creation to all clients viewing this notebook
-            if (page.notebookId) {
-                await otService.broadcastNoteCreated(page.notebookId, page);
+            await announceNewPage(page, auth.user._id);
 
-                // Send SSE event to all users with access to this notebook
-                const recipientUserIds = await getUsersWithNotebookAccess(page.notebookId);
-                realtimeWSService.sendToUsers(recipientUserIds, {
-                    type: 'page.created',
-                    page,
-                    notebookId: page.notebookId,
-                });
-            }
-
-            // Adding About me starts the creator's, from their own contacts and calendar.
-            if (page.type === 'aboutme' && page.notebookId) {
-                void ensureProfile(
-                    { userId: auth.user._id, notebookId: page.notebookId },
-                    { seed: true },
-                ).catch((error) => console.error('[AboutMe] Could not seed About me:', error));
-            }
-
-            // A new data page may bring items the notebook's graph hasn't linked yet.
-            if (page.type === 'devicedata' && page.notebookId) requestGraphPass(page.notebookId);
-
-            // Adding Graph starts linking the notebook's last 30 days.
-            if (page.type === 'graph' && page.notebookId) {
-                void runGraphPass(page.notebookId).catch((error) =>
-                    console.error('[Graph] Could not start linking:', error),
+            // A data page brings its notebook's About me and Graph, if it has neither yet.
+            if (page.type === 'devicedata' && page.notebookId) {
+                void addCompanionPages(page.notebookId, auth.user._id).catch((error) =>
+                    console.error('[DeviceData] Could not add About me and Graph:', error),
                 );
             }
-
-            // Adding Follow-ups starts reading what the notebook's pages share.
-            if (page.type === 'followups' && page.notebookId) {
-                void runFollowUpsForNotebook(page.notebookId).catch((error) =>
-                    console.error('[FollowUps] Could not start:', error),
-                );
-            }
-
-            // Index page for search (background, don't block response)
-            indexPage(page.id).catch((err) =>
-                console.error(`[Search] Failed to index page ${page.id}:`, err),
-            );
 
             return { page };
         },
@@ -755,6 +721,74 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
         },
         { params: t.Object({ id: t.String() }) },
     );
+
+/**
+ * Tells the notebook's members about a new page and starts what that type of page needs.
+ * A Graph added with a data page waits for the pass that data page asked for.
+ */
+async function announceNewPage(page: Page, userId: string, startGraph = true): Promise<void> {
+    // Broadcast new page creation to all clients viewing this notebook
+    if (page.notebookId) {
+        await otService.broadcastNoteCreated(page.notebookId, page);
+
+        // Send SSE event to all users with access to this notebook
+        const recipientUserIds = await getUsersWithNotebookAccess(page.notebookId);
+        realtimeWSService.sendToUsers(recipientUserIds, {
+            type: 'page.created',
+            page,
+            notebookId: page.notebookId,
+        });
+    }
+
+    // Adding About me starts the creator's, from their own contacts and calendar.
+    if (page.type === 'aboutme' && page.notebookId) {
+        void ensureProfile({ userId, notebookId: page.notebookId }, { seed: true }).catch((error) =>
+            console.error('[AboutMe] Could not seed About me:', error),
+        );
+    }
+
+    // A new data page may bring items the notebook's graph hasn't linked yet.
+    if (page.type === 'devicedata' && page.notebookId) requestGraphPass(page.notebookId);
+
+    // Adding Graph starts linking the notebook's last 30 days.
+    if (page.type === 'graph' && page.notebookId && startGraph) {
+        void runGraphPass(page.notebookId).catch((error) =>
+            console.error('[Graph] Could not start linking:', error),
+        );
+    }
+
+    // Adding Follow-ups starts reading what the notebook's pages share.
+    if (page.type === 'followups' && page.notebookId) {
+        void runFollowUpsForNotebook(page.notebookId).catch((error) =>
+            console.error('[FollowUps] Could not start:', error),
+        );
+    }
+
+    // Index page for search (background, don't block response)
+    indexPage(page.id).catch((err) =>
+        console.error(`[Search] Failed to index page ${page.id}:`, err),
+    );
+}
+
+/**
+ * Adds a notebook's About me and Graph after its data page is added, if it has neither,
+ * not even in the trash: a page someone trashed stays trashed. Needs write access.
+ */
+async function addCompanionPages(notebookId: string, userId: string): Promise<void> {
+    if (!(await findNotebookByIdWithAccess(notebookId, userId, 'write').catch(() => null))) return;
+    for (const type of ['aboutme', 'graph'] as const) {
+        const single = ONE_PER_NOTEBOOK[type]!;
+        const id = single.id(notebookId);
+        if ((await single.find(notebookId)) || (await findPageById(id, userId))) continue;
+        let page: Page;
+        try {
+            page = await createPage(userId, { id, type, title: single.name, notebookId });
+        } catch {
+            continue; // Added by someone else at the same moment.
+        }
+        await announceNewPage(page, userId, false);
+    }
+}
 
 /** Page types a notebook has at most one of, each with a fixed id. */
 const ONE_PER_NOTEBOOK: Record<
