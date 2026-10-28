@@ -1,5 +1,6 @@
 import { Type, Static } from '@sinclair/typebox';
 import { CalendarEventDraftSchema } from './calendar-proposal';
+import { HomeServiceCallSchema } from './home';
 
 const Text = Type.String({ maxLength: 10000 });
 export const MAC_DATA_ITEM_ID_PATTERN = '^(imessage|mail|calendar):[^\\s]{1,390}$';
@@ -40,6 +41,20 @@ export const BotUIBlockSchema = Type.Union([
         type: Type.Literal('event_proposal'),
         proposalId: Type.String({ pattern: '^[0-9a-f-]{36}$' }),
         event: CalendarEventDraftSchema,
+    }),
+    // A Home Assistant action card ("Turn off Kitchen Light"). Only the server adds it,
+    // from a proposal the bot made with propose_home_action; nothing runs until the tap.
+    Type.Object({
+        type: Type.Literal('home_proposal'),
+        proposalId: Type.String({ pattern: '^[0-9a-f-]{36}$' }),
+        call: HomeServiceCallSchema,
+    }),
+    // "Done: … · Undo" for an action a bot did on its own (the owner's "Do it and tell
+    // me" setting). Only the server adds it; the card reads live state by `actionId`.
+    Type.Object({
+        type: Type.Literal('action_receipt'),
+        actionId: Type.String({ pattern: '^[0-9a-f-]{36}$' }),
+        summary: Type.String({ maxLength: 500 }),
     }),
 ]);
 export const BotUIResponseSchema = Type.Object({

@@ -20,6 +20,8 @@ import {
 import { Clipboard } from '@angular/cdk/clipboard';
 import { ProfileAvatarComponent } from '../../components/atoms/profile-avatar/profile-avatar.component';
 import { SettingsHeaderComponent, DialogService } from '../../components';
+import { BotAutonomyComponent } from '../../components/organisms/bot-autonomy/bot-autonomy.component';
+import { ActionLogComponent } from '../../components/organisms/action-log/action-log.component';
 import {
   type BotModelOption,
   type BotTemplate,
@@ -31,7 +33,14 @@ import { environment } from '../../../environments/environment';
 @Component({
   selector: 'app-bots',
   standalone: true,
-  imports: [CommonModule, FormsModule, ProfileAvatarComponent, SettingsHeaderComponent],
+  imports: [
+    CommonModule,
+    FormsModule,
+    ProfileAvatarComponent,
+    SettingsHeaderComponent,
+    BotAutonomyComponent,
+    ActionLogComponent,
+  ],
   templateUrl: './bots.component.html',
   changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './bots.component.scss',

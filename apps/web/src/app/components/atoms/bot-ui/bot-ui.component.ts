@@ -14,7 +14,13 @@ import {
   type ActionEvent,
 } from '@openuidev/angular-lang';
 import { Value } from '@sinclair/typebox/value';
-import { BotUIResponseSchema, MAC_DATA_ITEM_ID_PATTERN, type BotUIResponse } from '@maple/shared';
+import {
+  BotUIResponseSchema,
+  HOME_CONTROL_DOMAINS,
+  HOME_ENTITY_ID_PATTERN,
+  MAC_DATA_ITEM_ID_PATTERN,
+  type BotUIResponse,
+} from '@maple/shared';
 import { z } from 'zod/v4';
 import { BOT_UI_DISABLED, MapleUIBlocksComponent } from './maple-ui-blocks.component';
 
@@ -72,6 +78,29 @@ const library = createLibrary({
                   notes: z.string().max(2000).optional(),
                   timeZone: z.string().max(100).optional(),
                 }),
+              }),
+              z.object({
+                type: z.literal('home_proposal'),
+                proposalId: z.string().regex(/^[0-9a-f-]{36}$/),
+                call: z.object({
+                  entityId: z.string().regex(new RegExp(HOME_ENTITY_ID_PATTERN)),
+                  domain: z.enum(HOME_CONTROL_DOMAINS),
+                  service: z.string().regex(/^[a-z_]{1,40}$/),
+                  data: z
+                    .record(
+                      z.string().regex(/^[a-z_]{1,40}$/),
+                      z.union([z.number(), z.string().max(40)]),
+                    )
+                    .optional(),
+                  name: z.string().max(200).optional(),
+                  area: z.string().max(200).optional(),
+                  sensitive: z.boolean().optional(),
+                }),
+              }),
+              z.object({
+                type: z.literal('action_receipt'),
+                actionId: z.string().regex(/^[0-9a-f-]{36}$/),
+                summary: z.string().max(500),
               }),
             ]),
           )

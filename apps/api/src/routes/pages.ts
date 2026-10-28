@@ -23,6 +23,7 @@ import {
     publishPage,
     findAboutMePage,
     findGraphPage,
+    findActivityPage,
     findFollowUpsPage,
 } from '../repositories/page.repo';
 import { otService } from '../services/ot.service';
@@ -37,7 +38,7 @@ import {
     ProactiveSettingsError,
 } from '../services/proactive-settings.service';
 import { ensureProfile } from '../services/about-me.service';
-import { aboutMePageId, followUpsPageId, graphPageId } from '@maple/shared';
+import { aboutMePageId, activityPageId, followUpsPageId, graphPageId } from '@maple/shared';
 import { runFollowUpsForNotebook } from '../services/follow-up.service';
 import { requestGraphPass, runGraphPass } from '../services/graph.service';
 import { updateLinksForPage, handlePageRename, handlePageDeletion } from '../services/link.service';
@@ -295,6 +296,7 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                         t.Literal('devicedata'),
                         t.Literal('aboutme'),
                         t.Literal('graph'),
+                        t.Literal('activity'),
                         t.Literal('followups'),
                     ]),
                 ),
@@ -310,6 +312,7 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                         t.Literal('contacts'),
                         t.Literal('location'),
                         t.Literal('health'),
+                        t.Literal('home'),
                     ]),
                 ),
             }),
@@ -764,6 +767,7 @@ const ONE_PER_NOTEBOOK: Record<
 > = {
     aboutme: { name: 'About me', id: aboutMePageId, find: findAboutMePage },
     graph: { name: 'Graph', id: graphPageId, find: findGraphPage },
+    activity: { name: 'Activity', id: activityPageId, find: findActivityPage },
     followups: { name: 'Follow-ups', id: followUpsPageId, find: findFollowUpsPage },
 };
 
@@ -783,7 +787,7 @@ async function singlePageChangeError(
     if (changes.isTrashed === false && page.isTrashed) {
         const current = await single.find(page.notebookId);
         if (current && current.id !== page.id)
-            return `This notebook already has a${single.name === 'About me' ? 'n' : ''} ${single.name} page`;
+            return `This notebook already has a${/^[AEIOU]/.test(single.name) ? 'n' : ''} ${single.name} page`;
     }
     return null;
 }

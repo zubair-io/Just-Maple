@@ -30,7 +30,8 @@ nonisolated extension MacDataStore {
             db.rows(
                 """
                 SELECT json FROM items
-                WHERE embedded_revision IS NULL OR embedded_revision != revision
+                WHERE (embedded_revision IS NULL OR embedded_revision != revision)
+                AND source != 'home'
                 ORDER BY occurred_at DESC LIMIT ?
                 """, [limit]))
     }
@@ -38,7 +39,7 @@ nonisolated extension MacDataStore {
     func pendingEmbeddingCount() throws -> Int {
         Int(
             try db.rows(
-                "SELECT COUNT(*) AS n FROM items WHERE embedded_revision IS NULL OR embedded_revision != revision"
+                "SELECT COUNT(*) AS n FROM items WHERE (embedded_revision IS NULL OR embedded_revision != revision) AND source != 'home'"
             ).first?["n"]?.int ?? 0)
     }
 

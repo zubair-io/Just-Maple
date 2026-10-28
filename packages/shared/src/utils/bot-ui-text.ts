@@ -1,5 +1,6 @@
 import type { BotUIResponse } from '../schemas/bot-ui';
 import type { CalendarEventDraft } from '../schemas/calendar-proposal';
+import { describeHomeCall } from '../schemas/home';
 import type { PageContent } from '../schemas/page';
 import { extractText } from './content-traversal';
 
@@ -25,6 +26,10 @@ export function botUIToText(ui: BotUIResponse): string {
                     return `Source: ${block.label} (${block.itemId})`;
                 case 'event_proposal':
                     return eventProposalText(block.event);
+                case 'home_proposal':
+                    return `Proposed home action: ${describeHomeCall(block.call)}`;
+                case 'action_receipt':
+                    return `Done: ${block.summary}`;
             }
         })
         .join('\n\n');

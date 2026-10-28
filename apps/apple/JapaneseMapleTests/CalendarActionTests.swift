@@ -38,6 +38,19 @@ private final class FakeCalendar: CalendarWriting, @unchecked Sendable {
         events.append((event, calendarId, marker, written))
         return written
     }
+
+    /// Events someone added in Calendar itself, without a marker.
+    var foreign: [String] = []
+
+    func remove(identifier: String, marker: URL, around start: Date) throws -> Bool {
+        if let failure { throw failure }
+        if let index = events.firstIndex(where: { $0.marker == marker }) {
+            events.remove(at: index)
+            return true
+        }
+        if foreign.contains(identifier) { throw CalendarActionError.notAddedByJustMaple }
+        return false
+    }
 }
 
 /// The server's queue: actions stay pending until a report gets through.
@@ -180,12 +193,86 @@ struct CalendarActionTests {
 
     @Test func refusesActionsItDoesNotKnow() async throws {
         var unknown = party
-        unknown.type = "delete_event"
+        unknown.type = "rename_event"
         let server = FakeServer([unknown])
         let calendar = FakeCalendar()
         try await runner(server, calendar, MemoryLedger()).run()
         #expect(calendar.events.isEmpty)
         #expect(await server.reports.first?.result.ok == false)
+    }
+
+    // MARK: - Undo
+
+    private func removal(of action: DeviceAction, identifier: String = "EK-1") -> DeviceAction {
+        DeviceAction(
+            id: "0c9d8e7f-1a2b-4c3d-8e4f-5a6b7c8d9e0f", type: "delete_event", source: "calendar",
+            event: action.event, eventIdentifier: identifier, createdBy: action.id)
+    }
+
+    @Test func undoRemovesTheEventItAdded() async throws {
+        let calendar = FakeCalendar()
+        try await runner(FakeServer([party]), calendar, MemoryLedger()).run()
+        #expect(calendar.events.count == 1)
+
+        let server = FakeServer([removal(of: party)])
+        let ledger = MemoryLedger()
+        #expect(try await runner(server, calendar, ledger).run() == 1)
+        #expect(calendar.events.isEmpty)
+        #expect(await server.reports.first?.result == DeviceActionResult(ok: true, eventIdentifier: "EK-1"))
+        #expect(ledger.results[removal(of: party).id]?.ok == true)
+    }
+
+    @Test func undoOfAnEventAlreadyGoneReportsNotFound() async throws {
+        let calendar = FakeCalendar()
+        let server = FakeServer([removal(of: party)])
+        try await runner(server, calendar, MemoryLedger()).run()
+        let result = try #require(await server.reports.first?.result)
+        #expect(result.ok == true)
+        #expect(result.outcome == DeviceActionResult.notFound)
+
+        // Repeated (a lost reply): still fine, nothing else touched.
+        try await runner(FakeServer([party]), calendar, MemoryLedger()).run()
+        var other = party
+        other.id = "8e2f4b63-7d66-4b9f-8c2b-1e5a4d3c2b11"
+        let again = FakeServer([removal(of: other)])
+        try await runner(again, calendar, MemoryLedger()).run()
+        #expect(await again.reports.first?.result.outcome == DeviceActionResult.notFound)
+        #expect(calendar.events.count == 1)
+    }
+
+    @Test func undoNeverRemovesAnEventJustMapleDidNotAdd() async throws {
+        let calendar = FakeCalendar()
+        calendar.foreign = ["EK-9"]
+        let server = FakeServer([removal(of: party, identifier: "EK-9")])
+        try await runner(server, calendar, MemoryLedger()).run()
+        let result = try #require(await server.reports.first?.result)
+        #expect(result.ok == false)
+        #expect(result.error?.contains("wasn't added by Just Maple") == true)
+        #expect(calendar.foreign == ["EK-9"])
+    }
+
+    @Test func undoReportsWhyItCouldNotRemove() async throws {
+        let calendar = FakeCalendar()
+        calendar.failure = CalendarActionError.noAccess
+        let server = FakeServer([removal(of: party)])
+        let ledger = MemoryLedger()
+        try await runner(server, calendar, ledger).run()
+        #expect(await server.reports.first?.result.ok == false)
+        // Not saved: when the user taps Undo again, it is tried again.
+        #expect(ledger.results.isEmpty)
+    }
+
+    @Test func decodesARemoval() throws {
+        let json = """
+            {"actions":[{"id":"0c9d8e7f-1a2b-4c3d-8e4f-5a6b7c8d9e0f","type":"delete_event",
+            "source":"calendar","eventIdentifier":"EK-1","createdBy":"\(party.id)",
+            "event":{"title":"Field trip","start":1793160000,"end":1793246400},
+            "createdAt":"2026-10-27T12:00:00.000Z","expiresAt":"2026-11-03T12:00:00.000Z"}]}
+            """
+        struct Reply: Decodable { var actions: [DeviceAction] }
+        let reply = try JSONDecoder().decode(Reply.self, from: Data(json.utf8))
+        #expect(reply.actions.first?.eventIdentifier == "EK-1")
+        #expect(reply.actions.first?.createdBy == party.id)
     }
 
     @Test func decodesTheServersActions() throws {
@@ -197,8 +284,8 @@ struct CalendarActionTests {
             """
         struct Reply: Decodable { var actions: [DeviceAction] }
         let reply = try JSONDecoder().decode(Reply.self, from: Data(json.utf8))
-        #expect(reply.actions.first?.event.allDay == true)
-        #expect(reply.actions.first?.event.location == nil)
+        #expect(reply.actions.first?.event?.allDay == true)
+        #expect(reply.actions.first?.event?.location == nil)
     }
 }
 #endif

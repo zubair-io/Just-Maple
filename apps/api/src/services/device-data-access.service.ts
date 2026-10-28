@@ -2,6 +2,8 @@ import {
     describeDeviceFilter,
     deviceFilterIsEmpty,
     deviceItemMatchesFilter,
+    homeEntityId,
+    homeItemVisibleToBots,
     isNotebookMember,
     isNotebookShared,
     type DeviceDataAccess,
@@ -18,7 +20,12 @@ import { findDeviceDataPagesInNotebook } from '../repositories/page.repo';
 import { findUserById } from '../repositories/user.repo';
 import { collectorTimeZone } from '../repositories/collector.repo';
 import { listPlaces } from '../repositories/profile.repo';
-import { findDeviceItemFacets, type DeviceItemQuery } from '../repositories/device-item.repo';
+import {
+    findDeviceItemFacets,
+    findHomeStateItems,
+    type DeviceItemQuery,
+} from '../repositories/device-item.repo';
+import { findHomeExposure } from '../repositories/home-exposure.repo';
 
 /**
  * Who sees what on a device data page ("single-player lite").
@@ -35,6 +42,9 @@ import { findDeviceItemFacets, type DeviceItemQuery } from '../repositories/devi
  *    nothing is shared until the creator picks.
  * 5. A trashed or archived page, or one whose creator left the notebook, shares nothing.
  *    The creator can still open, trash or delete it.
+ * 6. Home pages only ever show entities their creator still exposes to assistants in Home
+ *    Assistant, whatever the filter says. Who's home (people, device trackers) reaches bots
+ *    only when the filter picks it.
  */
 
 /** How one person reads one data page. */
@@ -128,10 +138,30 @@ export async function itemMatcherFor(
     view: DataPageView,
 ): Promise<((item: MacDataItem) => boolean) | null> {
     if (!view.visible || deviceFilterIsEmpty(view.source, view.filter)) return null;
-    if (!view.filter) return (item) => item.source === view.source;
+    const exposed = view.source === 'home' ? await homeExposureMatcher(view.ownerId) : null;
+    const gate = (match: (item: MacDataItem) => boolean) =>
+        exposed ? (item: MacDataItem) => match(item) && exposed(item) : match;
+    if (!view.filter) return gate((item) => item.source === view.source);
     const filter = view.filter;
     const context = await filterContextFor(view);
-    return (item) => item.source === view.source && deviceItemMatchesFilter(item, filter, context);
+    return gate(
+        (item) => item.source === view.source && deviceItemMatchesFilter(item, filter, context),
+    );
+}
+
+/**
+ * Home items of entities the owner exposes in Home Assistant right now. Items of entities
+ * no longer exposed are kept, just never shown; without an exposure list, nothing is.
+ */
+export async function homeExposureMatcher(
+    ownerId: string,
+): Promise<(item: MacDataItem) => boolean> {
+    const exposed = await findHomeExposure(ownerId).catch(() => new Set<string>());
+    return (item) => {
+        if (item.source !== 'home') return true;
+        const id = homeEntityId(item);
+        return !!id && exposed.has(id);
+    };
 }
 
 /**
@@ -143,6 +173,8 @@ export async function itemQueryFor(
     view: DataPageView,
 ): Promise<Pick<DeviceItemQuery, 'conditions' | 'match'> | null> {
     if (!view.visible || deviceFilterIsEmpty(view.source, view.filter)) return null;
+    // Home: always checked in code, for exposure.
+    if (view.source === 'home') return { match: (await itemMatcherFor(view))! };
     const filter = view.filter;
     if (!filter) return {};
     if (filter.includeAll && view.source !== 'location') return {};
@@ -178,11 +210,40 @@ export async function describeAccess(view: DataPageView): Promise<DeviceDataAcce
 
 /** Choices for the creator's filter panel, from their own data and named places. */
 export async function filterOptionsFor(ownerId: string): Promise<DeviceDataFilterOptions> {
-    const [facets, places] = await Promise.all([
+    const [facets, places, home] = await Promise.all([
         findDeviceItemFacets(ownerId),
         listPlaces(ownerId).catch(() => []),
+        homeFilterOptions(ownerId),
     ]);
-    return { ...facets, places: places.map((entity) => ({ id: entity.id, name: entity.name })) };
+    return {
+        ...facets,
+        places: places.map((entity) => ({ id: entity.id, name: entity.name })),
+        ...home,
+    };
+}
+
+/** The owner's exposed Home entities and their areas, by name. */
+async function homeFilterOptions(
+    ownerId: string,
+): Promise<Pick<DeviceDataFilterOptions, 'homeEntities' | 'homeAreas'>> {
+    const exposed = await homeExposureMatcher(ownerId);
+    const items = (await findHomeStateItems(ownerId).catch(() => [])).filter(exposed);
+    const entities = items
+        .map((item) => {
+            const id = homeEntityId(item)!;
+            const area = item.extra?.['area'];
+            return {
+                id,
+                name: item.title || id,
+                domain: id.split('.')[0]!,
+                ...(typeof area === 'string' && area ? { area } : {}),
+            };
+        })
+        .sort(
+            (a, b) => (a.area ?? '~').localeCompare(b.area ?? '~') || a.name.localeCompare(b.name),
+        );
+    const areas = [...new Set(entities.map((entity) => entity.area).filter(Boolean))] as string[];
+    return { homeEntities: entities, homeAreas: areas.sort() };
 }
 
 /** One page's slice of data, as a bot in the notebook reads it. */
@@ -212,8 +273,14 @@ export async function dataPageSlicesFor(
     for (const page of pages) {
         const view = dataPageView(page, viewerId, notebook);
         if (!view?.visible || !view.botsCanRead) continue;
-        const match = await itemMatcherFor(view);
-        if (!match) continue;
+        const pageMatch = await itemMatcherFor(view);
+        if (!pageMatch) continue;
+        // Who's home stays out of bots' reach unless the filter picks it.
+        const filter = view.filter;
+        const match =
+            view.source === 'home'
+                ? (item: MacDataItem) => pageMatch(item) && homeItemVisibleToBots(item, filter)
+                : pageMatch;
         if (!names.has(view.ownerId)) names.set(view.ownerId, await displayNameOf(view.ownerId));
         slices.push({
             pageId: page.id,
@@ -247,6 +314,8 @@ export async function notebookDataSlices(notebookId: string): Promise<DataPageSl
         // shared notebook that's the filter; trashed pages and departed creators share nothing.
         const view = dataPageView(page, page.userId, notebook);
         if (!view?.visible || !view.botsCanRead) continue;
+        // Home states change all day and link to nothing: not part of the graph.
+        if (view.source === 'home') continue;
         const match = await itemMatcherFor(view);
         if (!match) continue;
         if (!names.has(view.ownerId)) names.set(view.ownerId, await displayNameOf(view.ownerId));

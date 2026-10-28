@@ -119,11 +119,16 @@ extension MacDataEngine {
         let enabled = try store.enabledSources().sorted { $0.rawValue < $1.rawValue }
         var active = try await registered(enabled, now: now)
 
+        // Home Assistant's exposed list goes first: the server shows only those entities.
+        if active.contains(.home) { try await uploadHomeExposureIfChanged() }
+
         // Items
         var reregistered = false
         while !active.isEmpty {
-            let batch = try store.itemsNeedingUpload(sources: active, limit: DeviceDataClient.maxUpserts)
-            guard !batch.isEmpty else { break }
+            let fetched = try store.itemsNeedingUpload(sources: active, limit: DeviceDataClient.maxUpserts)
+            guard !fetched.isEmpty else { break }
+            let batch = try withoutUnexposedHomeItems(fetched)
+            if batch.isEmpty { continue }
             let result = try await client.uploadBatch(upserts: batch.map(\.deviceItem))
             try store.markUploaded(batch.map { ($0.id, $0.revision) })
             try noteUpload(now)
@@ -208,6 +213,7 @@ extension MacDataEngine {
         // so everything goes up again if it ever comes back.
         for source in registration?.activeSources ?? [] where !active.contains(source) {
             try store.resetUploads(source: source)
+            if source == .home { try store.setValue("", for: Self.homeExposureUploadedKey) }
         }
         let next = MacDataUploadRegistration(
             sources: enabled, activeSources: active, at: now.timeIntervalSince1970,
@@ -223,6 +229,7 @@ extension MacDataEngine {
     func forgetUploads() throws {
         let store = try store()
         for source in MacDataSource.allCases { try store.resetUploads(source: source) }
+        try store.setValue("", for: Self.homeExposureUploadedKey)
         try store.setValue(String(try store.latestChangeSeq()), for: Self.removalCursorKey)
         try store.setValue("", for: Self.registrationKey)
         registration = nil

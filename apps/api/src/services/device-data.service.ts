@@ -108,7 +108,8 @@ export async function applyDeviceUpload(
  * A new calendar event counts if it starts soon; a changed one if it hasn't ended.
  */
 export function isNews(item: MacDataItem, kind: 'added' | 'changed', now = Date.now()): boolean {
-    if (item.source === 'contacts' || item.isFromMe) return false;
+    // Home states change all day; bots read them when asked instead.
+    if (item.source === 'contacts' || item.source === 'home' || item.isFromMe) return false;
     const nowSeconds = now / 1000;
     const fresh = nowSeconds - FRESHNESS_SECONDS;
     if (item.source === 'calendar') {

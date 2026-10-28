@@ -238,3 +238,63 @@ export function workoutRow(item: MacDataItem): WorkoutRow {
       firstNumber(data, 'distanceKm') ?? (distanceMeters !== null ? distanceMeters / 1000 : null),
   };
 }
+
+// MARK: - Home
+
+export interface HomeStateRow {
+  id: string;
+  entityId: string;
+  name: string;
+  /** "on", "21.5 °C". */
+  state: string;
+  area: string | null;
+  domain: string;
+  /** When the state last changed, in milliseconds. */
+  since: number | null;
+}
+
+export interface HomeChangeRow {
+  id: string;
+  name: string;
+  from: string;
+  to: string;
+  area: string | null;
+  when: number | null;
+}
+
+/** A Home Assistant change (`home:<entity>@<time>`); everything else is a current state. */
+export function isHomeChange(item: MacDataItem): boolean {
+  return extra(item)['kind'] === 'change' || item.id.includes('@');
+}
+
+function homeState(data: Extra): string {
+  const state = firstString(data, 'state') ?? '';
+  const unit = firstString(data, 'unit');
+  return unit ? `${state} ${unit}` : state;
+}
+
+export function homeStateRow(item: MacDataItem): HomeStateRow {
+  const data = extra(item);
+  const entityId = firstString(data, 'entityId') ?? item.id.replace(/^home:/, '');
+  return {
+    id: item.id,
+    entityId,
+    name: item.title?.trim() || entityId,
+    state: homeState(data),
+    area: firstString(data, 'area'),
+    domain: firstString(data, 'domain') ?? entityId.split('.')[0] ?? '',
+    since: toMillis(item.occurredAt),
+  };
+}
+
+export function homeChangeRow(item: MacDataItem): HomeChangeRow {
+  const data = extra(item);
+  return {
+    id: item.id,
+    name: item.title?.trim() || firstString(data, 'entityId') || 'Device',
+    from: firstString(data, 'from') ?? '',
+    to: homeState(data),
+    area: firstString(data, 'area'),
+    when: toMillis(item.occurredAt),
+  };
+}

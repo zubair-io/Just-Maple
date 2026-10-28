@@ -1,0 +1,13 @@
+:host {
+  display: block;
+  min-width: 0;
+}
+.action-status[data-status='done'] {
+  color: var(--color-success);
+}
+.action-status[data-status='failed'] {
+  color: var(--color-error);
+}
+.action-status[data-status='proposed'] {
+  color: var(--color-primary);
+}

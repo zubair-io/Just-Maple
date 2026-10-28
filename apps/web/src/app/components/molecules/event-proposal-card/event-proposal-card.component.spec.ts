@@ -295,4 +295,22 @@ describe('EventProposalCardComponent', () => {
     });
     http.expectNone(`/api/calendar-proposals/${ID}`);
   });
+
+  it('says when an added event was undone', async () => {
+    const { text } = await render(proposal({ status: 'removed', canConfirm: true }));
+    expect(text()).toContain('removed from the calendar');
+    expect(text()).not.toContain('Add to calendar');
+  });
+
+  it('says when the Mac couldn’t find it to remove it', async () => {
+    const { text } = await render(proposal({ status: 'not_found', canConfirm: true }));
+    expect(text()).toContain("Couldn't find it on your Mac");
+    expect(text()).not.toContain('Add to calendar');
+  });
+
+  it('says when an automatic add was cancelled', async () => {
+    const { text } = await render(proposal({ status: 'cancelled', canConfirm: true }));
+    expect(text()).toContain('Cancelled before it was added');
+    expect(text()).not.toContain('Add to calendar');
+  });
 });

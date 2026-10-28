@@ -70,6 +70,33 @@ export class DeviceDataSettingsComponent implements OnInit {
   readonly source = computed(() => this.list().source);
   readonly pick = computed(() => PICK_COPY[this.source() as PickSource] ?? null);
   readonly isPlaces = computed(() => this.source() === 'location');
+  readonly isHome = computed(() => this.source() === 'home');
+
+  // Home: devices picked one by one, whole areas, and whether who's home is shared.
+  readonly homeEntities = signal<string[]>([]);
+  readonly homeAreas = signal<string[]>([]);
+  readonly includePresence = signal(false);
+
+  /** Exposed devices to pick from, plus any picked that aren't uploaded right now. */
+  readonly homeChoices = computed(() => {
+    const offered = this.options()?.homeEntities ?? [];
+    const known = new Set(offered.map((entity) => entity.id));
+    const missing = this.homeEntities()
+      .filter((id) => !known.has(id))
+      .map((id) => ({ id, name: id, domain: id.split('.')[0] ?? '', area: undefined }));
+    const query = this.pickQuery().trim().toLowerCase();
+    const all = [...offered, ...missing];
+    return query
+      ? all.filter(
+          (entity) =>
+            entity.name.toLowerCase().includes(query) || entity.id.toLowerCase().includes(query),
+        )
+      : all;
+  });
+
+  readonly homeAreaChoices = computed(() => [
+    ...new Set([...(this.options()?.homeAreas ?? []), ...this.homeAreas()]),
+  ]);
   readonly shared = computed(() => this.list().access()?.shared ?? false);
 
   /** What to choose from: what the data has, plus anything already picked. */
@@ -101,6 +128,13 @@ export class DeviceDataSettingsComponent implements OnInit {
       filter.timeWindows = this.windows();
       filter.excludePlaceIds = this.excludedPlaces();
     }
+    if (this.isHome()) {
+      if (!this.includeAll()) {
+        filter.homeEntities = this.homeEntities();
+        filter.homeAreas = this.homeAreas();
+      }
+      filter.includePresence = this.includePresence();
+    }
     return filter;
   });
 
@@ -130,6 +164,9 @@ export class DeviceDataSettingsComponent implements OnInit {
     this.picked.set(saved.map((value) => toPick(this.source(), value)));
     this.windows.set((filter?.timeWindows ?? []).map((w) => ({ ...w })));
     this.excludedPlaces.set([...(filter?.excludePlaceIds ?? [])]);
+    this.homeEntities.set([...(filter?.homeEntities ?? [])]);
+    this.homeAreas.set([...(filter?.homeAreas ?? [])]);
+    this.includePresence.set(filter?.includePresence === true);
     this.initialFilter = JSON.stringify(this.filter());
     if (page) {
       this.deviceData.filterOptions(page.id).then(
@@ -157,6 +194,18 @@ export class DeviceDataSettingsComponent implements OnInit {
   toggleExcluded(id: string, on: boolean): void {
     this.excludedPlaces.update((ids) =>
       on ? [...new Set([...ids, id])] : ids.filter((i) => i !== id),
+    );
+  }
+
+  toggleHomeEntity(id: string, on: boolean): void {
+    this.homeEntities.update((ids) =>
+      on ? [...new Set([...ids, id])] : ids.filter((i) => i !== id),
+    );
+  }
+
+  toggleHomeArea(area: string, on: boolean): void {
+    this.homeAreas.update((areas) =>
+      on ? [...new Set([...areas, area])] : areas.filter((a) => a !== area),
     );
   }
 
