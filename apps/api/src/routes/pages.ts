@@ -237,9 +237,10 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
 
             await announceNewPage(page, auth.user._id);
 
-            // A data page brings its notebook's About me and Graph, if it has neither yet.
+            // A data page brings its notebook's About me and Graph, if it has neither yet,
+            // before replying so they're in the notebook when the data page opens.
             if (page.type === 'devicedata' && page.notebookId) {
-                void addCompanionPages(page.notebookId, auth.user._id).catch((error) =>
+                await addCompanionPages(page.notebookId, auth.user._id).catch((error) =>
                     console.error('[DeviceData] Could not add About me and Graph:', error),
                 );
             }

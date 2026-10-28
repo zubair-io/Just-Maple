@@ -29,6 +29,11 @@ vi.mock('../../services/graph-model.service', () => ({
     graphModelAvailable: () => true,
     judgeGraphBatch: vi.fn(),
 }));
+// Tests write About me themselves; adding a data page doesn't seed one.
+vi.mock('../../services/about-me.service', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('../../services/about-me.service')>()),
+    ensureProfile: vi.fn(async () => null),
+}));
 // Tests run passes themselves; uploads don't schedule one.
 vi.mock('../../services/graph.service', async (importOriginal) => ({
     ...(await importOriginal<typeof import('../../services/graph.service')>()),
@@ -53,7 +58,7 @@ import {
     removeGraphRelation,
     saveGraphRelations,
 } from '../../repositories/graph.repo';
-import { addRelation, createEntity, findMe } from '../../repositories/profile.repo';
+import { addRelation, createEntity } from '../../repositories/profile.repo';
 import {
     findAboutMePage,
     findGraphPage,
@@ -189,13 +194,8 @@ describe.runIf(mongoAvailable)('connected-data graph', () => {
             );
             pages[source] = page.id;
         }
-        if (sources.length) {
-            // The first data page adds Graph and About me: wait for both, and About me's start.
-            await vi.waitFor(async () => {
-                expect(await findGraphPage(notebookId)).toBeTruthy();
-                expect(await findMe({ userId: alex.id, notebookId })).toBeTruthy();
-            });
-        } else {
+        // The first data page adds Graph (and About me); without one, add Graph here.
+        if (!sources.length) {
             await createPageFixture({
                 id: graphPageId(notebookId),
                 userId: alex.id,
@@ -382,7 +382,6 @@ describe.runIf(mongoAvailable)('connected-data graph', () => {
         const after = (await graphOf(alex, notebookId)).graph;
         expect(after.nodes.some((n) => n.id === event)).toBe(false);
         expect(after.links.some((l) => l.source === event || l.target === event)).toBe(false);
-        await new Promise((resolve) => setTimeout(resolve, 50));
         expect(await stored()).toBe(before);
 
         // Widened again: the model's links are back, with no new model call.
@@ -652,9 +651,7 @@ describe.runIf(mongoAvailable)('connected-data graph', () => {
                 notebookId,
             }),
         );
-        await vi.waitFor(async () =>
-            expect((await findGraphPage(notebookId))?.id).toBe(graphPageId(notebookId)),
-        );
+        expect((await findGraphPage(notebookId))?.id).toBe(graphPageId(notebookId));
         const again = await json(
             call(alex, '/api/pages', 'POST', { type: 'graph', title: 'Graph', notebookId }),
         );
@@ -672,7 +669,6 @@ describe.runIf(mongoAvailable)('connected-data graph', () => {
                 notebookId,
             }),
         );
-        await new Promise((resolve) => setTimeout(resolve, 50));
         expect(await findGraphPage(notebookId)).toBeNull();
         await restorePageFromTrash(graphPageId(notebookId), alex.id);
 
@@ -1203,7 +1199,11 @@ describe.runIf(mongoAvailable)('connected-data graph', () => {
         const b = await notebook(familySources);
         // About me in A (added with its data pages): Jen is Alex's best friend too.
         const scope = { userId: alex.id, notebookId: a.notebookId };
-        const me = (await findMe(scope))!;
+        const me = await createEntity(scope, {
+            kind: 'person',
+            name: 'Alex',
+            isMe: true,
+        });
         const jen = await createEntity(scope, {
             kind: 'person',
             name: 'Jennifer',
