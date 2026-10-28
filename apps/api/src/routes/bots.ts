@@ -519,6 +519,12 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                 return { error: 'Access denied' };
             }
 
+            // The run's variables (the model's raw output, tool results) are only for the
+            // person who started it; other members get the status and the posted reply.
+            if (invocation.userId !== auth.user._id) {
+                const { variables: _variables, ...rest } = invocation;
+                return { invocation: rest };
+            }
             return { invocation };
         },
         { params: t.Object({ id: t.String() }) },

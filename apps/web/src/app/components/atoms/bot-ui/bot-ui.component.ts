@@ -102,6 +102,10 @@ const library = createLibrary({
                 actionId: z.string().regex(/^[0-9a-f-]{36}$/),
                 summary: z.string().max(500),
               }),
+              z.object({
+                type: z.literal('reply_draft'),
+                actionId: z.string().regex(/^[0-9a-f-]{36}$/),
+              }),
             ]),
           )
           .min(1)

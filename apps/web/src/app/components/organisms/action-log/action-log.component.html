@@ -90,7 +90,34 @@
             </p>
           }
         </div>
-        @if (row.canCancel) {
+        @if (draftUrl(row); as url) {
+          <div class="flex shrink-0 flex-wrap items-center gap-2">
+            <a
+              data-testid="draft-open"
+              class="inline-flex h-8 items-center rounded-lg bg-[var(--color-primary)] px-3 font-sans text-xs font-semibold text-white no-underline hover:bg-[var(--color-primary-hover)]"
+              [href]="url"
+              (click)="openDraft(row)"
+              >Open in {{ draftApp(row) }}</a
+            >
+            <button
+              type="button"
+              data-testid="draft-copy"
+              class="h-8 cursor-pointer rounded-lg border border-[var(--color-border)] bg-transparent px-3 font-sans text-xs font-semibold text-[var(--color-text-main)]"
+              (click)="copyDraft(row)"
+            >
+              {{ copied() === row.id ? 'Copied' : 'Copy' }}
+            </button>
+            <button
+              type="button"
+              data-testid="draft-discard"
+              class="h-8 cursor-pointer rounded-lg border border-[var(--color-border)] bg-transparent px-3 font-sans text-xs font-semibold text-[var(--color-text-muted)] disabled:cursor-default disabled:opacity-50"
+              [disabled]="undoing() === row.id"
+              (click)="discardDraft(row)"
+            >
+              Discard
+            </button>
+          </div>
+        } @else if (row.canCancel) {
           <button
             type="button"
             data-testid="cancel"

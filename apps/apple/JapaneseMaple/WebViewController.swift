@@ -307,6 +307,30 @@ class WebViewController: NSObject, ObservableObject, WKNavigationDelegate, WKUID
 
     // MARK: - WKNavigationDelegate
 
+    /// "Open in Messages / Mail" on a drafted reply: the system opens the compose.
+    func webView(_ webView: WKWebView,
+                 decidePolicyFor navigationAction: WKNavigationAction,
+                 decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
+        if let url = navigationAction.request.url, ComposeLinks.isCompose(url) {
+            // Never loaded in the web view (it would fail into the offline page); opened
+            // only when the person tapped it in the app's own page.
+            decisionHandler(.cancel)
+            let source = navigationAction.sourceFrame
+            let appURL = URL(string: ServerConfigService.shared.getActiveServer().url)
+            if ComposeLinks.shouldOpenExternally(
+                url,
+                navigationType: navigationAction.navigationType,
+                isMainFrame: source.isMainFrame,
+                sourceOrigin: ComposeLinks.Origin(source.securityOrigin),
+                appOrigin: appURL.flatMap { ComposeLinks.Origin($0) }
+            ) {
+                ComposeLinks.open(url)
+            }
+            return
+        }
+        decisionHandler(.allow)
+    }
+
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         print("WebView finished loading")
 

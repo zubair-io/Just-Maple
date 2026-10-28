@@ -15,6 +15,7 @@ import { deviceDataRoutes } from './routes/device-data';
 import { calendarProposalRoutes } from './routes/calendar-proposals';
 import { homeRoutes } from './routes/home';
 import { botActionRoutes } from './routes/bot-actions';
+import { replyDraftRoutes } from './routes/reply-drafts';
 import { aboutMeRoutes } from './routes/about-me';
 import { graphRoutes } from './routes/graph';
 import { startGraphLinking } from './services/graph.service';
@@ -111,6 +112,7 @@ async function main() {
         .use(calendarProposalRoutes)
         .use(homeRoutes)
         .use(botActionRoutes)
+        .use(replyDraftRoutes)
         .use(aboutMeRoutes)
         .use(graphRoutes)
         .use(followUpRoutes)

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { provideHttpClient } from '@angular/common/http';
@@ -170,5 +170,65 @@ describe('ActionLogComponent', () => {
     await settle();
     expect(rows()[0]!.textContent).toContain('Cancelled');
     expect(host.querySelector('[data-testid=cancel]')).toBeNull();
+  });
+
+  it('opens, copies and discards the owner’s drafted replies', async () => {
+    const draftParams = {
+      channel: 'messages',
+      recipients: [{ address: '+15185550100', name: 'Jen' }],
+      recipientLabel: 'Jen',
+      itemId: 'imessage:jen-1',
+      quoted: { from: 'Jen', text: 'Still on?', at: '2026-10-27T11:00:00.000Z' },
+      body: 'yes! see you at 4',
+    };
+    const draft = botAction({
+      id: '66666666-6666-4666-8666-666666666666',
+      kind: 'send_reply',
+      status: 'proposed',
+      summary: 'Drafted a reply to Jen',
+      params: draftParams,
+    });
+    // Someone else's draft: only the summary, nothing to open.
+    const theirDraft = botAction({
+      id: '77777777-7777-4777-8777-777777777777',
+      kind: 'send_reply',
+      status: 'proposed',
+      ownerId: 'sam',
+      isOwner: false,
+      summary: 'Drafted a reply',
+    });
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    const { host, settle } = await renderLog({ notebookId: 'n1' }, [draft, theirDraft]);
+    const rows = () => [...host.querySelectorAll('[data-testid=action-row]')];
+    expect(rows()[1]!.querySelector('[data-testid=draft-open]')).toBeNull();
+    expect(rows()[1]!.querySelector('button')).toBeNull();
+
+    const open = rows()[0]!.querySelector<HTMLAnchorElement>('[data-testid=draft-open]')!;
+    expect(open.textContent?.trim()).toBe('Open in Messages');
+    expect(open.getAttribute('href')).toBe('sms:+15185550100&body=yes!%20see%20you%20at%204');
+    open.addEventListener('click', (event) => event.preventDefault());
+    open.click();
+    const opened = http.expectOne({ method: 'POST', url: `/api/reply-drafts/${draft.id}/open` });
+    expect(opened.request.body).toEqual({ body: 'yes! see you at 4' });
+    opened.flush({
+      action: { ...draft, status: 'opened', updatedAt: '2026-10-27T13:00:00.000Z' },
+      url: open.getAttribute('href'),
+    });
+    await settle();
+    expect(rows()[0]!.textContent).toContain('Opened to send');
+
+    host.querySelector<HTMLButtonElement>('[data-testid=draft-copy]')!.click();
+    await settle();
+    expect(writeText).toHaveBeenCalledWith('yes! see you at 4');
+    expect(host.querySelector('[data-testid=draft-copy]')!.textContent?.trim()).toBe('Copied');
+
+    host.querySelector<HTMLButtonElement>('[data-testid=draft-discard]')!.click();
+    http
+      .expectOne({ method: 'POST', url: `/api/reply-drafts/${draft.id}/discard` })
+      .flush({ action: { ...draft, status: 'discarded', updatedAt: '2026-10-27T13:05:00.000Z' } });
+    await settle();
+    expect(rows()[0]!.textContent).toContain('Discarded');
+    expect(host.querySelector('[data-testid=draft-open]')).toBeNull();
   });
 });

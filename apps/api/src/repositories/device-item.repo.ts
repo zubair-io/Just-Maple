@@ -394,6 +394,28 @@ export async function findThreadMessageHeads(
 }
 
 /**
+ * The newest items of one source matching `filter`, without bodies: at most `limit`,
+ * since `since`. Sorted and limited by the database, so a big mailbox isn't read.
+ */
+export async function findRecentItemHeads(
+    userId: string,
+    source: MacDataSource,
+    filter: Record<string, unknown>,
+    since: number,
+    limit: number,
+): Promise<MacDataItem[]> {
+    const docs = await getCollection()
+        .find(
+            { ...filter, userId, source, occurredAt: { $gte: since } },
+            { projection: HEAD_PROJECTION },
+        )
+        .sort({ occurredAt: -1 })
+        .limit(limit)
+        .toArray();
+    return docs.map((doc) => ({ ...doc.item, body: '' }));
+}
+
+/**
  * Several items by id, in batches of 500; missing ones are left out. `bodyChars` cuts
  * bodies short for big batches.
  */
