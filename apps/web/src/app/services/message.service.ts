@@ -169,9 +169,16 @@ export class MessageService {
           }
           break;
         }
-        case 'edited':
-          this.handleEditedMessage(event.data as Message);
+        case 'edited': {
+          const edited = event.data as Message;
+          // Bot-API events may leave the chat out of the message; take it from the event
+          this.handleEditedMessage({
+            ...edited,
+            notebookId: edited.notebookId ?? event.notebookId,
+            pageId: edited.pageId ?? event.pageId,
+          });
           break;
+        }
         case 'deleted':
           this.handleDeletedMessage((event.data as { id: string }).id);
           break;
@@ -247,14 +254,7 @@ export class MessageService {
       this.processedMessageIds.add(message.id);
     }
 
-    const activeNotebookId = this.notificationService.activeNotebookId();
-    const currentPageId = this._currentPageId();
-    const chatIsOpen =
-      !!message.pageId &&
-      message.notebookId === activeNotebookId &&
-      (!currentPageId || message.pageId === currentPageId);
-
-    if (chatIsOpen) {
+    if (this.chatIsOpen(message)) {
       this.markAsReadByPageId(message.pageId, message.notebookId).subscribe();
     } else {
       // Show toast notification if message is from another user
@@ -315,9 +315,25 @@ export class MessageService {
     return trimmed.length > 100 ? trimmed.substring(0, 100) + '...' : trimmed;
   }
 
+  /** The message's chat is the one on screen. */
+  private chatIsOpen(message: Pick<Message, 'pageId' | 'notebookId'>): boolean {
+    const activeNotebookId = this.notificationService.activeNotebookId();
+    const currentPageId = this._currentPageId();
+    return (
+      !!message.pageId &&
+      message.notebookId === activeNotebookId &&
+      (!currentPageId || message.pageId === currentPageId)
+    );
+  }
+
   private handleEditedMessage(message: Message): void {
     this.store.update(updateEntities(message.id, () => message));
     this.persistToIndexedDB([message]);
+    // A proactive bot revised its post while you're looking at the chat: you've seen the
+    // new version, so the server must not revise it again (it only revises unread posts).
+    if (message.revisedAt && this.chatIsOpen(message)) {
+      this.markAsReadByPageId(message.pageId, message.notebookId).subscribe();
+    }
   }
 
   private handleDeletedMessage(id: string): void {
