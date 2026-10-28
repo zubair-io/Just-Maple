@@ -12,6 +12,7 @@
   --graph-person: #d94e3b;
   --graph-place: #6d28d9;
   --graph-topic: #0d9488;
+  --graph-event: #ca8a04;
   --graph-edge: #a8a29e;
   --graph-edge-lit: #44403c;
   --graph-label: var(--color-text-main);
@@ -31,6 +32,7 @@
   --graph-person: #f87171;
   --graph-place: #a78bfa;
   --graph-topic: #2dd4bf;
+  --graph-event: #facc15;
   --graph-edge: #57534e;
   --graph-edge-lit: #d6d3d1;
 }
@@ -49,7 +51,9 @@
   border-radius: 9999px;
 }
 
-@each $kind in (mail, imessage, calendar, location, contacts, health, item, person, place, topic) {
+@each $kind
+  in (mail, imessage, calendar, location, contacts, health, item, person, place, topic, event)
+{
   .graph-dot-#{$kind} {
     background-color: var(--graph-#{$kind});
   }
