@@ -25,6 +25,8 @@ export function botUIToText(ui: BotUIResponse): string {
                     return `Source: ${block.label} (${block.itemId})`;
                 case 'event_proposal':
                     return eventProposalText(block.event);
+                case 'action_receipt':
+                    return `Done: ${block.summary}`;
             }
         })
         .join('\n\n');

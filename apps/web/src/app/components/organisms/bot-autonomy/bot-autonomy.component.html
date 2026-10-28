@@ -1,0 +1,32 @@
+<div class="flex flex-col gap-3">
+  @for (kind of kinds; track kind.id) {
+    <label class="flex flex-wrap items-center justify-between gap-2" [attr.data-kind]="kind.id">
+      <span class="flex min-w-0 flex-1 flex-col">
+        <span class="font-sans text-sm text-[var(--color-text-main)]">{{ kind.label }}</span>
+        <span class="font-sans text-xs text-[var(--color-text-muted)]">{{ kind.description }}</span>
+      </span>
+      <select
+        class="h-8 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 font-sans text-xs text-[var(--color-text-main)]"
+        [value]="settings()[kind.id] ?? 'ask'"
+        [disabled]="saving() === kind.id"
+        (change)="change(kind.id, $any($event.target).value)"
+      >
+        @for (choice of kind.choices; track choice.value) {
+          <option
+            [value]="choice.value"
+            [selected]="(settings()[kind.id] ?? 'ask') === choice.value"
+          >
+            {{ choice.label }}
+          </option>
+        }
+      </select>
+    </label>
+  }
+  <p class="m-0 font-sans text-xs text-[var(--color-text-muted)]">
+    "Do it and tell me" applies only in your own private notebooks. In shared notebooks the bot
+    always asks.
+  </p>
+  @if (error(); as message) {
+    <p class="m-0 font-sans text-xs text-[var(--color-error)]">{{ message }}</p>
+  }
+</div>

@@ -16,6 +16,11 @@
 //  carries the id in its URL, so a retry (lost reply, crash, reinstall) finds the event
 //  it already made instead of adding another.
 //
+//  Undo: when the user undoes an added event in the bot action log, the server queues a
+//  `delete_event` action with the event's identifier and the id of the `create_event`
+//  that added it. The event is removed only if it still carries that action's marker,
+//  so an event Just Maple didn't add is never touched; one already gone counts as done.
+//
 
 #if os(macOS)
 import EventKit
@@ -38,7 +43,12 @@ nonisolated struct DeviceAction: Codable, Equatable, Sendable {
     var id: String
     var type: String
     var source: String
+    /// The event to add, or (for `delete_event`) the one that was added.
     var event: Event
+    /// `delete_event`: EventKit's identifier for the event, as this Mac reported it.
+    var eventIdentifier: String? = nil
+    /// `delete_event`: the `create_event` action that added it (its marker).
+    var createdBy: String? = nil
 }
 
 nonisolated struct DeviceActionResult: Codable, Equatable, Sendable {
@@ -46,6 +56,11 @@ nonisolated struct DeviceActionResult: Codable, Equatable, Sendable {
     var eventIdentifier: String?
     var itemId: String?
     var error: String?
+    /// `delete_event` only: "not_found" when there was nothing to remove, so the server
+    /// doesn't show the event as removed.
+    var outcome: String? = nil
+
+    static let notFound = "not_found"
 }
 
 /// An event this Mac added.
@@ -71,6 +86,10 @@ nonisolated protocol CalendarWriting: Sendable {
     func existingEvent(marker: URL, around start: Date) -> WrittenCalendarEvent?
     func create(_ event: DeviceAction.Event, calendarId: String?, marker: URL) throws
         -> WrittenCalendarEvent
+    /// Removes the event this Mac added for `marker`: by `identifier`, or found again by
+    /// its marker around `start`. False when it's already gone. Throws for an event that
+    /// doesn't carry the marker (not ours to remove).
+    func remove(identifier: String, marker: URL, around start: Date) throws -> Bool
 }
 
 /// The server's side of the queue.
@@ -90,6 +109,7 @@ nonisolated protocol DeviceActionLedger: Sendable {
 nonisolated enum CalendarActionError: LocalizedError {
     case noAccess
     case noCalendar
+    case notAddedByJustMaple
     case unsupported(String)
 
     var errorDescription: String? {
@@ -98,6 +118,8 @@ nonisolated enum CalendarActionError: LocalizedError {
             "Just Maple can't write to Calendar on this Mac. Turn on Calendar access in System Settings → Privacy & Security → Calendars."
         case .noCalendar:
             "This Mac has no calendar that accepts new events."
+        case .notAddedByJustMaple:
+            "This event wasn't added by Just Maple, so it was left alone. Remove it in Calendar."
         case .unsupported(let type):
             "This Mac doesn't know how to do \"\(type)\". Update Just Maple."
         }
@@ -131,10 +153,35 @@ nonisolated struct CalendarActionRunner: Sendable {
     }
 
     private func perform(_ action: DeviceAction) -> DeviceActionResult {
-        guard action.type == "create_event" else {
+        switch action.type {
+        case "create_event": return add(action)
+        case "delete_event": return remove(action)
+        default:
             return DeviceActionResult(
                 ok: false, error: CalendarActionError.unsupported(action.type).localizedDescription)
         }
+    }
+
+    /// Undo of an added event. Gone already is reported as `not_found` (nothing was
+    /// removed); a repeat after a lost reply sends the saved result again.
+    private func remove(_ action: DeviceAction) -> DeviceActionResult {
+        guard let createdBy = action.createdBy, let identifier = action.eventIdentifier else {
+            return DeviceActionResult(
+                ok: false, error: CalendarActionError.notAddedByJustMaple.localizedDescription)
+        }
+        do {
+            let removed = try writer.remove(
+                identifier: identifier, marker: Self.marker(for: createdBy),
+                around: Date(timeIntervalSince1970: action.event.start))
+            return DeviceActionResult(
+                ok: true, eventIdentifier: identifier,
+                outcome: removed ? nil : DeviceActionResult.notFound)
+        } catch {
+            return DeviceActionResult(ok: false, error: String(error.localizedDescription.prefix(500)))
+        }
+    }
+
+    private func add(_ action: DeviceAction) -> DeviceActionResult {
         let marker = Self.marker(for: action.id)
         if let existing = writer.existingEvent(
             marker: marker, around: Date(timeIntervalSince1970: action.event.start))
@@ -204,6 +251,28 @@ nonisolated struct EventKitCalendarWriter: CalendarWriting, @unchecked Sendable 
         event.url = marker
         try store.save(event, span: .thisEvent, commit: true)
         return Self.written(event)
+    }
+
+    func remove(identifier: String, marker: URL, around start: Date) throws -> Bool {
+        // Finding the event needs read access; write-only can't see what it added.
+        guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else {
+            throw CalendarActionError.noAccess
+        }
+        let byIdentifier = store.calendarItem(withIdentifier: identifier) as? EKEvent
+        let event =
+            byIdentifier?.url == marker
+            ? byIdentifier
+            : store.events(
+                matching: store.predicateForEvents(
+                    withStart: start.addingTimeInterval(-2 * 24 * 60 * 60),
+                    end: start.addingTimeInterval(33 * 24 * 60 * 60), calendars: nil)
+            ).first { $0.url == marker }
+        guard let event else {
+            if byIdentifier != nil { throw CalendarActionError.notAddedByJustMaple }
+            return false
+        }
+        try store.remove(event, span: .thisEvent, commit: true)
+        return true
     }
 
     private static func written(_ event: EKEvent) -> WrittenCalendarEvent {

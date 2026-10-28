@@ -869,3 +869,20 @@ input[type='url'] {
     margin-bottom: 8px;
   }
 }
+
+// "What it may do" and "Activity" in the edit dialog
+.bot-activity {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
+
+  h3 {
+    margin: 0;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-text-main);
+  }
+}

@@ -1,0 +1,22 @@
+<div class="flex h-full min-h-0 flex-col bg-[var(--color-bg)]">
+  <header
+    class="flex items-center gap-3 border-b border-[var(--color-border)] px-6 py-3 max-md:px-4"
+  >
+    <span class="material-symbols-rounded text-xl text-[var(--color-primary)]" aria-hidden="true"
+      >history</span
+    >
+    <div class="min-w-0 flex-1">
+      <h1 class="m-0 truncate font-sans text-base! font-bold text-[var(--color-text-main)]">
+        {{ page()?.title || 'Activity' }}
+      </h1>
+      <p class="m-0 font-sans text-xs text-[var(--color-text-muted)]">
+        What bots did and offered to do in this notebook. Undo is offered for 24 hours.
+      </p>
+    </div>
+  </header>
+  <div class="min-h-0 flex-1 overflow-y-auto px-6 py-4 max-md:px-4">
+    @if (notebookId(); as id) {
+      <app-action-log [notebookId]="id" />
+    }
+  </div>
+</div>
