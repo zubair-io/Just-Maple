@@ -13,7 +13,7 @@ import {
     type GraphItem,
     type KnownHubs,
 } from '../graph-rules';
-import { linkKey } from '../../repositories/graph.repo';
+import { interactionInput, linkKey, relationId } from '../../repositories/graph.repo';
 import { parseJudgement } from '../graph-model.service';
 
 const HOUR = 3600;
@@ -155,8 +155,9 @@ describe('graph rules', () => {
                 expect.objectContaining({
                     a: me.id,
                     b: greyson.id,
+                    ownerId: 'owner1',
                     kind: 'messages_with',
-                    items: [{ id: text.nodeId, at: now }],
+                    items: [{ id: text.nodeId, at: now, part: 'imessage:' }],
                 }),
                 expect.objectContaining({ a: me.id, b: greyson.id, kind: 'emails_with' }),
             ]),
@@ -256,15 +257,12 @@ describe('graph rules', () => {
         const graph = ruleGraph([myCard, julia, emma], { shared: false });
         const id = (label: string) => graph.nodes.find((n) => n.label === label)!.id;
         const relationships = graph.links.filter((l) => l.kind === 'relationship');
-        expect(
-            relationships
-                .filter((l) => l.type === 'spouse')
-                .map((l) => l.evidence)
-                .sort(),
-        ).toEqual([
-            "Julia Lawrence is Zubair Lawrence's spouse",
-            "Zubair Lawrence is Julia Lawrence's spouse",
-        ]);
+        // Spouse is symmetric: both cards say the same thing, the same way round.
+        const spouses = relationships.filter((l) => l.type === 'spouse');
+        expect(spouses).toHaveLength(2);
+        const [first, second] = [id('Julia Lawrence'), id('Zubair Lawrence')].sort();
+        for (const spouse of spouses) expect(spouse).toMatchObject({ from: first, to: second });
+        expect(new Set(spouses.map((l) => l.evidence)).size).toBe(1);
         expect(relationships.find((l) => l.type === 'daughter')).toMatchObject({
             from: id('Julia Lawrence'),
             to: id('Emma Lawrence'),
@@ -439,19 +437,116 @@ describe('stable people and places', () => {
         const personOf = new Map<string, string>();
         const people = new Map<string, string>();
         const ownerPerson = new Map<string, string>();
+        const cardPerson = new Map<string, string>();
+        const stored = new Map<string, { handles?: string[]; contactIds?: string[] }>();
         for (const node of graph.nodes) {
             if (node.kind !== 'person') continue;
             people.set(node.id, node.label);
+            stored.set(node.id, { handles: node.handles, contactIds: node.contactIds });
             if (node.ownerId) ownerPerson.set(node.ownerId, node.id);
             for (const handle of node.handles ?? []) personOf.set(handle, node.id);
+            for (const id of node.contactIds ?? []) cardPerson.set(id, node.id);
         }
         return {
             personOf,
             people,
             ownerPerson,
+            cardPerson,
+            stored,
             places: graph.nodes.filter((n) => n.kind === 'place'),
         };
     };
+    const danaOf = (graph: ReturnType<typeof ruleGraph>) =>
+        graph.nodes.filter((n) => n.kind === 'person' && !n.ownerId);
+
+    it("keeps a person's id when their card's only number is replaced, or a card gains its first", () => {
+        const before = ruleGraph([card(['(518) 555-0199'])], { shared: false });
+        const [dana] = danaOf(before);
+        // A new number and no old one: only the card says it's the same person.
+        const replaced = ruleGraph([card(['(212) 555-0100'])], {
+            shared: false,
+            known: knownFrom(before),
+        });
+        expect(danaOf(replaced).map((p) => p.id)).toEqual([dana!.id]);
+        expect(danaOf(ruleGraph([card(['(212) 555-0100'])], { shared: false }))[0]!.id).not.toBe(
+            dana!.id,
+        );
+
+        // A card with no number or email, then with one.
+        const bare = ruleGraph([card([])], { shared: false });
+        const [first] = danaOf(bare);
+        expect(first!.handles).toEqual([`card:${card([]).nodeId}`]);
+        const numbered = ruleGraph([card(['(518) 555-0199'])], {
+            shared: false,
+            known: knownFrom(bare),
+        });
+        expect(danaOf(numbered).map((p) => p.id)).toEqual([first!.id]);
+    });
+
+    it('gives a split person their id (and aliases) on the part with their card', () => {
+        // Dana and another number were one person; now the card has only Dana's number.
+        const known: KnownHubs = {
+            personOf: new Map([
+                ['+15185550142', 'person:dana'],
+                ['+15185550199', 'person:dana'],
+            ]),
+            people: new Map([['person:dana', 'Coach Dana']]),
+            places: [],
+            cardPerson: new Map([[card([]).nodeId, 'person:dana']]),
+            stored: new Map([
+                [
+                    'person:dana',
+                    {
+                        handles: ['+15185550142', '+15185550199'],
+                        contactIds: [card([]).nodeId],
+                    },
+                ],
+            ]),
+        };
+        const other = entry('imessage:2', 'imessage', {
+            sender: 'Sam Other',
+            participants: ['+15185550142'],
+        });
+        // The other number sorts first, so it used to take the id.
+        const graph = ruleGraph([card(['(518) 555-0199']), text, other], {
+            shared: false,
+            known,
+        });
+        const people = danaOf(graph);
+        expect(people).toHaveLength(2);
+        const dana = people.find((p) => p.handles?.includes('+15185550199'))!;
+        const sam = people.find((p) => p.handles?.includes('+15185550142'))!;
+        expect(dana.id).toBe('person:dana');
+        expect(sam.id).not.toBe('person:dana');
+        expect(sam.aliases).toEqual([]);
+    });
+
+    it("keeps each member's tally of the same pair apart", () => {
+        const me = (ownerId: string, phone: string) =>
+            entry(
+                'contacts:me',
+                'contacts',
+                { title: ownerId, extra: { isMe: true, phones: [{ label: 'm', value: phone }] } },
+                ownerId,
+            );
+        const textTo = (ownerId: string, phone: string) =>
+            entry('imessage:1', 'imessage', { participants: [phone] }, ownerId);
+        const graph = ruleGraph(
+            [
+                me('alex', '(518) 555-0100'),
+                me('jen', '(518) 555-0123'),
+                textTo('alex', '(518) 555-0123'),
+                textTo('jen', '(518) 555-0100'),
+            ],
+            { shared: false },
+        );
+        const tallies = graph.interactions.filter((t) => t.kind === 'messages_with');
+        expect(tallies.map((t) => t.ownerId).sort()).toEqual(['alex', 'jen']);
+        const [x, y] = tallies.map(interactionInput);
+        // One line, two relations: neither tally overwrites the other.
+        expect(linkKey('nb', x!.a, x!.b)).toBe(linkKey('nb', y!.a, y!.b));
+        expect(relationId('nb', x!)).not.toBe(relationId('nb', y!));
+    });
 
     it("keeps a person's id when their contact card gains a number", () => {
         const before = ruleGraph([card(['(518) 555-0199']), text], { shared: false });
@@ -531,7 +626,13 @@ describe('stable people and places', () => {
         // The reply adds to the interaction; it isn't a line of its own.
         expect(link(update, reply.nodeId, person)).toBeUndefined();
         expect(update.interactions).toEqual([
-            { a: me, b: person, kind: 'messages_with', items: [{ id: reply.nodeId, at: now }] },
+            {
+                a: me,
+                b: person,
+                ownerId: 'owner1',
+                kind: 'messages_with',
+                items: [{ id: reply.nodeId, at: now, part: 'imessage:' }],
+            },
         ]);
     });
 });

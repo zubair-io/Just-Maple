@@ -1,6 +1,8 @@
 import { createHash } from 'crypto';
 import {
     dataGraphItemNodeId,
+    deviceItemChoiceId,
+    type DataGraphMadeBy,
     type MacDataItem,
     type MacDataSource,
     type ProfileEntity,
@@ -12,7 +14,7 @@ import type {
     GraphRelationInput,
     InteractionTally,
 } from '../repositories/graph.repo';
-import { linkKey } from '../repositories/graph.repo';
+import { isSymmetricRelationship, linkKey } from '../repositories/graph.repo';
 
 /**
  * Certain ("rule") relations for the connected-data graph, and the candidate pairs a model
@@ -51,6 +53,10 @@ export interface KnownHubs {
     places: GraphNodeInput[];
     /** Member id → their own person id. */
     ownerPerson?: Map<string, string>;
+    /** Contact card node → the person it was, so a card keeps its person when its numbers change. */
+    cardPerson?: Map<string, string>;
+    /** Person id → the handles and cards it had, to settle which part of a split keeps it. */
+    stored?: Map<string, Pick<GraphNodeInput, 'handles' | 'contactIds'>>;
 }
 
 export interface RuleGraph {
@@ -284,19 +290,64 @@ export function relationshipEvidence(type: string, toLabel: string, fromLabel: s
     return `${toLabel} is ${fromLabel}'s ${type.replace(/_/g, ' ')}`;
 }
 
+/**
+ * A relationship as saved: `to` is `from`'s `type`. A symmetric one (spouse, friend) reads
+ * from the smaller id, so both cards saying it make one relation that doesn't flip.
+ */
+export function relationshipInput(input: {
+    type: string;
+    from: string;
+    to: string;
+    labelOf: (id: string) => string;
+    madeBy: DataGraphMadeBy;
+    confidence: number;
+    items?: string[];
+}): GraphRelationInput {
+    const [from, to] =
+        isSymmetricRelationship(input.type) && input.to < input.from
+            ? [input.to, input.from]
+            : [input.from, input.to];
+    return {
+        a: from,
+        b: to,
+        kind: 'relationship',
+        type: input.type,
+        from,
+        to,
+        confidence: input.confidence,
+        evidence: relationshipEvidence(input.type, input.labelOf(to), input.labelOf(from)),
+        madeBy: input.madeBy,
+        ...(input.items ? { items: input.items } : {}),
+    };
+}
+
+/** Which chat, mailbox or calendar an item is in: page filters share by these. */
+export function interactionPartKey(item: MacDataItem): string {
+    const value =
+        item.source === 'mail'
+            ? item.mailbox
+            : (deviceItemChoiceId(item) ??
+              (item.source === 'calendar' ? item.calendar : item.thread));
+    return `${item.source}:${(value ?? '').slice(0, 120)}`;
+}
+
 const INTERACTION_OF: Partial<Record<MacDataSource, InteractionTally['kind']>> = {
     imessage: 'messages_with',
     mail: 'emails_with',
     calendar: 'met_with',
 };
 
-/** Who is in an item and how: invitees for events, and a tally per person for the owner. */
+/**
+ * Who is in an item and how: invitees for events (`links`), and a tally per person for
+ * the member whose data it is (`tallies`).
+ */
 function linkPeople(
     items: GraphItem[],
     personOf: Map<string, string>,
     ownerPerson: Map<string, string>,
     labelOf: (id: string) => string,
     out: RuleGraph,
+    what: { links: boolean; tallies: boolean } = { links: true, tallies: true },
 ): void {
     const tallies = new Map<string, InteractionTally>();
     for (const entry of items) {
@@ -311,10 +362,10 @@ function linkPeople(
         }
         const kept = people.slice(0, MAX_PEOPLE_PER_ITEM);
         if (kept.length === 0) continue;
-        out.peopleOf.set(entry.nodeId, new Set(kept));
+        if (what.links) out.peopleOf.set(entry.nodeId, new Set(kept));
         for (const person of kept) {
             // An event is a hub: its people link to it, not to each other.
-            if (item.source === 'calendar')
+            if (what.links && item.source === 'calendar')
                 out.links.push({
                     a: entry.nodeId,
                     b: person,
@@ -324,10 +375,21 @@ function linkPeople(
                     madeBy: 'rule',
                 });
             const kind = INTERACTION_OF[item.source];
-            if (!kind || !me) continue;
-            const key = `${me}|${person}|${kind}`;
-            const tally = tallies.get(key) ?? { a: me, b: person, kind, items: [] };
-            tally.items.push({ id: entry.nodeId, at: item.occurredAt });
+            if (!what.tallies || !kind || !me) continue;
+            // Each member's data is its own tally, even between two members.
+            const key = `${entry.ownerId}|${person}|${kind}`;
+            const tally = tallies.get(key) ?? {
+                a: me,
+                b: person,
+                ownerId: entry.ownerId,
+                kind,
+                items: [],
+            };
+            tally.items.push({
+                id: entry.nodeId,
+                at: item.occurredAt,
+                part: interactionPartKey(item),
+            });
             tallies.set(key, tally);
         }
     }
@@ -341,8 +403,13 @@ function linkPeople(
  */
 function buildPeople(
     items: GraphItem[],
-    known: Map<string, string>,
-    options: { owners: Map<string, string>; shared: boolean },
+    known: Pick<KnownHubs, 'personOf' | 'cardPerson' | 'stored'>,
+    options: {
+        owners: Map<string, string>;
+        shared: boolean;
+        /** Counted for interactions instead of `items` (more of the window). */
+        interactionItems?: GraphItem[];
+    },
     out: RuleGraph,
 ): void {
     const groups = new UnionFind();
@@ -404,12 +471,19 @@ function buildPeople(
         const root = groups.find(handle);
         members.set(root, [...(members.get(root) ?? []), handle]);
     }
-    // A person keeps the id they had: the oldest id among their handles. A new number on a
-    // contact card doesn't make a new person; two people merged keep one id, the other's
-    // becomes an alias.
-    const taken = new Set<string>();
-    const ordered = [...members.entries()].sort(([a], [b]) => (a < b ? -1 : 1));
-    for (const [root, handles] of ordered) {
+    // A person keeps the id they had: through their handles, or their contact cards (a
+    // card whose only number changed is still the same person). Two people merged keep
+    // the oldest id, the other's becomes an alias. When a person splits, the part with
+    // their card (else the most of their handles) keeps the id and its aliases.
+    interface Group {
+        root: string;
+        handles: string[];
+        cards: GraphItem[];
+        ownerIds: string[];
+        earlier: string[];
+    }
+    const found: Group[] = [];
+    for (const [root, handles] of [...members.entries()].sort(([a], [b]) => (a < b ? -1 : 1))) {
         const groupCards = [
             ...new Map(
                 handles.flatMap((h) => cards.get(h) ?? []).map((card) => [card.nodeId, card]),
@@ -420,18 +494,51 @@ function buildPeople(
             .filter(isString)
             .sort();
         if (!groupCards.length && !ownerIds.length && !handles.some((h) => texted.has(h))) continue;
-        const earlier = [...new Set(handles.map((h) => known.get(h)).filter(isString))]
-            .filter((id) => !taken.has(id))
-            .sort();
-        let id = earlier[0] ?? `person:${hash(root)}`;
-        // A split person: the other part gets an id of its own.
-        if (taken.has(id)) id = `person:${hash(`${root}|${handles.length}`)}`;
+        const earlier = [
+            ...new Set(
+                [
+                    ...handles.map((h) => known.personOf.get(h)),
+                    ...groupCards.map((card) => known.cardPerson?.get(card.nodeId)),
+                ].filter(isString),
+            ),
+        ].sort();
+        found.push({ root, handles, cards: groupCards, ownerIds, earlier });
+    }
+    const claim = (group: Group, id: string): number[] => {
+        const before = known.stored?.get(id);
+        const theirCards = new Set(before?.contactIds ?? []);
+        const theirHandles = new Set(before?.handles ?? []);
+        return [
+            group.cards.some((card) => theirCards.has(card.nodeId)) ? 1 : 0,
+            group.handles.filter((h) => theirHandles.has(h)).length,
+            group.handles.length,
+        ];
+    };
+    const stronger = (x: number[], y: number[]) => {
+        for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return x[i]! > y[i]!;
+        return false;
+    };
+    const keeper = new Map<string, Group>();
+    for (const group of found)
+        for (const id of group.earlier) {
+            const current = keeper.get(id);
+            if (!current || stronger(claim(group, id), claim(current, id))) keeper.set(id, group);
+        }
+    const taken = new Set(keeper.keys());
+    for (const group of found) {
+        const { root, handles, ownerIds } = group;
+        const won = group.earlier.filter((id) => keeper.get(id) === group);
+        let id = won[0];
+        if (!id) {
+            id = `person:${hash(root)}`;
+            for (let n = 1; taken.has(id); n++) id = `person:${hash(`${root}|${n}`)}`;
+        }
         taken.add(id);
         const ownerId = ownerIds[0];
         const card =
             (ownerId ? meCards.get(ownerId) : undefined) ??
-            groupCards.find((c) => c.item.extra?.isMe !== true) ??
-            groupCards[0];
+            group.cards.find((c) => c.item.extra?.isMe !== true) ??
+            group.cards[0];
         const label =
             card?.item.title?.trim() ||
             (ownerId ? options.owners.get(ownerId) : undefined) ||
@@ -446,15 +553,19 @@ function buildPeople(
             kind: 'person',
             label,
             handles: [...handles].sort(),
-            aliases: earlier.slice(1),
-            contactIds: groupCards.map((c) => c.nodeId).sort(),
+            aliases: won.slice(1),
+            contactIds: group.cards.map((c) => c.nodeId).sort(),
             ...(ownerId ? { ownerId } : {}),
         });
     }
     out.personOf = personOf;
     out.ownerPerson = ownerPerson;
 
-    linkPeople(items, personOf, ownerPerson, (id) => labels.get(id)!, out);
+    const labelOf = (id: string) => labels.get(id)!;
+    const more = options.interactionItems;
+    linkPeople(items, personOf, ownerPerson, labelOf, out, { links: true, tallies: !more });
+    if (more)
+        linkPeople(more, personOf, ownerPerson, labelOf, out, { links: false, tallies: true });
 
     // Relationships from contact cards ("Spouse: Zubair"). They're private: never made in
     // a shared notebook.
@@ -473,18 +584,17 @@ function buildPeople(
             const type = normalizeRelationType(
                 typeof relation.label === 'string' ? relation.label : null,
             );
-            out.links.push({
-                a: from,
-                b: to,
-                kind: 'relationship',
-                type,
-                from,
-                to,
-                confidence: 0.95,
-                evidence: relationshipEvidence(type, labels.get(to)!, labels.get(from)!),
-                madeBy: 'rule',
-                items: [entry.nodeId],
-            });
+            out.links.push(
+                relationshipInput({
+                    type,
+                    from,
+                    to,
+                    labelOf,
+                    madeBy: 'rule',
+                    confidence: 0.95,
+                    items: [entry.nodeId],
+                }),
+            );
         }
     }
 }
@@ -525,17 +635,16 @@ export function aboutMeRelationships(input: {
         const to = personFor(entities.get(relation.to));
         if (!from || !to || from === to) continue;
         const type = normalizeRelationType(relation.type);
-        out.push({
-            a: from,
-            b: to,
-            kind: 'relationship',
-            type,
-            from,
-            to,
-            confidence: 1,
-            evidence: relationshipEvidence(type, labels.get(to)!, labels.get(from)!),
-            madeBy: 'user',
-        });
+        out.push(
+            relationshipInput({
+                type,
+                from,
+                to,
+                labelOf: (id) => labels.get(id)!,
+                madeBy: 'user',
+                confidence: 1,
+            }),
+        );
     }
     return out;
 }
@@ -776,14 +885,24 @@ export function ruleGraph(
         known?: KnownHubs;
         /** Member id → their name, for the members whose data the notebook shows. */
         owners?: Map<string, string>;
+        /** Messages, emails and events to count (defaults to `items`). */
+        interactionItems?: GraphItem[];
     },
 ): RuleGraph {
     const out = emptyRules();
     buildPlaces(items, options.travel ?? new Map(), options.shared, out);
     buildPeople(
         items,
-        options.known?.personOf ?? new Map(),
-        { owners: options.owners ?? new Map(), shared: options.shared },
+        {
+            personOf: options.known?.personOf ?? new Map(),
+            ...(options.known?.cardPerson ? { cardPerson: options.known.cardPerson } : {}),
+            ...(options.known?.stored ? { stored: options.known.stored } : {}),
+        },
+        {
+            owners: options.owners ?? new Map(),
+            shared: options.shared,
+            ...(options.interactionItems ? { interactionItems: options.interactionItems } : {}),
+        },
         out,
     );
     return out;

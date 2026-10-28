@@ -44,7 +44,15 @@ import {
     runIncrementalGraphPass,
     USER_DAILY_CALLS,
 } from '../../services/graph.service';
-import { findDecidedPairs, findGraphRelations } from '../../repositories/graph.repo';
+import {
+    findDecidedPairs,
+    findGraphRelations,
+    interactionInput,
+    migrateLegacyGraphLinks,
+    relationId,
+    removeGraphRelation,
+    saveGraphRelations,
+} from '../../repositories/graph.repo';
 import { addRelation, createEntity } from '../../repositories/profile.repo';
 import { executeMacDataTool, getMacDataToolContext } from '../../services/mac-data-tools.service';
 import { saveTravelEstimates } from '../../repositories/travel-estimate.repo';
@@ -1193,7 +1201,9 @@ describe.runIf(mongoAvailable)('connected-data graph', () => {
         expect((await reasonsIn(a.notebookId)).find((r) => r.type === 'best_friend')).toMatchObject(
             {
                 madeBy: 'user',
-                evidence: "Jen Lawrence is Alex Lawrence's best friend",
+                evidence: expect.stringMatching(
+                    /^(Jen Lawrence is Alex Lawrence's|Alex Lawrence is Jen Lawrence's) best friend$/,
+                ),
             },
         );
         expect((await reasonsIn(b.notebookId)).some((r) => r.type === 'best_friend')).toBe(false);
@@ -1403,5 +1413,311 @@ describe.runIf(mongoAvailable)('connected-data graph', () => {
             .updateMany({}, { $unset: { relationsMigratedAt: '' } });
         await runGraphPass(notebookId);
         expect(await relations.countDocuments({ notebookId, status: 'removed' })).toBe(before);
+    });
+    // MARK: - Review fixes
+
+    it('copies every older removal first, so it wins over a relation the rules made since', async () => {
+        await upload(['calendar', 'location'], [visit, followUp]);
+        const { notebookId } = await notebook(['calendar', 'location']);
+        const n = (id: string) => node(alex.id, id);
+        const [a, b] = [n(followUp.id), n(visit.id)].sort();
+        const pair = `${notebookId}|${a}|${b}`;
+        const relations = testDb!.collection('graph_relations');
+        // The rules already rebuilt the link as active before its removal was copied.
+        await relations.insertOne({
+            _id: `${pair}|created_at` as never,
+            notebookId,
+            pair,
+            a,
+            b,
+            kind: 'created_at',
+            key: 'created_at',
+            confidence: 1,
+            evidence: 'Created while at Bright Smiles Dental',
+            madeBy: 'rule',
+            status: 'active',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+        });
+        const legacy = (x: string, y: string, fields: Record<string, unknown>) => {
+            const [la, lb] = [x, y].sort();
+            return {
+                _id: `${notebookId}|${la}|${lb}` as never,
+                notebookId,
+                a: la,
+                b: lb,
+                kind: 'related',
+                confidence: 0.9,
+                evidence: 'Old',
+                madeBy: 'model',
+                status: 'active',
+                createdAt: new Date(0),
+                updatedAt: new Date(0),
+                ...fields,
+            };
+        };
+        await testDb!.collection('graph_links').insertMany([
+            legacy(n('mail:1'), n('calendar:1'), {}),
+            legacy(n('mail:2'), n('calendar:2'), {}),
+            legacy(n('mail:3'), n('calendar:3'), {}),
+            // Last in the collection, and already marked copied by an earlier pass.
+            legacy(n(followUp.id), n(visit.id), {
+                kind: 'created_at',
+                madeBy: 'rule',
+                status: 'removed',
+                removedBy: alex.id,
+                migratedAt: new Date(),
+            }),
+        ]);
+
+        // One small batch: not done yet, but the removal is already in force.
+        expect(await migrateLegacyGraphLinks(notebookId, 1, 1)).toBe(false);
+        expect(await relations.findOne({ _id: `${pair}|created_at` as never })).toMatchObject({
+            status: 'removed',
+            blocksPair: true,
+            removedBy: alex.id,
+        });
+        expect(
+            await testDb!.collection('graph_links').countDocuments({
+                notebookId,
+                migratedAt: { $exists: false },
+            }),
+        ).toBe(2);
+
+        // The pass finishes the copy, and only then marks the notebook migrated.
+        await runGraphPass(notebookId);
+        expect(
+            await testDb!.collection('graph_state').findOne({ _id: notebookId as never }),
+        ).toMatchObject({ relationsMigratedAt: expect.any(Date) });
+        expect(await relations.countDocuments({ notebookId, pair, status: 'active' })).toBe(0);
+        expect(
+            between((await graphOf(alex, notebookId)).graph, n(followUp.id), n(visit.id)),
+        ).toBeUndefined();
+    });
+
+    it("keeps each member's tally apart, and removes both when the reason is removed", async () => {
+        const { notebookId } = await notebook([]);
+        const tally = (ownerId: string, a: string, b: string) =>
+            interactionInput({
+                a,
+                b,
+                ownerId,
+                kind: 'messages_with',
+                items: [{ id: node(ownerId, 'imessage:1'), at: now, part: 'imessage:dm' }],
+            });
+        const fromAlex = tally('alex', 'person:alex', 'person:jen');
+        const fromJen = tally('jen', 'person:jen', 'person:alex');
+        expect(await saveGraphRelations(notebookId, [fromAlex, fromJen])).toBe(2);
+        const relations = testDb!.collection('graph_relations');
+        expect(await relations.countDocuments({ notebookId, kind: 'messages_with' })).toBe(2);
+        expect(
+            await removeGraphRelation(notebookId, relationId(notebookId, fromAlex), alex.id),
+        ).toBe(true);
+        expect(
+            await relations.countDocuments({
+                notebookId,
+                kind: 'messages_with',
+                status: 'removed',
+            }),
+        ).toBe(2);
+    });
+
+    it('blocks the pair when a whole line is removed, so no new reason brings it back', async () => {
+        await upload(familySources, family);
+        const { notebookId } = await notebook(familySources);
+        await runGraphPass(notebookId);
+        const { line } = meAndJen((await graphOf(alex, notebookId)).graph);
+        expect((await remove(notebookId, line!.id)).status).toBe(200);
+        const relations = testDb!.collection('graph_relations');
+        expect(
+            await relations.countDocuments({ notebookId, pair: line!.id, blocksPair: true }),
+        ).toBeGreaterThan(0);
+
+        // A new email and a new event together, through both kinds of pass.
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        await upload(
+            [...familySources, 'mail'],
+            [
+                item('mail:hello', 'mail', {
+                    sender: 'Jen Lawrence <jen@example.com>',
+                    participants: ['alex@example.com'],
+                    occurredAt: now - 10 * 60,
+                }),
+                item('calendar:lunch@1', 'calendar', {
+                    title: 'Lunch',
+                    participants: ['jen@example.com'],
+                    occurredAt: now - 20 * 60,
+                }),
+            ],
+        );
+        await runIncrementalGraphPass(notebookId);
+        await runGraphPass(notebookId);
+        const after = (await graphOf(alex, notebookId)).graph;
+        expect(between(after, line!.source, line!.target)).toBeUndefined();
+        expect(
+            await relations.countDocuments({ notebookId, pair: line!.id, status: 'active' }),
+        ).toBe(0);
+    });
+
+    it('drops people no longer found, but keeps one a removal names', async () => {
+        await upload(familySources, family);
+        const { notebookId } = await notebook(familySources);
+        const nodes = testDb!.collection('graph_nodes');
+        const relations = testDb!.collection('graph_relations');
+        for (const id of ['person:stale', 'person:held'])
+            await nodes.insertOne({
+                _id: `${notebookId}|${id}` as never,
+                notebookId,
+                id,
+                kind: 'person',
+                label: id,
+                handles: [`+1999555${id.length}`],
+                updatedAt: new Date(0),
+            });
+        const event = node(alex.id, dinner.id);
+        const doc = (b: string, status: string) => {
+            const [x, y] = [event, b].sort();
+            return {
+                _id: `${notebookId}|${x}|${y}|attendee` as never,
+                notebookId,
+                pair: `${notebookId}|${x}|${y}`,
+                a: x,
+                b: y,
+                kind: 'attendee',
+                key: 'attendee',
+                confidence: 0.9,
+                evidence: 'Was there',
+                madeBy: 'model',
+                status,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+            };
+        };
+        await relations.insertMany([doc('person:stale', 'active'), doc('person:held', 'removed')]);
+
+        await runGraphPass(notebookId);
+        expect(await nodes.findOne({ _id: `${notebookId}|person:stale` as never })).toBeNull();
+        expect(await relations.countDocuments({ notebookId, b: 'person:stale' })).toBe(0);
+        // Should they come back, their id still carries the removal.
+        expect(await nodes.findOne({ _id: `${notebookId}|person:held` as never })).not.toBeNull();
+        expect(
+            await relations.countDocuments({ notebookId, b: 'person:held', status: 'removed' }),
+        ).toBe(1);
+    });
+
+    it('counts only the chats a reader sees, for the viewer and for bots', async () => {
+        const inChat = (id: string, thread: string, hours: number, others: string[] = []) =>
+            item(`imessage:${id}`, 'imessage', {
+                thread,
+                participants: ['+15185550123', ...others],
+                body: id,
+                occurredAt: now - hours * HOUR,
+            });
+        const direct = [5, 4, 3].map((h) => inChat(`dm${h}`, 'Jen Lawrence', h));
+        // The five newest are in the group chat: the line's examples are all from there.
+        const group = [2.5, 2, 1.5, 1, 0.5].map((h) =>
+            inChat(`group${h}`, 'Soccer parents', h, ['+15185550177']),
+        );
+        await upload(['contacts', 'imessage'], [meCard, jenCard, ...direct, ...group]);
+        const { notebookId, pages } = await notebook(['contacts', 'imessage']);
+        await runGraphPass(notebookId);
+        const messages = async () =>
+            meAndJen((await graphOf(alex, notebookId)).graph).line?.reasons.find(
+                (r) => r.kind === 'messages_with',
+            );
+        expect(await messages()).toMatchObject({ count: 8, evidence: '8 messages' });
+
+        await setFilter(pages.imessage!, { chats: [{ name: 'Jen Lawrence' }] });
+        // The line stays though none of its examples can be seen, with only the chat's share.
+        const seen = await messages();
+        expect(seen).toMatchObject({
+            count: 3,
+            evidence: '3 messages',
+            firstAt: now - 5 * HOUR,
+            lastAt: now - 3 * HOUR,
+        });
+        expect(seen!.examples).toBeUndefined();
+
+        const ctx = await getMacDataToolContext(alex.id, notebookId, {
+            id: 'bot',
+            name: 'Bot',
+            ownerId: alex.id,
+        });
+        const read = JSON.parse(
+            await executeMacDataTool(ctx!, 'get_local_item', { id: direct[2]!.id }),
+        );
+        const jen = (read.linked as Array<{ kind: string; link: string }>).find(
+            (l) => l.kind === 'person',
+        )!;
+        expect(jen.link).toContain('3 messages');
+        expect(jen.link).not.toContain('8 messages');
+    });
+
+    it('counts events in the future once, whatever order they arrive in', async () => {
+        const sources: MacDataSource[] = ['contacts', 'calendar'];
+        const event = (id: string, days: number, revision = '1') =>
+            item(`calendar:${id}@1`, 'calendar', {
+                title: id,
+                revision,
+                participants: ['jen@example.com'],
+                occurredAt: now + days * 24 * HOUR,
+            });
+        await upload(sources, [meCard, jenCard, event('trip', 10)]);
+        const { notebookId } = await notebook(sources);
+        await runGraphPass(notebookId);
+        const together = async () =>
+            (await testDb!
+                .collection('graph_relations')
+                .findOne({ notebookId, kind: 'met_with' }))!;
+        expect((await together()).count).toBe(1);
+
+        // An event sooner than the one already counted still counts.
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        await upload(sources, [event('dinner', 2)]);
+        await runIncrementalGraphPass(notebookId);
+        expect((await together()).count).toBe(2);
+        // The far one edited and uploaded again isn't counted twice.
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        await upload(sources, [event('trip', 10, '2')]);
+        await runIncrementalGraphPass(notebookId);
+        expect((await together()).count).toBe(2);
+        // And a full pass agrees.
+        await runGraphPass(notebookId);
+        expect((await together()).count).toBe(2);
+    });
+
+    it('keeps one symmetric relationship per pair, the same way round each pass', async () => {
+        const spouses = [
+            {
+                ...meCard,
+                extra: { ...meCard.extra, relations: [{ label: 'spouse', name: 'Jen' }] },
+            },
+            {
+                ...jenCard,
+                extra: { ...jenCard.extra, relations: [{ label: 'spouse', name: 'Alex' }] },
+            },
+        ];
+        await upload(['contacts', 'imessage'], [...spouses, ...texts]);
+        const { notebookId } = await notebook(['contacts', 'imessage']);
+        const stored = () =>
+            testDb!
+                .collection('graph_relations')
+                .find({ notebookId, kind: 'relationship' })
+                .toArray();
+        await runGraphPass(notebookId);
+        const first = await stored();
+        expect(first).toHaveLength(1);
+        expect(first[0]!.items).toEqual(
+            [node(alex.id, meCard.id), node(alex.id, jenCard.id)].sort(),
+        );
+        expect(first[0]!.from < first[0]!.to).toBe(true);
+        await runGraphPass(notebookId);
+        const second = await stored();
+        expect(second).toHaveLength(1);
+        expect(second[0]).toMatchObject({
+            from: first[0]!.from,
+            to: first[0]!.to,
+            evidence: first[0]!.evidence,
+        });
     });
 });

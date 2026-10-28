@@ -138,6 +138,7 @@ export async function createIndexes(database: Db): Promise<void> {
     await database.collection('graph_relations').createIndex({ notebookId: 1, checkedAt: 1 });
     await database.collection('graph_relations').createIndex({ checkedAt: 1 });
     await database.collection('graph_judged').createIndex({ notebookId: 1, judgedAt: 1 });
+    await database.collection('graph_counted').createIndex({ notebookId: 1, countedAt: 1 });
     await database.collection('graph_usage').createIndex({ day: 1 });
     await database.collection('travel_estimates').createIndex({ userId: 1 });
     await database.collection('travel_estimates').createIndex({ savedAt: 1 }); // Cleanup

@@ -19,6 +19,7 @@ import {
     deleteGraphRelationsGoneBefore,
     deleteGraphRelationsTouching,
     deleteStaleRuleRelations,
+    findCountedItems,
     findDecidedPairs,
     findGraphNodes,
     findGraphRelations,
@@ -28,11 +29,17 @@ import {
     findGraphState,
     findJudgedItems,
     finishGraphPass,
+    interactionEvidence,
     interactionInput,
+    interactionRelation,
+    isSymmetricRelationship,
     linkKey,
     markGraphRelationsChecked,
+    markItemsCounted,
     markItemsJudged,
     migrateLegacyGraphLinks,
+    partTotals,
+    pruneCountedItems,
     pruneGraphUsage,
     pruneJudgedItems,
     pruneRejectedPairs,
@@ -51,6 +58,7 @@ import {
     type GraphNodeDocument,
     type GraphRelationDocument,
     type GraphRelationInput,
+    type InteractionTally,
 } from '../repositories/graph.repo';
 import { findDeviceItemsByIds, findDeviceItemsForGraph } from '../repositories/device-item.repo';
 import { findTravelEstimates } from '../repositories/travel-estimate.repo';
@@ -131,6 +139,9 @@ const WINDOW_DAYS = 30;
 const UPCOMING_DAYS = 30;
 const MAX_ITEMS_PER_PAGE = 1_500;
 const MAX_ITEMS = 4_000;
+/** Messages, emails and events counted per page for interactions (no bodies are read). */
+const MAX_COUNTED_PER_PAGE = 10_000;
+const COUNTED_SOURCES = new Set(['imessage', 'mail', 'calendar']);
 const BODY_CHARS = 400;
 /** Model links below this are not saved. */
 export const AUTO_LINK_CONFIDENCE = 0.75;
@@ -176,6 +187,11 @@ async function loadNotebookItems(
     from: number,
     to: number,
     updatedSince?: Date,
+    bounds: { perPage: number; total: number; bodyChars: number } = {
+        perPage: MAX_ITEMS_PER_PAGE,
+        total: MAX_ITEMS,
+        bodyChars: BODY_CHARS,
+    },
 ): Promise<GraphItem[]> {
     const seen = new Set<string>();
     const items: GraphItem[] = [];
@@ -184,8 +200,8 @@ async function loadNotebookItems(
         const found = await findDeviceItemsForGraph(slice.ownerId, slice.source, {
             ...(contacts ? {} : { from, to }),
             ...(updatedSince ? { updatedSince } : {}),
-            limit: MAX_ITEMS_PER_PAGE,
-            bodyChars: BODY_CHARS,
+            limit: bounds.perPage,
+            bodyChars: bounds.bodyChars,
         });
         for (const item of found) {
             const nodeId = dataGraphItemNodeId(slice.ownerId, item.id);
@@ -195,7 +211,21 @@ async function loadNotebookItems(
             items.push({ nodeId, ownerId: slice.ownerId, pageId: slice.pageId, item });
         }
     }
-    return items.sort((a, b) => b.item.occurredAt - a.item.occurredAt).slice(0, MAX_ITEMS);
+    return items.sort((a, b) => b.item.occurredAt - a.item.occurredAt).slice(0, bounds.total);
+}
+
+/**
+ * The messages, emails and events the full pass counts: the whole window, past the cap
+ * the rest of the graph has, so counting them again incrementally adds up the same.
+ */
+function loadCountedItems(slices: DataPageSlice[], from: number, to: number) {
+    return loadNotebookItems(
+        slices.filter((slice) => COUNTED_SOURCES.has(slice.source)),
+        from,
+        to,
+        undefined,
+        { perPage: MAX_COUNTED_PER_PAGE, total: Infinity, bodyChars: 0 },
+    );
 }
 
 /** Driving times to the notebook's events, keyed `${ownerId}:${eventId}`. */
@@ -269,19 +299,28 @@ function knownHubs(stored: GraphNodeDocument[]): KnownHubs {
     const personOf = new Map<string, string>();
     const people = new Map<string, string>();
     const ownerPerson = new Map<string, string>();
+    const cardPerson = new Map<string, string>();
+    const before = new Map<string, Pick<GraphNodeDocument, 'handles' | 'contactIds'>>();
     for (const node of stored) {
         if (node.kind !== 'person') continue;
         people.set(node.id, node.label);
+        before.set(node.id, { handles: node.handles ?? [], contactIds: node.contactIds ?? [] });
         if (node.ownerId) ownerPerson.set(node.ownerId, node.id);
         for (const handle of node.handles ?? []) {
             const earlier = personOf.get(handle);
             if (!earlier || node.id < earlier) personOf.set(handle, node.id);
+        }
+        for (const card of node.contactIds ?? []) {
+            const earlier = cardPerson.get(card);
+            if (!earlier || node.id < earlier) cardPerson.set(card, node.id);
         }
     }
     return {
         personOf,
         people,
         ownerPerson,
+        cardPerson,
+        stored: before,
         places: stored.filter((node) => node.kind === 'place'),
     };
 }
@@ -294,6 +333,7 @@ function knownHubs(stored: GraphNodeDocument[]): KnownHubs {
 async function removalCheck(
     notebookId: string,
     hubs: Array<Pick<GraphNodeInput, 'id' | 'aliases'>>,
+    removedDocs?: GraphRelationDocument[],
 ): Promise<(relation: GraphRelationInput) => boolean> {
     const current = new Map<string, string>();
     for (const hub of hubs) for (const alias of hub.aliases ?? []) current.set(alias, hub.id);
@@ -309,7 +349,8 @@ async function removalCheck(
     };
     const removedRelations = new Set<string>();
     const removedPairs = new Set<string>();
-    for (const doc of await findGraphRelations(notebookId, ['removed'], 5_000)) {
+    for (const doc of removedDocs ??
+        (await findGraphRelations(notebookId, ['removed'], MAX_REMOVALS_READ))) {
         const key = keyOf(doc);
         removedRelations.add(key.relation);
         if (doc.blocksPair) removedPairs.add(key.pair);
@@ -337,6 +378,11 @@ async function aboutMeRelations(
     });
 }
 
+/** At most this many removals are read (a notebook has far fewer). */
+const MAX_REMOVALS_READ = 50_000;
+
+const tallyRelation = (tally: InteractionTally) => interactionRelation(tally);
+
 const daysAgo = (now: Date, days: number) => new Date(now.getTime() - days * DAY * 1000);
 const dayOf = (now: Date) => now.toISOString().slice(0, 10);
 
@@ -362,11 +408,10 @@ export async function runGraphPass(
         const shared = isNotebookShared(notebook);
         const slices = await notebookDataSlices(notebookId);
         const nowSeconds = now.getTime() / 1000;
-        const items = await loadNotebookItems(
-            slices,
-            nowSeconds - WINDOW_DAYS * DAY,
-            nowSeconds + UPCOMING_DAYS * DAY,
-        );
+        const from = nowSeconds - WINDOW_DAYS * DAY;
+        const to = nowSeconds + UPCOMING_DAYS * DAY;
+        const items = await loadNotebookItems(slices, from, to);
+        const countedItems = await loadCountedItems(slices, from, to);
 
         // Rules: certain relations, rebuilt over the whole window. People and places keep
         // the ids they had.
@@ -377,6 +422,7 @@ export async function runGraphPass(
             shared,
             known: knownHubs(stored),
             owners: new Map(slices.map((slice) => [slice.ownerId, slice.ownerName])),
+            interactionItems: countedItems,
         });
         const merged = new Set<string>();
         const nodes = rules.nodes.map((node) => {
@@ -392,10 +438,25 @@ export async function runGraphPass(
             aliases.delete(node.id);
             return { ...node, aliases: [...aliases] };
         });
-        const removed = await removalCheck(notebookId, [...stored, ...nodes]);
+        const removedDocs = await findGraphRelations(notebookId, ['removed'], MAX_REMOVALS_READ);
+        const removed = await removalCheck(notebookId, [...stored, ...nodes], removedDocs);
         await saveGraphNodes(notebookId, nodes);
-        // People merged into another keep no node of their own (their id is an alias now).
-        await deleteGraphNodes(notebookId, [...merged]);
+        // People merged into another keep no node of their own (their id is an alias now),
+        // and people no longer found go, unless a removal names them (should they come
+        // back, their old id keeps the removal).
+        const current = new Set(nodes.map((node) => node.id));
+        const aliased = new Set(nodes.flatMap((node) => node.aliases ?? []));
+        const removalEnds = new Set(removedDocs.flatMap((doc) => [doc.a, doc.b]));
+        const gone = stored
+            .filter(
+                (node) =>
+                    node.kind === 'person' &&
+                    !current.has(node.id) &&
+                    (merged.has(node.id) || aliased.has(node.id) || !removalEnds.has(node.id)),
+            )
+            .map((node) => node.id);
+        await deleteGraphRelationsTouching(notebookId, gone);
+        await deleteGraphNodes(notebookId, [...new Set([...merged, ...gone])]);
         const made = [
             ...rules.links,
             ...rules.interactions.map(interactionInput),
@@ -410,6 +471,12 @@ export async function runGraphPass(
             notebookId,
             new Set(allowed.map((relation) => relationId(notebookId, relation))),
         );
+        // Every item the interactions now count, so incremental passes don't count it again.
+        await markItemsCounted(
+            notebookId,
+            rules.interactions.flatMap((tally) => tally.items.map((item) => item.id)),
+            now,
+        );
         if (shared && !state?.scrubbedShared) await scrubForSharing(notebookId);
 
         const model = await modelPass(notebookId, items, rules, {
@@ -422,6 +489,7 @@ export async function runGraphPass(
         await checkGoneItems(notebookId, now);
         await pruneRejectedPairs(notebookId, daysAgo(now, FORGET_DAYS));
         await pruneJudgedItems(notebookId, daysAgo(now, FORGET_DAYS));
+        await pruneCountedItems(notebookId, daysAgo(now, FORGET_DAYS));
 
         const backfilled = model.pending === 0;
         await finishGraphPass(
@@ -485,25 +553,28 @@ export async function runIncrementalGraphPass(
         const rules = incrementalRuleLinks(fresh, knownHubs(stored));
         const removed = await removalCheck(notebookId, stored);
         await saveGraphNodes(notebookId, rules.nodes);
+        // Only items never counted: an item uploaded again (an edited event, one in the
+        // future) is already in its tally.
+        const already = await findCountedItems(
+            notebookId,
+            rules.interactions.flatMap((tally) => tally.items.map((item) => item.id)),
+        );
+        const tallies = rules.interactions
+            .filter((tally) => !removed(tallyRelation(tally)))
+            .map((tally) => ({
+                ...tally,
+                items: tally.items.filter((item) => !already.has(item.id)),
+            }));
         const ruleLinks =
             (await saveGraphRelations(
                 notebookId,
                 rules.links.filter((relation) => !removed(relation)),
-            )) +
-            (await addInteractions(
-                notebookId,
-                rules.interactions.filter(
-                    (tally) =>
-                        !removed({
-                            a: tally.a,
-                            b: tally.b,
-                            kind: tally.kind,
-                            confidence: 1,
-                            evidence: '',
-                            madeBy: 'rule',
-                        }),
-                ),
-            ));
+            )) + (await addInteractions(notebookId, tallies));
+        await markItemsCounted(
+            notebookId,
+            tallies.flatMap((tally) => tally.items.map((item) => item.id)),
+            now,
+        );
         await finishGraphPass(notebookId, { lastRunAt: now, cursor: now });
         return { items: fresh.length, ruleLinks };
     } catch (error) {
@@ -910,6 +981,74 @@ async function visibleItems(
 
 const isItem = (id: string) => id.startsWith('item:');
 
+const isInteraction = (relation: Pick<GraphRelationDocument, 'kind'>) =>
+    dataGraphRelationFamily(relation.kind) === 'interaction';
+
+/** The items to look up to tell which parts of an interaction a reader sees. */
+const partSamples = (relation: GraphRelationDocument) =>
+    (relation.parts ?? []).flatMap((part) => part.samples);
+
+/**
+ * An interaction as this reader sees it: only the chats, mailboxes and calendars their
+ * pages show (a part is seen when one of its newest items is), with the count, first and
+ * last time of those. Null when they see none of it.
+ */
+function interactionForReader(
+    relation: GraphRelationDocument,
+    visible: ReadonlyMap<string, unknown>,
+): GraphRelationDocument | null {
+    if (!isInteraction(relation) || !relation.parts?.length) return relation;
+    const seen = relation.parts.filter((part) => part.samples.some((id) => visible.has(id)));
+    if (seen.length === 0) return null;
+    const totals = partTotals(seen);
+    return {
+        ...relation,
+        ...totals,
+        evidence: interactionEvidence(
+            relation.kind as Parameters<typeof interactionEvidence>[0],
+            totals.count,
+        ),
+    };
+}
+
+/**
+ * Two members' tallies of the same pair (Alex's texts with Jen and Jen's with Alex) as one
+ * reason: the bigger count, not the sum, since it's mostly the same conversation.
+ */
+function mergeTwins(relations: GraphRelationDocument[]): GraphRelationDocument[] {
+    const out: GraphRelationDocument[] = [];
+    const byKind = new Map<string, GraphRelationDocument>();
+    for (const relation of relations) {
+        if (!isInteraction(relation)) {
+            out.push(relation);
+            continue;
+        }
+        const key = `${relation.pair}|${relation.kind}`;
+        const earlier = byKind.get(key);
+        if (!earlier) {
+            byKind.set(key, relation);
+            continue;
+        }
+        const count = Math.max(earlier.count ?? 0, relation.count ?? 0);
+        byKind.set(key, {
+            ...((relation.count ?? 0) > (earlier.count ?? 0) ? relation : earlier),
+            _id: earlier._id < relation._id ? earlier._id : relation._id,
+            count,
+            firstAt: Math.min(earlier.firstAt ?? Infinity, relation.firstAt ?? Infinity),
+            lastAt: Math.max(earlier.lastAt ?? -Infinity, relation.lastAt ?? -Infinity),
+            items: [...new Set([...(earlier.items ?? []), ...(relation.items ?? [])])].slice(
+                0,
+                MAX_RELATION_ITEMS,
+            ),
+            evidence: interactionEvidence(
+                relation.kind as Parameters<typeof interactionEvidence>[0],
+                count,
+            ),
+        });
+    }
+    return [...out, ...byKind.values()];
+}
+
 /** The other end of a relation. */
 const otherEnd = (relation: Pick<GraphRelationDocument, 'a' | 'b'>, from: string) =>
     relation.a === from ? relation.b : relation.a;
@@ -1046,7 +1185,7 @@ export async function getDataGraph(
         findGraphNodes(notebookId),
         findGraphRelations(notebookId, ['removed'], 5_000),
     ]);
-    const relations = stored
+    const readable = stored
         .map((relation) => relationForReaders(relation, shared))
         .filter((relation): relation is GraphRelationDocument => !!relation);
     const hubById = new Map(
@@ -1063,8 +1202,13 @@ export async function getDataGraph(
 
     // Look up every item the relations rest on, and the people's cards.
     const itemIds = new Set<string>();
-    for (const relation of relations) {
-        for (const id of [relation.a, relation.b, ...(relation.items ?? [])])
+    for (const relation of readable) {
+        for (const id of [
+            relation.a,
+            relation.b,
+            ...(relation.items ?? []),
+            ...partSamples(relation),
+        ])
             if (isItem(id)) itemIds.add(id);
         for (const end of [relation.a, relation.b]) {
             const hub = hubById.get(end);
@@ -1073,6 +1217,12 @@ export async function getDataGraph(
     }
     // Hidden items (another filter, deleted) just aren't shown; nothing is deleted here.
     const visible = await visibleItems([...itemIds], slices);
+    // Interactions count only what this reader sees.
+    const relations = mergeTwins(
+        readable
+            .map((relation) => interactionForReader(relation, visible))
+            .filter((relation): relation is GraphRelationDocument => !!relation),
+    );
 
     // Date range, then the newest items up to the viewer's limit.
     const ends = new Set(relations.flatMap((relation) => [relation.a, relation.b]));
@@ -1104,6 +1254,8 @@ export async function getDataGraph(
         if (isItem(relation.a) || isItem(relation.b)) return true;
         // Between two hubs: it rests on items the reader may see (or on About me).
         if (!spanInRange(relation)) return false;
+        // Interactions were already cut to what the reader sees, examples or not.
+        if (isInteraction(relation)) return true;
         const evidence = relation.items ?? [];
         return evidence.length === 0
             ? relation.madeBy === 'user'
@@ -1224,7 +1376,10 @@ function reasonForBot(
     relation: GraphRelationDocument,
     context: { me?: string; timeZone: string },
 ): string {
-    if (relation.kind === 'relationship' && relation.type && relation.from === context.me)
+    const mine =
+        relation.from === context.me ||
+        (isSymmetricRelationship(relation.type) && relation.to === context.me);
+    if (relation.kind === 'relationship' && relation.type && mine)
         return relation.type.replace(/_/g, ' ');
     if (dataGraphRelationFamily(relation.kind) === 'interaction' && relation.lastAt !== undefined)
         return `${relation.evidence}, last ${lastTime(relation.lastAt, context.timeZone)}`;
@@ -1316,7 +1471,7 @@ export async function linkedForBot(
 
     const out: LinkedForBot[] = [];
     // People first: who they are to the owner, and how much they talk.
-    const toOwner = me
+    const ownerRelations = me
         ? readable(
               await findGraphRelationsForPairs(
                   notebookId,
@@ -1324,6 +1479,13 @@ export async function linkedForBot(
               ),
           )
         : [];
+    // Through the same filter the viewer has: only what this reader's pages show.
+    const seenParts = await visibleItems(ownerRelations.flatMap(partSamples), slices);
+    const toOwner = mergeTwins(
+        ownerRelations
+            .map((relation) => interactionForReader(relation, seenParts))
+            .filter((relation): relation is GraphRelationDocument => !!relation),
+    );
     for (const person of people) {
         const hub = hubs.get(person);
         if (!hub) continue;

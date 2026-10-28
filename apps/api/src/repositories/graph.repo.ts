@@ -36,6 +36,8 @@ export interface GraphRelationDocument {
     /** Relationships: `to` is `from`'s `type`. Interactions: from the data's owner. */
     from?: string;
     to?: string;
+    /** Interactions: the member whose data was counted (each member's tally is its own). */
+    owner?: string;
     confidence: number;
     evidence: string;
     madeBy: DataGraphMadeBy;
@@ -44,6 +46,9 @@ export interface GraphRelationDocument {
     count?: number;
     firstAt?: number;
     lastAt?: number;
+    /** Interactions: the count split by chat, mailbox or calendar, so readers who see only
+     * some of them get only their share. */
+    parts?: InteractionPart[];
     status: GraphRelationStatus;
     /** A removal kept from the one-link-per-pair graph: nothing joins this pair again. */
     blocksPair?: boolean;
@@ -132,6 +137,26 @@ export interface GraphUsageDocument {
     calls: number;
 }
 
+/** An item counted in the graph's interactions (`_id`: `${notebookId}|${nodeId}`). */
+export interface GraphCountedDocument {
+    _id: string;
+    notebookId: string;
+    countedAt: Date;
+}
+
+/**
+ * One chat's, mailbox's or calendar's share of an interaction. Readers see a part when they
+ * can see one of its sample items (page filters work by chat, mailbox and calendar).
+ */
+export interface InteractionPart {
+    key: string;
+    count: number;
+    firstAt: number;
+    lastAt: number;
+    /** The newest items' node ids. */
+    samples: string[];
+}
+
 /** A relation to save: its two ends, what it is and why. */
 export interface GraphRelationInput {
     a: string;
@@ -140,6 +165,7 @@ export interface GraphRelationInput {
     type?: string;
     from?: string;
     to?: string;
+    owner?: string;
     confidence: number;
     evidence: string;
     madeBy: DataGraphMadeBy;
@@ -147,6 +173,14 @@ export interface GraphRelationInput {
     count?: number;
     firstAt?: number;
     lastAt?: number;
+    parts?: InteractionPart[];
+}
+
+/** One counted item: its node id, when, and which chat, mailbox or calendar it's in. */
+export interface TalliedItem {
+    id: string;
+    at: number;
+    part: string;
 }
 
 /** New messages, emails or events between the data's owner and a person. */
@@ -155,12 +189,18 @@ export interface InteractionTally {
     a: string;
     /** The other person. */
     b: string;
+    /** The member whose data it is. */
+    ownerId: string;
     kind: 'messages_with' | 'emails_with' | 'met_with';
-    items: Array<{ id: string; at: number }>;
+    items: TalliedItem[];
 }
 
 /** Most example items kept on a relation. */
 export const MAX_RELATION_ITEMS = 5;
+/** Most parts an interaction keeps; the smallest share one part ("*"). */
+export const MAX_INTERACTION_PARTS = 20;
+const PART_SAMPLES = 2;
+const OTHER_PART = '*';
 
 const relations = () => getDb().collection<GraphRelationDocument>('graph_relations');
 const legacyLinks = () => getDb().collection<LegacyGraphLinkDocument>('graph_links');
@@ -168,6 +208,7 @@ const nodes = () => getDb().collection<GraphNodeDocument>('graph_nodes');
 const states = () => getDb().collection<GraphStateDocument>('graph_state');
 const judged = () => getDb().collection<GraphJudgedDocument>('graph_judged');
 const usage = () => getDb().collection<GraphUsageDocument>('graph_usage');
+const counted = () => getDb().collection<GraphCountedDocument>('graph_counted');
 
 /** One line per pair of nodes, whichever way round it's given. */
 export function linkKey(notebookId: string, x: string, y: string): string {
@@ -175,29 +216,49 @@ export function linkKey(notebookId: string, x: string, y: string): string {
     return `${notebookId}|${a}|${b}`;
 }
 
-/** Relations whose meaning doesn't depend on which way round they are. */
+/**
+ * Relations whose meaning doesn't depend on which way round they are. "Wife", "brother"
+ * and the like say which end is which, so they keep their direction.
+ */
 const SYMMETRIC = new Set([
     'spouse',
     'partner',
-    'husband',
-    'wife',
     'sibling',
-    'brother',
-    'sister',
     'friend',
+    'best_friend',
     'coworker',
     'colleague',
     'cousin',
     'related',
 ]);
 
-/** What tells a relation from the pair's others: its kind, and for relationships the type. */
-export function relationKey(input: Pick<GraphRelationInput, 'kind' | 'type' | 'from' | 'a' | 'b'>) {
+export function isSymmetricRelationship(type: string | undefined): boolean {
+    return SYMMETRIC.has(type ?? 'related');
+}
+
+const isInteraction = (kind: DataGraphRelationKind) =>
+    kind === 'messages_with' || kind === 'emails_with' || kind === 'met_with';
+
+/**
+ * What tells a relation from the pair's others: its kind; for relationships the type (and
+ * the direction, unless it's symmetric); for interactions whose data was counted.
+ */
+export function relationKey(
+    input: Pick<GraphRelationInput, 'kind' | 'type' | 'from' | 'a' | 'b' | 'owner'>,
+) {
+    if (isInteraction(input.kind)) return input.owner ? `${input.kind}:${input.owner}` : input.kind;
     if (input.kind !== 'relationship') return input.kind;
     const type = input.type ?? 'related';
     if (SYMMETRIC.has(type)) return `relationship:${type}`;
     const [a] = input.a < input.b ? [input.a] : [input.b];
     return `relationship:${type}:${input.from === a ? 'ab' : 'ba'}`;
+}
+
+/** A symmetric relationship always reads from the smaller id, so it doesn't flip. */
+function steady(input: GraphRelationInput): GraphRelationInput {
+    if (input.kind !== 'relationship' || !isSymmetricRelationship(input.type)) return input;
+    const [from, to] = input.a < input.b ? [input.a, input.b] : [input.b, input.a];
+    return { ...input, from, to };
 }
 
 export function relationId(notebookId: string, input: GraphRelationInput): string {
@@ -232,6 +293,7 @@ function relationFields(notebookId: string, input: GraphRelationInput) {
         ...(input.type ? { type: input.type } : {}),
         ...(input.from ? { from: input.from } : {}),
         ...(input.to ? { to: input.to } : {}),
+        ...(input.owner ? { owner: input.owner } : {}),
         confidence: round(input.confidence),
         evidence: input.evidence.slice(0, 200),
         madeBy: input.madeBy,
@@ -239,9 +301,13 @@ function relationFields(notebookId: string, input: GraphRelationInput) {
         ...(input.count !== undefined ? { count: input.count } : {}),
         ...(input.firstAt !== undefined ? { firstAt: input.firstAt } : {}),
         ...(input.lastAt !== undefined ? { lastAt: input.lastAt } : {}),
+        ...(input.parts?.length ? { parts: input.parts.slice(0, MAX_INTERACTION_PARTS) } : {}),
         status: 'active' as const,
     };
 }
+
+/** Fields a relation may stop having, to unset when it's saved again without them. */
+const OPTIONAL_FIELDS = ['items', 'count', 'firstAt', 'lastAt', 'parts'] as const;
 
 /** Whether saving would change anything someone could see. */
 function differs(current: GraphRelationDocument, next: ReturnType<typeof relationFields>) {
@@ -251,11 +317,21 @@ function differs(current: GraphRelationDocument, next: ReturnType<typeof relatio
         current.evidence !== next.evidence ||
         current.madeBy !== next.madeBy ||
         current.from !== next.from ||
+        current.to !== next.to ||
         current.count !== next.count ||
         current.firstAt !== next.firstAt ||
         current.lastAt !== next.lastAt ||
-        (current.items ?? []).join(',') !== (next.items ?? []).join(',')
+        (current.items ?? []).join(',') !== (next.items ?? []).join(',') ||
+        JSON.stringify(current.parts ?? []) !== JSON.stringify(next.parts ?? [])
     );
+}
+
+/** Two inputs for the same relationship: the stronger one, resting on both's items. */
+function mergeInputs(earlier: GraphRelationInput, next: GraphRelationInput): GraphRelationInput {
+    const winner = outranks(next, earlier) ? next : earlier;
+    if (winner.kind !== 'relationship') return winner;
+    const items = [...new Set([...(earlier.items ?? []), ...(next.items ?? [])])].sort();
+    return items.length ? { ...winner, items } : winner;
 }
 
 async function findByIds(notebookId: string, ids: string[]) {
@@ -299,11 +375,12 @@ export async function saveGraphRelations(
     inputs: GraphRelationInput[],
 ): Promise<number> {
     const byId = new Map<string, GraphRelationInput>();
-    for (const input of inputs) {
-        if (input.a === input.b) continue;
+    for (const raw of inputs) {
+        if (raw.a === raw.b) continue;
+        const input = steady(raw);
         const id = relationId(notebookId, input);
         const earlier = byId.get(id);
-        if (!earlier || outranks(input, earlier)) byId.set(id, input);
+        byId.set(id, earlier ? mergeInputs(earlier, input) : input);
     }
     if (byId.size === 0) return 0;
     const existing = await findByIds(notebookId, [...byId.keys()]);
@@ -316,7 +393,7 @@ export async function saveGraphRelations(
         const fields = relationFields(notebookId, input);
         if (current && !differs(current, fields)) continue;
         const unset: Record<string, ''> = {};
-        for (const key of ['items', 'count', 'firstAt', 'lastAt'] as const)
+        for (const key of OPTIONAL_FIELDS)
             if (current?.[key] !== undefined && fields[key as keyof typeof fields] === undefined)
                 unset[key] = '';
         writes.push({
@@ -339,28 +416,113 @@ export function interactionEvidence(kind: InteractionTally['kind'], count: numbe
     return `${count} ${noun}${count === 1 ? '' : 's'}${kind === 'met_with' ? ' together' : ''}`;
 }
 
-/** A tally of a whole window as a relation: the count is the tally's. */
-export function interactionInput(tally: InteractionTally): GraphRelationInput {
-    const sorted = [...tally.items].sort((x, y) => y.at - x.at);
+/** Adds items to an interaction's parts (oldest first, so the newest end up as samples). */
+export function addToParts(parts: InteractionPart[], items: TalliedItem[]): InteractionPart[] {
+    const out = parts.map((part) => ({ ...part, samples: [...part.samples] }));
+    for (const item of [...items].sort((x, y) => x.at - y.at)) {
+        let part = out.find((p) => p.key === item.part);
+        if (!part && out.length >= MAX_INTERACTION_PARTS - 1)
+            part = out.find((p) => p.key === OTHER_PART);
+        if (!part) {
+            const key = out.length >= MAX_INTERACTION_PARTS - 1 ? OTHER_PART : item.part;
+            part = { key, count: 0, firstAt: item.at, lastAt: item.at, samples: [] };
+            out.push(part);
+        }
+        part.count++;
+        part.firstAt = Math.min(part.firstAt, item.at);
+        if (item.at >= part.lastAt) {
+            part.lastAt = item.at;
+            part.samples = [item.id, ...part.samples.filter((id) => id !== item.id)];
+        } else if (!part.samples.includes(item.id)) {
+            part.samples.push(item.id);
+        }
+        part.samples = part.samples.slice(0, PART_SAMPLES);
+    }
+    return out;
+}
+
+/** A whole window's items as parts: the biggest chats, mailboxes or calendars keep their own. */
+function buildParts(items: TalliedItem[]): InteractionPart[] {
+    const sizes = new Map<string, number>();
+    for (const item of items) sizes.set(item.part, (sizes.get(item.part) ?? 0) + 1);
+    const own = new Set(
+        [...sizes]
+            .sort((x, y) => y[1] - x[1] || (x[0] < y[0] ? -1 : 1))
+            .slice(0, MAX_INTERACTION_PARTS - 1)
+            .map(([key]) => key),
+    );
+    return addToParts(
+        [],
+        items.map((item) => (own.has(item.part) ? item : { ...item, part: OTHER_PART })),
+    ).sort((x, y) => (x.key < y.key ? -1 : 1));
+}
+
+/** The totals of some parts: a count, the first and last time. */
+export function partTotals(parts: InteractionPart[]) {
+    return {
+        count: parts.reduce((sum, part) => sum + part.count, 0),
+        firstAt: Math.min(...parts.map((part) => part.firstAt)),
+        lastAt: Math.max(...parts.map((part) => part.lastAt)),
+    };
+}
+
+function interactionFields(
+    notebookId: string,
+    tally: Pick<InteractionTally, 'a' | 'b' | 'kind' | 'ownerId'>,
+    parts: InteractionPart[],
+    items: string[],
+) {
+    const totals = partTotals(parts);
+    return relationFields(notebookId, {
+        a: tally.a,
+        b: tally.b,
+        kind: tally.kind,
+        from: tally.a,
+        owner: tally.ownerId,
+        confidence: 1,
+        evidence: interactionEvidence(tally.kind, totals.count),
+        madeBy: 'rule',
+        items: items.slice(0, MAX_RELATION_ITEMS),
+        ...totals,
+        parts,
+    });
+}
+
+/** The relation an interaction tally is saved as (its id, before anything is saved). */
+export function interactionRelation(
+    tally: Pick<InteractionTally, 'a' | 'b' | 'kind' | 'ownerId'>,
+): GraphRelationInput {
     return {
         a: tally.a,
         b: tally.b,
         kind: tally.kind,
         from: tally.a,
+        owner: tally.ownerId,
         confidence: 1,
-        evidence: interactionEvidence(tally.kind, sorted.length),
+        evidence: '',
         madeBy: 'rule',
+    };
+}
+
+/** A tally of a whole window as a relation: the count is the tally's. */
+export function interactionInput(tally: InteractionTally): GraphRelationInput {
+    const unique = [...new Map(tally.items.map((item) => [item.id, item])).values()];
+    const sorted = unique.sort((x, y) => y.at - x.at);
+    const parts = buildParts(sorted);
+    return {
+        ...interactionRelation(tally),
+        evidence: interactionEvidence(tally.kind, sorted.length),
         items: sorted.slice(0, MAX_RELATION_ITEMS).map((item) => item.id),
-        count: sorted.length,
-        firstAt: sorted[sorted.length - 1]?.at,
-        lastAt: sorted[0]?.at,
+        ...partTotals(parts),
+        parts,
     };
 }
 
 /**
- * Adds new messages, emails or events to the pairs' interactions, one relation per pair:
- * only items newer than the last one counted (an item uploaded again isn't counted twice;
- * the next full pass counts the window exactly). Removed interactions stay removed.
+ * Adds newly uploaded messages, emails or events to the pairs' interactions, one relation
+ * per pair and member. The caller passes only items not counted before (see
+ * `findCountedItems`), so an item uploaded again, or an event in the future, is never
+ * counted twice. Removed interactions stay removed.
  */
 export async function addInteractions(
     notebookId: string,
@@ -369,14 +531,7 @@ export async function addInteractions(
     const byId = new Map<string, InteractionTally>();
     for (const tally of tallies) {
         if (tally.a === tally.b || tally.items.length === 0) continue;
-        const id = relationId(notebookId, {
-            a: tally.a,
-            b: tally.b,
-            kind: tally.kind,
-            confidence: 1,
-            evidence: '',
-            madeBy: 'rule',
-        });
+        const id = relationId(notebookId, interactionRelation(tally));
         const earlier = byId.get(id);
         byId.set(id, earlier ? { ...earlier, items: [...earlier.items, ...tally.items] } : tally);
     }
@@ -388,33 +543,27 @@ export async function addInteractions(
         const current = existing.get(id);
         if (current?.status === 'removed') continue;
         const base = current?.status === 'active' ? current : null;
-        const known = new Set(base?.items ?? []);
-        const fresh = new Map<string, number>();
-        for (const item of tally.items) {
-            if (known.has(item.id)) continue;
-            if (base?.lastAt !== undefined && item.at <= base.lastAt) continue;
-            fresh.set(item.id, item.at);
-        }
-        if (fresh.size === 0) continue;
-        const ats = [...fresh.values()];
-        const count = (base?.count ?? 0) + fresh.size;
+        const fresh = [...new Map(tally.items.map((item) => [item.id, item])).values()];
+        // Older relations without parts count as one part of their own.
+        const before: InteractionPart[] =
+            base?.parts ??
+            (base?.count
+                ? [
+                      {
+                          key: OTHER_PART,
+                          count: base.count,
+                          firstAt: base.firstAt ?? 0,
+                          lastAt: base.lastAt ?? 0,
+                          samples: (base.items ?? []).slice(0, PART_SAMPLES),
+                      },
+                  ]
+                : []);
+        const parts = addToParts(before, fresh);
         const items = [
-            ...[...fresh].sort((x, y) => y[1] - x[1]).map(([itemId]) => itemId),
+            ...fresh.sort((x, y) => y.at - x.at).map((item) => item.id),
             ...(base?.items ?? []),
-        ].slice(0, MAX_RELATION_ITEMS);
-        const fields = relationFields(notebookId, {
-            a: tally.a,
-            b: tally.b,
-            kind: tally.kind,
-            from: tally.a,
-            confidence: 1,
-            evidence: interactionEvidence(tally.kind, count),
-            madeBy: 'rule',
-            items,
-            count,
-            firstAt: Math.min(base?.firstAt ?? Infinity, ...ats),
-            lastAt: Math.max(base?.lastAt ?? -Infinity, ...ats),
-        });
+        ];
+        const fields = interactionFields(notebookId, tally, parts, [...new Set(items)]);
         writes.push({
             updateOne: {
                 filter: { _id: id, notebookId, status: { $ne: 'removed' } },
@@ -599,14 +748,25 @@ export async function removeGraphRelation(
     id: string,
     userId: string,
 ): Promise<boolean> {
-    const result = await relations().updateOne(
-        { _id: id, notebookId, status: 'active' },
-        { $set: { status: 'removed', removedBy: userId, updatedAt: new Date() } },
-    );
-    return result.matchedCount > 0;
+    const doc = await relations().findOne({ _id: id, notebookId, status: 'active' });
+    if (!doc) return false;
+    const removal = {
+        $set: { status: 'removed' as const, removedBy: userId, updatedAt: new Date() },
+    };
+    // Readers see two members' tallies of the same pair as one reason: both go.
+    if (isInteraction(doc.kind))
+        await relations().updateMany(
+            { notebookId, pair: doc.pair, kind: doc.kind, status: 'active' },
+            removal,
+        );
+    else await relations().updateOne({ _id: id, notebookId, status: 'active' }, removal);
+    return true;
 }
 
-/** Takes out every reason on one line, for good. */
+/**
+ * Takes out every reason on one line, for good: the pair is blocked, so no reason (a new
+ * email, an event together) brings the line back.
+ */
 export async function removeGraphPair(
     notebookId: string,
     pair: string,
@@ -614,7 +774,14 @@ export async function removeGraphPair(
 ): Promise<boolean> {
     const result = await relations().updateMany(
         { notebookId, pair, status: 'active' },
-        { $set: { status: 'removed', removedBy: userId, updatedAt: new Date() } },
+        {
+            $set: {
+                status: 'removed',
+                blocksPair: true,
+                removedBy: userId,
+                updatedAt: new Date(),
+            },
+        },
     );
     return result.matchedCount > 0;
 }
@@ -689,46 +856,101 @@ export function legacyLinkToRelation(
 }
 
 /**
- * Copies the notebook's one-link-per-pair links into relations, a batch at a time.
- * Nothing is deleted: the old documents are only marked as copied, and a relation already
- * there is never overwritten. True once every link is copied.
+ * Copies older links into relations. A removal always wins: it replaces an active
+ * relation with the same id, and nothing else on its pair stays. Anything else is copied
+ * only where there's no relation yet. The old documents are marked as copied, never
+ * deleted.
  */
-export async function migrateLegacyGraphLinks(notebookId: string, batch = 5_000): Promise<boolean> {
-    const legacy = await legacyLinks()
-        .find({ notebookId, migratedAt: { $exists: false } })
-        .limit(batch)
-        .toArray();
+async function copyLegacyLinks(notebookId: string, legacy: LegacyGraphLinkDocument[]) {
     const writes: RelationWrite[] = [];
+    const blocked = new Set<string>();
     for (const link of legacy) {
         const relation = legacyLinkToRelation(link);
         if (!relation) continue;
-        const fields = relationFields(notebookId, relation);
+        const { status: _active, ...fields } = relationFields(notebookId, relation);
+        void _active;
+        const kept = {
+            ...(link.checkedAt ? { checkedAt: link.checkedAt } : {}),
+            ...(link.goneSince ? { goneSince: link.goneSince } : {}),
+            createdAt: link.createdAt,
+        };
+        const removed = relation.status === 'removed';
+        if (removed) blocked.add(fields.pair);
         writes.push({
             updateOne: {
                 filter: { _id: relationId(notebookId, relation), notebookId },
-                update: {
-                    $setOnInsert: {
-                        ...fields,
-                        status: relation.status,
-                        ...(relation.status === 'removed' ? { blocksPair: true } : {}),
-                        ...(link.removedBy ? { removedBy: link.removedBy } : {}),
-                        ...(link.checkedAt ? { checkedAt: link.checkedAt } : {}),
-                        ...(link.goneSince ? { goneSince: link.goneSince } : {}),
-                        createdAt: link.createdAt,
-                        updatedAt: link.updatedAt,
-                    },
-                },
+                update: removed
+                    ? {
+                          $set: {
+                              status: 'removed',
+                              blocksPair: true,
+                              updatedAt: link.updatedAt,
+                              ...(link.removedBy ? { removedBy: link.removedBy } : {}),
+                          },
+                          $setOnInsert: { ...fields, ...kept },
+                      }
+                    : {
+                          $setOnInsert: {
+                              ...fields,
+                              ...kept,
+                              status: relation.status,
+                              updatedAt: link.updatedAt,
+                          },
+                      },
                 upsert: true,
             },
         });
     }
     await writeRelations(writes);
-    if (legacy.length)
+    const pairs = [...blocked];
+    for (let i = 0; i < pairs.length; i += 500)
+        await relations().deleteMany({
+            notebookId,
+            pair: { $in: pairs.slice(i, i + 500) },
+            status: { $ne: 'removed' },
+        });
+    for (let i = 0; i < legacy.length; i += 1000)
         await legacyLinks().updateMany(
-            { _id: { $in: legacy.map((link) => link._id) }, notebookId },
+            { _id: { $in: legacy.slice(i, i + 1000).map((link) => link._id) }, notebookId },
             { $set: { migratedAt: new Date() } },
         );
-    return legacy.length < batch;
+}
+
+/** Most older removals copied in one go (a notebook has far fewer than this). */
+const MAX_LEGACY_REMOVALS = 50_000;
+
+/**
+ * Copies the notebook's one-link-per-pair links into relations. Removals go first, all of
+ * them (they're few), so nothing the rules or the model save can bring one back; then the
+ * rest, a batch at a time. True once every link is copied.
+ */
+export async function migrateLegacyGraphLinks(
+    notebookId: string,
+    batch = 5_000,
+    maxBatches = 10,
+): Promise<boolean> {
+    // Every removal, copied or not: one copied earlier must still win over an active
+    // relation saved since.
+    await copyLegacyLinks(
+        notebookId,
+        await legacyLinks()
+            .find({ notebookId, status: 'removed' })
+            .limit(MAX_LEGACY_REMOVALS)
+            .toArray(),
+    );
+    for (let i = 0; i < maxBatches; i++) {
+        const legacy = await legacyLinks()
+            .find({ notebookId, migratedAt: { $exists: false } })
+            .limit(batch)
+            .toArray();
+        if (legacy.length === 0) break;
+        await copyLegacyLinks(notebookId, legacy);
+    }
+    const left = await legacyLinks().findOne(
+        { notebookId, migratedAt: { $exists: false } },
+        { projection: { _id: 1 } },
+    );
+    return !left;
 }
 
 // MARK: - Nodes (people, places, topics, events)
@@ -912,6 +1134,55 @@ export async function markItemsJudged(
 /** Items seen this long ago have left the window: forget them. */
 export async function pruneJudgedItems(notebookId: string, before: Date): Promise<void> {
     await judged().deleteMany({ notebookId, judgedAt: { $lt: before } });
+}
+
+// MARK: - What the interactions have counted
+
+/** Which of these item nodes the notebook's interactions already count. */
+export async function findCountedItems(
+    notebookId: string,
+    nodeIds: string[],
+): Promise<Set<string>> {
+    const seen = new Set<string>();
+    const prefix = `${notebookId}|`;
+    const ids = [...new Set(nodeIds)];
+    for (let i = 0; i < ids.length; i += 500) {
+        const docs = await counted()
+            .find(
+                { _id: { $in: ids.slice(i, i + 500).map((id) => prefix + id) }, notebookId },
+                { projection: { _id: 1 } },
+            )
+            .toArray();
+        for (const doc of docs) seen.add(doc._id.slice(prefix.length));
+    }
+    return seen;
+}
+
+/** Notes items as counted; only the ones not noted yet are written. */
+export async function markItemsCounted(
+    notebookId: string,
+    nodeIds: string[],
+    now: Date,
+): Promise<void> {
+    const known = await findCountedItems(notebookId, nodeIds);
+    const fresh = [...new Set(nodeIds)].filter((id) => !known.has(id));
+    for (let i = 0; i < fresh.length; i += 1000) {
+        await counted().bulkWrite(
+            fresh.slice(i, i + 1000).map((id) => ({
+                updateOne: {
+                    filter: { _id: `${notebookId}|${id}`, notebookId },
+                    update: { $setOnInsert: { notebookId, countedAt: now } },
+                    upsert: true,
+                },
+            })),
+            { ordered: false },
+        );
+    }
+}
+
+/** Items counted this long ago have left the window: forget them. */
+export async function pruneCountedItems(notebookId: string, before: Date): Promise<void> {
+    await counted().deleteMany({ notebookId, countedAt: { $lt: before } });
 }
 
 // MARK: - Model budget
