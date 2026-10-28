@@ -750,7 +750,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "Just Maple";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
-				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Just Maple shows your calendar events in notebook Calendar pages and can use the current event to name recordings. Events stay on this device.";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Just Maple syncs your calendar events to your Maple account so they show in notebook Calendar pages and Maple’s assistant can help you plan. It adds an event only when you tap Add to calendar.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Japanese Maple needs access to your camera to scan barcodes.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Japanese Maple needs access to your microphone to record audio for transcription.";
 				INFOPLIST_KEY_NSSystemAdministrationUsageDescription = "Japanese Maple needs screen recording permission to capture system audio for multi-track transcription.";
@@ -823,7 +823,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "Just Maple";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
-				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Just Maple shows your calendar events in notebook Calendar pages and can use the current event to name recordings. Events stay on this device.";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Just Maple syncs your calendar events to your Maple account so they show in notebook Calendar pages and Maple’s assistant can help you plan. It adds an event only when you tap Add to calendar.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Japanese Maple needs access to your camera to scan barcodes.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Japanese Maple needs access to your microphone to record audio for transcription.";
 				INFOPLIST_KEY_NSSystemAdministrationUsageDescription = "Japanese Maple needs screen recording permission to capture system audio for multi-track transcription.";
