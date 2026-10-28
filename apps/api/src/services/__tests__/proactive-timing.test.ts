@@ -10,6 +10,13 @@ const store = vi.hoisted(() => ({
     events: [] as Record<string, unknown>[],
     /** About me: people related to the owner, as [name, relation]. */
     people: [] as [string, string][],
+    /**
+     * Messages in the owner's threads, newest first, as the database has them: where the
+     * user's own replies show up (they never join the pile).
+     */
+    heads: [] as Record<string, unknown>[],
+    /** A stored item's thread name, by item id. */
+    threadOf: {} as Record<string, string>,
 }));
 
 vi.mock('../bot-executor.service', () => ({
@@ -50,10 +57,19 @@ vi.mock('../device-data-access.service', () => ({
     ]),
 }));
 vi.mock('../../repositories/device-item.repo', () => ({
+    // Stored items: each in a thread of its own, unless `threadOf` names one.
     findDeviceItemsByIds: vi.fn(async (_userId: string, ids: string[]) =>
-        ids.map((id) => ({ id })),
+        ids.map((id) => ({
+            id,
+            source: id.split(':')[0],
+            thread: `chat-${id}`,
+            occurredAt: 0,
+            ...(store.threadOf[id] ? { thread: store.threadOf[id] } : {}),
+        })),
     ),
     findDeviceItems: vi.fn(async () => ({ items: store.events, total: store.events.length })),
+    findThreadMessageHeads: vi.fn(async () => store.heads),
+    findMyContactCard: vi.fn(async () => ({ id: 'contacts:me', title: 'Zubair Lawrence' })),
 }));
 vi.mock('../../repositories/profile.repo', () => ({
     findMe: vi.fn(async () => ({ id: 'me', kind: 'person', name: 'Me', aliases: [] })),
@@ -85,6 +101,7 @@ import {
     runDailyBrief,
     whenIdle,
 } from '../proactive-bot.service';
+import { flushWaitingNews } from '../proactive-scheduler.service';
 import { mongoAvailable } from '../../__tests__/setup';
 import { addToPile, getPile, MAX_PILE_ITEMS } from '../../repositories/proactive-pile.repo';
 import { botExecutor } from '../bot-executor.service';
@@ -125,15 +142,17 @@ const mail = (n: number, snippet = `Newsletter ${n}`) => ({
 });
 
 /**
- * A new calendar event: something no notification told the user, so it always gets a
- * triage (unlike a lone text or email, which is held in code).
+ * A calendar event someone else organizes: news no notification told the user, so it
+ * always gets a triage (unlike a lone text or email, or the user's own change).
+ * `organizer: null` for an event of the user's own.
  */
-const event = (n: number, snippet = `Event ${n}`) => ({
+const event = (n: number, snippet = `Event ${n}`, organizer: string | null = 'School Office') => ({
     kind: 'added',
     item: {
         id: `calendar:${n}`,
         source: 'calendar',
         when: '2026-11-20T10:00:00-05:00',
+        ...(organizer ? { sender: organizer } : {}),
         snippet,
         score: 0,
     },
@@ -143,7 +162,14 @@ const event = (n: number, snippet = `Event ${n}`) => ({
 const text = (
     n: number,
     snippet: string,
-    options: { sender?: string; when?: string; fromMe?: boolean; lastFromMe?: string } = {},
+    options: {
+        sender?: string;
+        when?: string;
+        fromMe?: boolean;
+        lastFromMe?: string;
+        /** A group chat's members; a 1:1 chat has just the sender. */
+        participants?: string[];
+    } = {},
 ) => {
     const when = options.when ?? '2026-10-28T14:00:00-04:00';
     const sender = options.sender ?? 'Jennifer Pelham';
@@ -154,7 +180,7 @@ const text = (
             source: 'imessage',
             when,
             sender: options.fromMe ? 'Me' : sender,
-            participants: [sender],
+            participants: options.participants ?? [sender],
             ...(options.fromMe ? { fromMe: true } : {}),
             snippet,
             score: 0,
@@ -190,6 +216,10 @@ beforeEach(() => {
     store.shared = null;
     store.events = [];
     store.people = [];
+    store.heads = [];
+    store.threadOf = {};
+    // Answers queued for one test never leak into the next.
+    vi.mocked(triagePile).mockReset();
     // Calendar items get an overlap check; by default it finds nothing.
     vi.mocked(overlapNewsFor).mockResolvedValue(undefined as never);
     vi.mocked(findUserBotByIdInternal).mockResolvedValue(bot);
@@ -284,9 +314,11 @@ describe.runIf(mongoAvailable)('missed-only: no relaying what a notification sho
     const signalsSeen = () => vi.mocked(triagePile).mock.calls.at(-1)![0].signals;
     /** 2 pm plus `minutes`. */
     const later = (minutes: number) => new Date(+AFTERNOON + minutes * 60_000);
+    const wait = { now: false, urgency: 1, drop: [] };
+    const now = { now: true, urgency: 2, drop: [] };
 
     it('a single fresh text is neither triaged nor posted, and is dropped once due', async () => {
-        vi.mocked(triagePile).mockResolvedValue({ now: true, urgency: 3, drop: [] });
+        vi.mocked(triagePile).mockResolvedValue(now);
         // She wrote last at 1:50; the user answered at 1:55. Nothing is owed.
         await arrive([
             text(1, JEN, {
@@ -305,15 +337,19 @@ describe.runIf(mongoAvailable)('missed-only: no relaying what a notification sho
         expect(await pileKeys()).toEqual([]);
     });
 
-    it('a single fresh email is held the same way', async () => {
-        vi.mocked(triagePile).mockResolvedValue({ now: true, urgency: 3, drop: [] });
-        await arrive([mail(1, 'Your flight is cancelled')]);
+    it('"lol" is never awaiting a reply: held, then dropped without a reminder', async () => {
+        vi.mocked(triagePile).mockResolvedValue(now);
+        await arrive([text(1, 'lol')]);
+        vi.setSystemTime(later(200));
+        await checkWaitingReplies(page, 'u1');
+        await flushPendingNews(page, 'u1');
         expect(triagePile).not.toHaveBeenCalled();
         expect(botExecutor.runProactive).not.toHaveBeenCalled();
+        expect(await pileKeys()).toEqual([]);
     });
 
     it('an unanswered question is told once its delay has passed, not before', async () => {
-        vi.mocked(triagePile).mockResolvedValue({ now: true, urgency: 2, drop: [] });
+        vi.mocked(triagePile).mockResolvedValue(now);
         await arrive([text(1, 'Can you grab the cake on your way?')]);
         expect(botExecutor.runProactive).not.toHaveBeenCalled();
         // Two hours later: past the max wait, still inside the three-hour reply delay. It
@@ -336,7 +372,7 @@ describe.runIf(mongoAvailable)('missed-only: no relaying what a notification sho
 
     it('a close person waits an hour, not three', async () => {
         store.people = [['Jennifer Pelham', 'spouse']];
-        vi.mocked(triagePile).mockResolvedValue({ now: true, urgency: 2, drop: [] });
+        vi.mocked(triagePile).mockResolvedValue(now);
         await arrive([text(1, 'Can you call the school?')]);
         vi.setSystemTime(later(55));
         await checkWaitingReplies(page, 'u1');
@@ -347,18 +383,32 @@ describe.runIf(mongoAvailable)('missed-only: no relaying what a notification sho
         expect(botExecutor.runProactive).toHaveBeenCalledTimes(1);
     });
 
-    it('a question the user has since answered is never told', async () => {
-        vi.mocked(triagePile).mockResolvedValue({ now: true, urgency: 2, drop: [] });
+    it('a question the user answered (seen in the database, not the pile) is never told', async () => {
+        vi.mocked(triagePile).mockResolvedValue(now);
+        store.threadOf = { 'imessage:1': 'Jen' };
         await arrive([text(1, 'Can you grab the cake on your way?')]);
-        await arrive(
-            [text(2, 'Sure', { fromMe: true, when: '2026-10-28T14:20:00-04:00' })],
-            later(20),
-        );
+        // The user replies on their phone at 2:20. Jen sends nothing more, so nothing new
+        // reaches the pile; the reply is only in their stored messages.
+        store.heads = [
+            {
+                id: 'imessage:reply',
+                source: 'imessage',
+                thread: 'Jen',
+                isFromMe: true,
+                occurredAt: Date.parse('2026-10-28T14:20:00-04:00') / 1000,
+            },
+            {
+                id: 'imessage:1',
+                source: 'imessage',
+                thread: 'Jen',
+                occurredAt: Date.parse('2026-10-28T14:00:00-04:00') / 1000,
+            },
+        ];
         vi.setSystemTime(later(200));
         await checkWaitingReplies(page, 'u1');
-        await flushPendingNews(page, 'u1');
         expect(triagePile).not.toHaveBeenCalled();
         expect(botExecutor.runProactive).not.toHaveBeenCalled();
+        // Past the max wait, and nothing owed: it leaves quietly.
         expect(await pileKeys()).toEqual([]);
     });
 
@@ -369,6 +419,7 @@ describe.runIf(mongoAvailable)('missed-only: no relaying what a notification sho
                 source: 'calendar',
                 title: 'Soccer practice',
                 location: 'Eastside park',
+                participants: [],
                 occurredAt: Date.parse('2026-10-28T16:00:00-04:00') / 1000,
             },
         ];
@@ -387,18 +438,103 @@ describe.runIf(mongoAvailable)('missed-only: no relaying what a notification sho
         expect(lastRun()!.prompt).toContain('May change the user');
     });
 
+    it("a text from one of the event's people counts, even without the event's words", async () => {
+        store.events = [
+            {
+                id: 'calendar:coffee',
+                source: 'calendar',
+                title: 'Coffee',
+                participants: ['Jennifer Pelham', 'zubair@example.com'],
+                occurredAt: Date.parse('2026-10-28T15:00:00-04:00') / 1000,
+            },
+        ];
+        vi.mocked(triagePile).mockResolvedValueOnce(now);
+        await arrive([text(1, 'Can we push to 3:30?')]);
+        expect(signalsSeen()[0]).toContain('mentions their event "Coffee"');
+        expect(botExecutor.runProactive).toHaveBeenCalledTimes(1);
+    });
+
     it("the complaint's text, about someone else's day, touches none of the user's plans", async () => {
         store.events = [
             {
                 id: 'calendar:party',
                 source: 'calendar',
                 title: 'Greyson pizza party',
+                participants: [],
                 occurredAt: Date.parse('2026-10-28T15:00:00-04:00') / 1000,
             },
         ];
         await arrive([text(1, JEN)]);
         expect(triagePile).not.toHaveBeenCalled();
         expect(botExecutor.runProactive).not.toHaveBeenCalled();
+    });
+
+    it('trouble from a close person goes to triage at once, not after an hour', async () => {
+        vi.mocked(triagePile).mockResolvedValue(now);
+        // From someone not close: held like any other text.
+        await arrive([text(1, 'Car broke down on 87', { sender: 'Alex Kim' })]);
+        expect(triagePile).not.toHaveBeenCalled();
+        store.people = [['Jennifer Pelham', 'spouse']];
+        await arrive([text(2, 'Car broke down on 87')], later(5));
+        expect(signalsSeen()).toContain('Possible trouble, from a close person: imessage:2');
+        expect(botExecutor.runProactive).toHaveBeenCalledTimes(1);
+    });
+
+    it('a lone email with a request, deadline or alert reaches the triage', async () => {
+        vi.mocked(triagePile).mockResolvedValue(wait);
+        await arrive([mail(1, 'Your flight is cancelled')]);
+        expect(triagePile).toHaveBeenCalledTimes(1);
+        expect(signalsSeen()).toContain('Email with a request, deadline or alert: mail:1');
+        await arrive([mail(2, 'Please sign the permission slip by Friday')], later(1));
+        expect(triagePile).toHaveBeenCalledTimes(2);
+    });
+
+    it('a lone newsletter or receipt stays held', async () => {
+        vi.mocked(triagePile).mockResolvedValue(now);
+        await arrive([mail(1, '20% off everything this weekend. Unsubscribe')]);
+        await arrive([mail(1, 'Thanks for your order! Free delivery on Tuesday')], later(1));
+        expect(triagePile).not.toHaveBeenCalled();
+    });
+
+    it("the user's own calendar change is held; someone else's goes to triage", async () => {
+        vi.mocked(triagePile).mockResolvedValue(wait);
+        const changed = (n: number, organizer: string | null) => ({
+            ...event(n, 'Dentist', organizer),
+            kind: 'changed',
+            item: {
+                ...event(n, 'Dentist', organizer).item,
+                when: '2026-10-28T18:00:00-04:00',
+            },
+        });
+        // No organizer, or the user organizes it: their own change.
+        await arrive([changed(1, null)]);
+        await arrive([changed(2, 'Zubair Lawrence')], later(1));
+        expect(triagePile).not.toHaveBeenCalled();
+        await arrive([changed(3, 'Dr. Patel')], later(2));
+        expect(signalsSeen()).toContain(
+            'Calendar event changed by Dr. Patel, starts within a day: calendar:3',
+        );
+    });
+
+    it('group banter is held; a plan taking shape in the group goes to triage', async () => {
+        vi.mocked(triagePile).mockResolvedValue(wait);
+        const group = ['Ana', 'Ben', 'Cy'];
+        await arrive([
+            text(1, 'haha that video', { sender: 'Ana', participants: group }),
+            text(2, 'lmaooo', { sender: 'Ben', participants: group }),
+            text(3, 'classic', { sender: 'Cy', participants: group }),
+        ]);
+        expect(triagePile).not.toHaveBeenCalled();
+        await arrive(
+            [
+                text(4, 'Pizza at mine tomorrow at 6?', {
+                    sender: 'Ana',
+                    participants: group,
+                }),
+            ],
+            later(1),
+        );
+        expect(triagePile).toHaveBeenCalledTimes(1);
     });
 
     it('several related messages across threads go out as one post', async () => {
@@ -430,8 +566,48 @@ describe.runIf(mongoAvailable)('missed-only: no relaying what a notification sho
         expect(await pileKeys()).toEqual([]);
     });
 
+    it('what the triage kept is summarised at max wait, even once only one is left', async () => {
+        vi.mocked(triagePile).mockResolvedValue(wait);
+        await arrive([
+            text(1, 'Is the party still on Saturday?', { sender: 'Ana' }),
+            text(2, 'Are we doing the party Saturday?', { sender: 'Ben' }),
+        ]);
+        expect(triagePile).toHaveBeenCalledTimes(1);
+        expect(botExecutor.runProactive).not.toHaveBeenCalled();
+        // The owner stops sharing Ben's chat: one text is left, which the triage kept.
+        store.shared = new Set(['imessage:1']);
+        vi.setSystemTime(later(125));
+        expect(await flushPendingNews(page, 'u1')).toBe(true);
+        expect(botExecutor.runProactive).toHaveBeenCalledTimes(1);
+        expect(lastRun()!.prompt).toContain('Is the party still on Saturday?');
+        expect(lastRun()!.prompt).toContain('waited long enough');
+    });
+
+    it('a plan note the triage kept is told with the max-wait summary', async () => {
+        store.events = [
+            {
+                id: 'calendar:soccer',
+                source: 'calendar',
+                title: 'Soccer practice',
+                participants: [],
+                occurredAt: Date.parse('2026-10-28T19:00:00-04:00') / 1000,
+            },
+        ];
+        vi.mocked(triagePile).mockResolvedValue(wait);
+        await arrive([text(1, 'Practice might move to 8 tonight', { sender: 'Coach Dan' })]);
+        expect(botExecutor.runProactive).not.toHaveBeenCalled();
+        expect((await getPile('page'))!.items[0]).toMatchObject({ kept: true });
+        vi.setSystemTime(later(125));
+        expect(await flushPendingNews(page, 'u1')).toBe(true);
+        expect(botExecutor.runProactive).toHaveBeenCalledTimes(1);
+        expect(lastRun()!.prompt).toContain('mentions their event \\"Soccer practice\\"');
+    });
+
     it('"every item" still relays a single text, facts only', async () => {
-        const eager = { ...page, proactive: { ...page.proactive, everyItem: true } };
+        const eager = {
+            ...page,
+            proactive: { ...page.proactive, everyItem: true },
+        };
         await arrive([text(1, JEN)], AFTERNOON, eager);
         await vi.waitFor(() => expect(botExecutor.runProactive).toHaveBeenCalledTimes(1));
         expect(triagePile).not.toHaveBeenCalled();
@@ -441,10 +617,73 @@ describe.runIf(mongoAvailable)('missed-only: no relaying what a notification sho
     });
 });
 
+describe.runIf(mongoAvailable)('the scheduler re-checks unanswered texts, and stops', () => {
+    const later = (minutes: number) => new Date(+AFTERNOON + minutes * 60_000);
+    async function tickAt(minutes: number): Promise<number> {
+        vi.setSystemTime(later(minutes));
+        const sent = await flushWaitingNews([page], later(minutes));
+        await whenIdle('page');
+        return sent;
+    }
+
+    it('once the triage has looked at it as overdue, the 15-minute checks stop', async () => {
+        store.people = [['Jennifer Pelham', 'spouse']];
+        vi.mocked(triagePile).mockResolvedValue({
+            now: false,
+            urgency: 1,
+            drop: [],
+        });
+        await arrive([text(1, 'Can you call the school?')]);
+        expect(await tickAt(30)).toBe(0); // too soon for anyone
+        // An hour in: overdue for a close person. Looked at, kept to tell later.
+        expect(await tickAt(61)).toBe(1);
+        expect(triagePile).toHaveBeenCalledTimes(1);
+        expect(signalsSeen()).toContain('Unanswered for over 1 h, from a close person: imessage:1');
+        // No more checks until the max-wait summary at two hours.
+        expect(await tickAt(80)).toBe(0);
+        expect(await tickAt(100)).toBe(0);
+        expect(triagePile).toHaveBeenCalledTimes(1);
+        expect(await tickAt(121)).toBe(1);
+        expect(botExecutor.runProactive).toHaveBeenCalledTimes(1);
+        expect(await pileKeys()).toEqual([]);
+        expect(await tickAt(140)).toBe(0);
+    });
+
+    it('stops when the user has answered, and the text leaves at max wait', async () => {
+        vi.mocked(triagePile).mockResolvedValue({
+            now: true,
+            urgency: 2,
+            drop: [],
+        });
+        store.threadOf = { 'imessage:1': 'Jen' };
+        await arrive([text(1, 'Can you grab the cake?')]);
+        store.heads = [
+            {
+                id: 'imessage:reply',
+                source: 'imessage',
+                thread: 'Jen',
+                isFromMe: true,
+                occurredAt: Date.parse('2026-10-28T14:05:00-04:00') / 1000,
+            },
+        ];
+        // From an hour on the scheduler looks every 15 minutes; each look finds the reply.
+        expect(await tickAt(61)).toBe(1);
+        expect(await tickAt(70)).toBe(0); // same 15-minute window
+        expect(await tickAt(76)).toBe(1);
+        // At two hours the max wait drops it, and the checks end.
+        expect(await tickAt(121)).toBe(1);
+        expect(await pileKeys()).toEqual([]);
+        expect(await tickAt(140)).toBe(0);
+        expect(triagePile).not.toHaveBeenCalled();
+        expect(botExecutor.runProactive).not.toHaveBeenCalled();
+    });
+
+    const signalsSeen = () => vi.mocked(triagePile).mock.calls.at(-1)![0].signals;
+});
 describe('posting prompts: facts only', () => {
     const rules = [
         "Never guess at people's availability, intentions or feelings",
-        'No suggestions or advice. When there is a concrete conflict, name the conflict',
+        'No suggestions or advice. When there is a concrete conflict, name it',
         'No remarks about the message itself',
         'she may be free to help with party prep or pickup', // the bad example
     ];
@@ -474,6 +713,33 @@ describe('posting prompts: facts only', () => {
         const brief = briefPrompt('now');
         expect(brief).toContain('never speculate');
         expect(brief).toContain("no guesses about people's availability, intentions or feelings");
+    });
+
+    it('says an unanswered question may be reported, and settles conflicts with one question', () => {
+        const system = proactiveSystemPrompt('Maple', page, '');
+        expect(system).toContain(
+            'Telling the user a question has gone unanswered is not a restatement',
+        );
+        expect(system).toContain('You may end with one short question');
+        expect(system).toContain('Ask a question only to settle a concrete conflict');
+        // The bad example is invented, never a real person's text.
+        expect(system).toContain('Sam texted that');
+        expect(system).not.toContain('Jennifer');
+    });
+
+    it('leave reminders, About me questions and the brief get their own allowances', () => {
+        const leave = proactiveSystemPrompt('Maple', page, '', 'leave');
+        expect(leave).toContain('Saying when to leave');
+        expect(leave).not.toContain('## When to post');
+        expect(leave).not.toContain('reply NO_UPDATE');
+        const question = proactiveSystemPrompt('Maple', page, '', 'question');
+        expect(question).toContain('Asking the user one short question is the point');
+        expect(question).toContain('Ask exactly one question.');
+        expect(question).not.toContain('## Facts only');
+        const brief = proactiveSystemPrompt('Maple', page, '', 'brief');
+        expect(brief).toContain('## The daily brief');
+        expect(brief).not.toContain('never just repeat one');
+        expect(brief).not.toContain('## When to post');
     });
 
     it('the triage is told the phone already notified the user', () => {

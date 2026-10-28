@@ -14,10 +14,11 @@ import type { OverlapNews } from './calendar-overlap.service';
  * Missed-only: the user's phone already notifies them of every text and email, so a post
  * is only for what they may have missed. A message that changes or conflicts with their
  * plans, a question to them left unanswered for a while (see `REPLY_DELAY_MINUTES`),
- * several items that add up across threads or sources, or a change they get no
- * notification for (a calendar event someone else moved). A pile holding one fresh
- * message, and nothing else, is held in code without asking the model (`relayOnly`) and
- * never posted on its own.
+ * several items that add up across threads or sources, a change they get no
+ * notification for (a calendar event someone else moved), an email with a request or
+ * alert, or trouble from someone close. A pile of things the user already knows about
+ * is held in code without asking the model (`relayOnly`) and never posted on its own;
+ * what the triage has seen and kept is never dropped by code.
  */
 
 const MODEL = process.env.PROACTIVE_TRIAGE_MODEL || 'claude-haiku-5-5';
@@ -142,17 +143,34 @@ export function closePeopleNames(
     return [...new Set(names)];
 }
 
-/** A sender matches a close name exactly, or by first name ("Emma" for "Emma Lee"). */
+/**
+ * A sender is close only when their name equals a close person's full name or one of
+ * their About me aliases exactly ("Emma" counts only if "Emma" is an alias). A shared
+ * first name never does: "Sara Khan" is not "Sara Lee".
+ */
 export function closeMatcher(names: string[]): IsClose {
     if (names.length === 0) return nobodyClose;
-    return (sender) => {
-        if (!sender) return false;
-        const who = normalizeName(sender);
-        return names.some(
-            (name) => who === name || who.startsWith(`${name} `) || name.startsWith(`${who} `),
-        );
-    };
+    const known = new Set(names.map(normalizeName));
+    return (sender) => !!sender && known.has(normalizeName(sender));
 }
+
+/**
+ * What a pile round knows beyond the pile itself, read from the database: who is close,
+ * when the user last wrote in each message's thread, and the user's own names.
+ */
+export interface PileContext {
+    isClose: IsClose;
+    /** Item key → when the user last wrote in that item's thread (ms), re-read fresh. */
+    repliedAt: ReadonlyMap<string, number>;
+    /** The user's own names (About me, their contact card), lowercased. Empty: unknown. */
+    myNames: ReadonlySet<string>;
+}
+
+export const emptyContext: PileContext = {
+    isClose: nobodyClose,
+    repliedAt: new Map(),
+    myNames: new Set(),
+};
 
 /** The user's phone already showed them this (or they wrote it themselves). */
 export function isNotified(item: PileItem): boolean {
@@ -172,18 +190,36 @@ export function conversationKey(item: PileItem): string {
 
 const sentAt = (item: PileItem) => Date.parse(item.entry.item.when);
 
+const textOf = (item: PileItem) =>
+    `${item.entry.item.title ?? ''} ${item.entry.item.snippet ?? ''}`;
+
+/** A question or a request: only these are worth a reminder when left unanswered. */
+const ASKS =
+    /\?|\b(?:can|could|would|will) (?:you|u|we|someone|anyone)\b|\bplease\b|\bpls\b|\bplz\b|\blet me know\b|\blmk\b|\bneed you to\b|\bcan i\b|\b(?:are|do|did) you\b|\bwhat time\b|\brsvp\b/i;
+
+export function asks(item: PileItem): boolean {
+    return ASKS.test(textOf(item));
+}
+
 /**
- * An iMessage from someone else that the user hasn't answered: nothing from the user in
- * that thread since, going by every snapshot of the thread in the pile and the user's own
- * messages there.
+ * A question or request in an iMessage from someone else that the user hasn't answered:
+ * nothing from the user in that thread since. "Since" goes by the user's latest message
+ * in the thread, re-read from the database (`repliedAt`): the user's own messages don't
+ * reach the pile, and a message's thread snapshot is from when it arrived. "lol" or "ok"
+ * is never awaiting anything.
  */
-export function stillAwaiting(item: PileItem, items: PileItem[]): boolean {
+export function stillAwaiting(
+    item: PileItem,
+    items: PileItem[],
+    context: PileContext = emptyContext,
+): boolean {
     const hit = item.entry.item;
     if (hit.source !== 'imessage' || hit.fromMe || !item.entry.conversation) return false;
+    if (!asks(item)) return false;
     const sent = sentAt(item);
     if (!Number.isFinite(sent)) return false;
     const key = conversationKey(item);
-    let lastFromMe = -Infinity;
+    let lastFromMe = context.repliedAt.get(item.key) ?? -Infinity;
     for (const other of items) {
         if (other.entry.item.source !== 'imessage' || conversationKey(other) !== key) continue;
         if (other.entry.item.fromMe) lastFromMe = Math.max(lastFromMe, sentAt(other));
@@ -204,9 +240,12 @@ export function replyOverdue(
     item: PileItem,
     items: PileItem[],
     now: Date,
-    isClose: IsClose,
+    context: PileContext,
 ): boolean {
-    return stillAwaiting(item, items) && +now - sentAt(item) >= replyDelayMs(item, isClose);
+    return (
+        stillAwaiting(item, items, context) &&
+        +now - sentAt(item) >= replyDelayMs(item, context.isClose)
+    );
 }
 
 /** Unanswered, but its delay hasn't passed: kept, in case it becomes overdue. */
@@ -214,14 +253,18 @@ export function replyPending(
     item: PileItem,
     items: PileItem[],
     now: Date,
-    isClose: IsClose,
+    context: PileContext,
 ): boolean {
-    return stillAwaiting(item, items) && +now - sentAt(item) < replyDelayMs(item, isClose);
+    return (
+        stillAwaiting(item, items, context) &&
+        +now - sentAt(item) < replyDelayMs(item, context.isClose)
+    );
 }
 
 /**
- * Whether the scheduler should look at the pile again: an unanswered message has waited
- * the shorter (close person) delay and hasn't been looked at as overdue yet.
+ * Whether the scheduler should look at the pile again: an unanswered question has waited
+ * the shorter (close person) delay and hasn't been looked at as overdue yet. Without the
+ * database's view of replies; the round itself re-reads them.
  */
 export function replyCheckDue(items: PileItem[], now: Date): boolean {
     return items.some(
@@ -233,21 +276,86 @@ export function replyCheckDue(items: PileItem[], now: Date): boolean {
 }
 
 /**
- * Nothing in the pile the user may have missed: no urgent item, nothing from a source
- * they get no notification for, no overdue reply, nothing folded, and at most one
- * message from someone else. Such a pile is held without a model call, and never posted
- * on its own.
+ * A calendar change with evidence someone else made it: it has an organizer, and that
+ * isn't the user. The Mac sends the organizer's name (and attendees) but not who made a
+ * change, so an event without an organizer, or when the user's names are unknown,
+ * counts as the user's own.
+ */
+export function othersChange(item: PileItem, context: PileContext): boolean {
+    const hit = item.entry.item;
+    if (hit.source !== 'calendar' || !hit.sender || context.myNames.size === 0) return false;
+    return !context.myNames.has(normalizeName(hit.sender));
+}
+
+/**
+ * Something the user already knows about: a text or email (their phone showed it), or a
+ * calendar change of their own. Anything else (someone else's calendar change, places,
+ * health, contacts) is news no notification told them.
+ */
+export function alreadyKnown(item: PileItem, context: PileContext): boolean {
+    if (isNotified(item)) return true;
+    return item.entry.item.source === 'calendar' && !othersChange(item, context);
+}
+
+/** An email worth a look even alone: phones don't always notify mail. */
+const MAIL_CUE =
+    /\b(?:please|pls|by (?:today|tonight|tomorrow|eod|end of (?:day|week)|(?:mon|tues|wednes|thurs|fri|satur|sun)day)|sign(?:ature)?|e-?sign|confirm\w*|cancel\w*|delay\w*|resched\w*|security|sign-?in|log-?in|password|verif\w*|suspicious|deliver\w*|package|parcel|flight|boarding|gate|booking|reservation|check-?in|itinerary|due|deadline|overdue|action required|rsvp)\b/i;
+/** Newsletters and receipts stay held, unless they carry a strong alert. */
+const PROMO =
+    /\bunsubscribe\b|\d+\s?% off|\bnewsletter\b|\bsale\b|\bdeals?\b|\bpromo\w*|\breceipt\b|\border (?:#|number|confirmation)|\bthanks for your (?:order|purchase)\b/i;
+const STRONG_ALERT =
+    /\b(?:security|sign-?in|log-?in|password|suspicious|verif\w*|cancel\w*|delay\w*|flight|boarding|gate)\b/i;
+const DAY_WORD = /\b(?:today|tonight|tomorrow|tmrw)\b/i;
+const CLOCK_TIME = /\b\d{1,2}(?::\d{2})?\s?(?:am|pm)\b|\b\d{1,2}:\d{2}\b/i;
+
+export function mailAlert(item: PileItem): boolean {
+    if (item.entry.item.source !== 'mail' || item.entry.item.fromMe) return false;
+    const text = textOf(item);
+    const cued = MAIL_CUE.test(text) || (DAY_WORD.test(text) && CLOCK_TIME.test(text));
+    return cued && (!PROMO.test(text) || STRONG_ALERT.test(text));
+}
+
+/** Trouble, from a close person: told now, not after the reply delay. */
+const URGENT_CUE =
+    /\b(?:broke down|broken down|breakdown|accident|crash(?:ed)?|hospital|emergency|urgent|asap|call me|ambulance|police|injur\w*|hurt|bleeding|stranded)\b/i;
+
+export function closeAlarm(item: PileItem, context: PileContext): boolean {
+    const hit = item.entry.item;
+    return (
+        hit.source === 'imessage' &&
+        !hit.fromMe &&
+        context.isClose(hit.sender) &&
+        URGENT_CUE.test(textOf(item))
+    );
+}
+
+/**
+ * Nothing in the pile the user may have missed, so it is held without a model call and
+ * never posted on its own. Not when anything in it:
+ * - is urgent, or was seen by the triage and kept to tell later;
+ * - is news no notification told them (someone else's calendar change, places...);
+ * - is an email with a request, deadline or alert, or trouble from a close person;
+ * - is a question unanswered past its delay;
+ * or when messages from others span more than one thread, or one thread (a person or
+ * a group chat) has several messages and one of them mentions timing or plans. Ordinary
+ * chat, even from several people in one group, stays held.
  */
 export function relayOnly(
     items: PileItem[],
     overflow: PileOverflow | undefined,
     now: Date,
-    isClose: IsClose,
+    context: PileContext,
 ): boolean {
     if (overflow?.count) return false;
-    if (items.some((item) => item.urgent || !isNotified(item))) return false;
-    if (items.some((item) => replyOverdue(item, items, now, isClose))) return false;
-    return items.filter((item) => !item.entry.item.fromMe).length <= 1;
+    for (const item of items) {
+        if (item.urgent || item.kept) return false;
+        if (!alreadyKnown(item, context)) return false;
+        if (mailAlert(item) || closeAlarm(item, context)) return false;
+        if (replyOverdue(item, items, now, context)) return false;
+    }
+    const others = items.filter((item) => isNotified(item) && !item.entry.item.fromMe);
+    if (new Set(others.map(conversationKey)).size > 1) return false;
+    return others.length <= 1 || !others.some(hasPlanCue);
 }
 
 /** Words that suggest a message is about when or where something happens. */
@@ -274,6 +382,8 @@ export interface UpcomingEvent {
     id: string;
     title?: string;
     location?: string;
+    /** The organizer and attendees, as names or handles (emails). */
+    people?: string[];
     when: string;
 }
 
@@ -285,15 +395,39 @@ export function hasPlanCue(item: PileItem): boolean {
     );
 }
 
+/** Lowercased, with punctuation as spaces, padded: for whole-phrase matching. */
+const phrase = (text: string) => ` ${text.toLowerCase().replace(/[^\p{L}\p{N}@.+]+/gu, ' ')} `;
+
 /**
- * The event a message may change: it mentions timing and shares a distinctive word with
- * the event's title or place ("Practice moved to 5" and "Soccer practice").
+ * The sender, by name or handle, is one of the event's people, or named in its title or
+ * place ("Coffee with Jen Pelham"). A 1:1 chat's single participant counts as a handle.
+ */
+function senderInEvent(item: PileItem, event: UpcomingEvent): boolean {
+    const hit = item.entry.item;
+    const handles = [hit.sender, ...(hit.participants?.length === 1 ? hit.participants : [])]
+        .filter((handle): handle is string => !!handle)
+        .map(normalizeName);
+    if (handles.length === 0) return false;
+    const people = new Set((event.people ?? []).map(normalizeName));
+    const named = phrase(`${event.title ?? ''} ${event.location ?? ''}`);
+    return handles.some(
+        (handle) => people.has(handle) || (handle.length >= 3 && named.includes(phrase(handle))),
+    );
+}
+
+/**
+ * The event a message may change: it mentions timing, and shares a distinctive word with
+ * the event's title or place ("Practice moved to 5" and "Soccer practice"), or comes from
+ * one of the event's people.
  */
 export function eventTouched(item: PileItem, events: UpcomingEvent[]): UpcomingEvent | undefined {
     if (!hasPlanCue(item)) return undefined;
-    const said = words(`${item.entry.item.title ?? ''} ${item.entry.item.snippet ?? ''}`);
-    return events.find((event) =>
-        [...words(`${event.title ?? ''} ${event.location ?? ''}`)].some((word) => said.has(word)),
+    const said = words(textOf(item));
+    return events.find(
+        (event) =>
+            [...words(`${event.title ?? ''} ${event.location ?? ''}`)].some((word) =>
+                said.has(word),
+            ) || senderInEvent(item, event),
     );
 }
 
@@ -317,7 +451,7 @@ export function deterministicSignals(
     items: PileItem[],
     now: Date,
     overflow?: PileOverflow,
-    isClose: IsClose = nobodyClose,
+    context: PileContext = emptyContext,
 ): TriageSignals {
     // Urgent items (a clash, or an earlier "now" whose post failed) go out now.
     const forceNow = items.some((item) => item.urgent);
@@ -326,16 +460,25 @@ export function deterministicSignals(
     for (const item of items) {
         const { entry } = item;
         const start = Date.parse(entry.item.when);
+        // Only someone else's change: the user knows about their own.
         if (
             entry.item.source === 'calendar' &&
             entry.kind === 'changed' &&
+            othersChange(item, context) &&
             Number.isFinite(start) &&
             start >= now.getTime() &&
             start <= soon
         )
-            notes.push(`Calendar event changed, starts within a day: ${entry.item.id}`);
+            notes.push(
+                `Calendar event changed by ${entry.item.sender}, starts within a day: ${entry.item.id}`,
+            );
         // Only once the delay has passed: a fresh one just reached them as a notification.
-        if (replyOverdue(item, items, now, isClose)) notes.push(unansweredNote(item, now, isClose));
+        if (replyOverdue(item, items, now, context))
+            notes.push(unansweredNote(item, now, context.isClose));
+        if (mailAlert(item))
+            notes.push(`Email with a request, deadline or alert: ${entry.item.id}`);
+        if (closeAlarm(item, context))
+            notes.push(`Possible trouble, from a close person: ${entry.item.id}`);
     }
     const total = items.length + (overflow?.count ?? 0);
     if (total >= 10)
@@ -411,8 +554,11 @@ export function triageSystemPrompt(): string {
         "- a message changes or conflicts with the user's own plans: a calendar clash, or a new time or place for one of their events today or tomorrow;",
         '- a direct question or request to the user has gone unanswered for a while (a signal says "Unanswered for over"). A fresh one is never urgent: they just got the notification;',
         '- several items across threads or sources add up to something no single notification showed: a plan taking shape across chats, the same topic from several people, a problem building up;',
-        '- a change the user gets no notification for, like a calendar event someone else changed or cancelled, that affects the next few hours.',
+        '- a change the user gets no notification for, like a calendar event someone else changed or cancelled (a signal names who), that affects the next few hours;',
+        '- trouble from a close person ("broke down", "hospital", "call me"), or an email with a request, deadline or alert (a signed form, a cancelled or delayed flight, a security sign-in) that needs the user soon. Emails do not always reach the phone as notifications.',
         "A message that only says what its notification said and touches none of the user's plans is never worth telling, now or later: list it in drop. That includes status updates (\"my meeting got cancelled\"), chit-chat, news about other people's own plans, and a run of texts from one person in one thread. Don't drop a question or request to the user that is still unanswered: it may need a reminder later.",
+        'In a group chat, several people talking is not "the same topic from several people": it needs a request to the user, a plan taking shape or a conflict. Ordinary group banter goes in drop.',
+        'Calendar changes the user made themselves are not news to them.',
         'Marketing, newsletters, routine receipts and automated notices are never urgent; list them in drop too.',
         'urgency: 0 routine, 1 worth knowing, 2 should know soon, 3 act now.',
         'headline: at most 12 words on the most important new thing, e.g. "Practice moved to 5pm at Westside field". Facts only. Only the user sees it.',
