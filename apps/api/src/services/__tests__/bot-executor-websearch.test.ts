@@ -54,12 +54,18 @@ import { findInvocationById } from '../../repositories/bot-invocation.repo';
 import { createMessageInThread, findMessageById } from '../../repositories/message.repo';
 import { findPageByIdForBot } from '../../repositories/page.repo';
 import { incrementWebSearchUsage } from '../../repositories/web-search-usage.repo';
-import { getMacDataToolContext } from '../mac-data-tools.service';
+import { getMacDataToolContext, macDataToolDefinitions } from '../mac-data-tools.service';
+import { pageTransport } from '../web-search.service';
 
 let template: any;
 let userBot: any;
 let invocation: any;
 let requests: Array<{ url: string; body: any; headers: Record<string, string> }>;
+type ClaudeStep = { tool: { name: string; input: Record<string, unknown> } } | { text: string };
+/** What the Claude stub answers on each round, in order. */
+let claudeScript: ClaudeStep[];
+/** Brave answers in order; the last one repeats. */
+let braveReplies: unknown[];
 
 const json = (body: unknown) =>
     new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } });
@@ -78,32 +84,31 @@ const braveReply = {
 };
 
 /** Answers every provider: one tool call to web_search first, then a text reply. */
-function stubProviders(finalText = 'The festival is on Nov 2.') {
+function stubProviders(finalText = 'The festival is on Nov 2.', script?: ClaudeStep[]) {
     requests = [];
     let round = 0;
+    claudeScript = script ?? [
+        { tool: { name: 'web_search', input: { query: 'maple festival dates' } } },
+        { text: finalText },
+    ];
     vi.stubGlobal(
         'fetch',
         vi.fn(async (input: string, init: RequestInit = {}) => {
             const url = String(input);
             const body = init.body ? JSON.parse(String(init.body)) : undefined;
             requests.push({ url, body, headers: (init.headers || {}) as Record<string, string> });
-            if (url.startsWith('https://api.search.brave.com/')) return json(braveReply);
+            if (url.startsWith('https://api.search.brave.com/'))
+                return json(braveReplies.length > 1 ? braveReplies.shift() : braveReplies[0]);
             const first = round++ === 0;
             if (url === 'https://api.anthropic.com/v1/messages') {
+                const step = claudeScript.shift() ?? { text: finalText };
                 return json(
-                    first
+                    'tool' in step
                         ? {
                               stop_reason: 'tool_use',
-                              content: [
-                                  {
-                                      type: 'tool_use',
-                                      id: 't1',
-                                      name: 'web_search',
-                                      input: { query: 'maple festival dates' },
-                                  },
-                              ],
+                              content: [{ type: 'tool_use', id: `t${round}`, ...step.tool }],
                           }
-                        : { stop_reason: 'end_turn', content: [{ type: 'text', text: finalText }] },
+                        : { stop_reason: 'end_turn', content: [{ type: 'text', text: step.text }] },
                 );
             }
             if (url === 'https://api.openai.com/v1/responses') {
@@ -159,6 +164,7 @@ const replyText = () => JSON.stringify(vi.mocked(createMessageInThread).mock.cal
 
 beforeEach(() => {
     vi.clearAllMocks();
+    braveReplies = [braveReply];
     vi.stubEnv('BRAVE_SEARCH_API_KEY', 'brave-test-key');
     template = {
         _id: 'template',
@@ -214,7 +220,9 @@ describe('web search tools for every provider', () => {
         // The result went back to the model as untrusted content.
         const toolResult = second!.body.messages.at(-1).content[0];
         expect(toolResult).toMatchObject({ type: 'tool_result', tool_use_id: 't1' });
-        expect(toolResult.content).toMatch(/^<untrusted_web_content source="web_search">/);
+        expect(toolResult.content).toMatch(
+            /^<untrusted_web_content id="[0-9a-f]{16}" source="web_search">/,
+        );
         expect(toolResult.content).toContain('https://festival.example/2026');
     });
 
@@ -307,6 +315,103 @@ describe('web search tools for every provider', () => {
     });
 });
 
+describe('fetching pages', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    it("opens a link from the user's message, and nothing the model made up", async () => {
+        invocation.context.mentionText = 'Summarize https://blog.example/post for me';
+        const send = vi.spyOn(pageTransport, 'send').mockResolvedValue(
+            new Response('<title>Post</title><p>Body</p>', {
+                headers: { 'content-type': 'text/html' },
+            }),
+        );
+        stubProviders('Summary.', [
+            {
+                tool: {
+                    name: 'fetch_page',
+                    input: { url: 'https://blog.example/post?leak=member-notes' },
+                },
+            },
+            {
+                tool: {
+                    name: 'fetch_page',
+                    input: { url: 'https://blog.example/post' },
+                },
+            },
+            { text: 'Summary.' },
+        ]);
+        await new BotExecutorService().execute('invocation');
+        const [, second, third] = llmRequests();
+        expect(second!.body.messages.at(-1).content[0].content).toMatch(/exactly as it appeared/);
+        expect(third!.body.messages.at(-1).content[0].content).toContain('Body');
+        expect(send).toHaveBeenCalledTimes(1);
+        expect(send.mock.calls[0]![0].url.href).toBe('https://blog.example/post');
+    });
+
+    it("doesn't open links that only appear in note content", async () => {
+        invocation.context.mentionText = 'Summarize the note';
+        invocation.context.fullContent = 'Notes: https://blog.example/post';
+        const send = vi.spyOn(pageTransport, 'send');
+        stubProviders('Summary.', [
+            {
+                tool: {
+                    name: 'fetch_page',
+                    input: { url: 'https://blog.example/post' },
+                },
+            },
+            { text: 'Summary.' },
+        ]);
+        await new BotExecutorService().execute('invocation');
+        expect(llmRequests()[1]!.body.messages.at(-1).content[0].content).toMatch(
+            /exactly as it appeared/,
+        );
+        expect(send).not.toHaveBeenCalled();
+    });
+});
+
+describe('each LLM action starts fresh', () => {
+    it("doesn't carry limits or sources from one action to the next", async () => {
+        template.definition.actions = [
+            {
+                type: 'llm',
+                id: 'research',
+                outputVariable: 'notes',
+                config: { model: 'claude-haiku-5-5', userPrompt: '{{$mentionText}}' },
+            },
+            {
+                type: 'llm',
+                id: 'reply',
+                config: { model: 'claude-haiku-5-5', userPrompt: 'Answer: {{notes}}' },
+            },
+        ];
+        braveReplies = [
+            { web: { results: [{ title: 'First', url: 'https://first.example/' }] } },
+            { web: { results: [{ title: 'First', url: 'https://first.example/' }] } },
+            { web: { results: [{ title: 'First', url: 'https://first.example/' }] } },
+            { web: { results: [{ title: 'First', url: 'https://first.example/' }] } },
+            { web: { results: [{ title: 'First', url: 'https://first.example/' }] } },
+            {
+                web: { results: [{ title: 'Second', url: 'https://second.example/' }] },
+            },
+        ];
+        const fiveSearches: ClaudeStep[] = Array.from({ length: 5 }, (_, i) => ({
+            tool: { name: 'web_search', input: { query: `topic ${i}` } },
+        }));
+        stubProviders('Done.', [
+            ...fiveSearches,
+            { text: 'Notes.' },
+            { tool: { name: 'web_search', input: { query: 'follow up' } } },
+            { text: 'Done.' },
+        ]);
+        await new BotExecutorService().execute('invocation');
+        // The second action could still search after the first used its five.
+        expect(braveRequests()).toHaveLength(6);
+        // Its Sources list only names what it found itself.
+        expect(replyText()).toContain('https://second.example/');
+        expect(replyText()).not.toContain('https://first.example/');
+    });
+});
+
 describe('proactive runs', () => {
     const run = () =>
         new BotExecutorService().runProactive({
@@ -325,17 +430,56 @@ describe('proactive runs', () => {
             previousMessages: [],
         });
 
-    it('may not search unless proactive search is turned on', async () => {
-        stubProviders();
-        await run();
-        expect(llmRequests()[0]!.body.tools.map((t: any) => t.name)).toEqual(['search_local_data']);
+    it('offers no tools at all with only webSearch on (and no local-data tools)', async () => {
+        vi.mocked(macDataToolDefinitions).mockReturnValueOnce([]);
+        stubProviders('NO_UPDATE', [{ text: 'NO_UPDATE' }]);
+        const posted = await run();
+        const [request] = llmRequests();
+        expect(request!.body.tools).toBeUndefined();
+        expect(request!.body.system).not.toMatch(/web_search|fetch_page|untrusted_web_content/);
+        expect(braveRequests()).toHaveLength(0);
+        expect(incrementWebSearchUsage).not.toHaveBeenCalled();
+        expect(posted).toBeNull();
     });
 
-    it('may search when proactive search is turned on', async () => {
-        userBot.config.webSearchProactive = true;
-        stubProviders();
+    it('may not search unless proactive search is turned on, even if the model tries', async () => {
+        stubProviders('NO_UPDATE', [
+            { tool: { name: 'web_search', input: { query: 'news' } } },
+            { text: 'NO_UPDATE' },
+        ]);
         await run();
-        expect(llmRequests()[0]!.body.tools.map((t: any) => t.name)).toContain('web_search');
+        const [first, second] = llmRequests();
+        expect(first!.body.tools.map((t: any) => t.name)).toEqual(['search_local_data']);
+        expect(first!.body.system).not.toContain('web_search');
+        // The call goes to the local-data tools, never to the web.
+        expect(second!.body.messages.at(-1).content[0].content).toBe('{"results":[]}');
+        expect(braveRequests()).toHaveLength(0);
+    });
+
+    it('may search, but never open pages, when proactive search is turned on', async () => {
+        userBot.config.webSearchProactive = true;
+        const send = vi.spyOn(pageTransport, 'send');
+        stubProviders('NO_UPDATE', [
+            {
+                tool: { name: 'web_search', input: { query: 'maple festival dates' } },
+            },
+            {
+                tool: {
+                    name: 'fetch_page',
+                    input: { url: 'https://festival.example/2026' },
+                },
+            },
+            { text: 'NO_UPDATE' },
+        ]);
+        await run();
+        const [first, , third] = llmRequests();
+        expect(first!.body.tools.map((t: any) => t.name)).toEqual([
+            'search_local_data',
+            'web_search',
+        ]);
         expect(braveRequests()).toHaveLength(1);
+        expect(third!.body.messages.at(-1).content[0].content).toMatch(/Unknown tool fetch_page/);
+        expect(send).not.toHaveBeenCalled();
+        send.mockRestore();
     });
 });

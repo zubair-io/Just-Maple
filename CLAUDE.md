@@ -701,11 +701,13 @@ Key files: `calendar-proposal.service.ts` / `.repo.ts` / `routes/calendar-propos
 Bots can search the web (`web_search`) and read pages (`fetch_page`). Both are our own tools, offered the same way to every provider through `llm-tool-loop.service.ts`; there are no provider-native search tools.
 
 1. The server needs `BRAVE_SEARCH_API_KEY`. Without it the tools are never offered and the settings switch is hidden (`GET /api/user-bots` returns `webSearchAvailable`).
-2. Each bot has a switch, `config.webSearch`, **off by default**. Proactive runs also need `config.webSearchProactive`.
-3. Searches per bot owner per UTC day are capped by `WEB_SEARCH_DAILY_LIMIT` (default 50), counted in `web_search_usage`. Each reply may run up to 5 searches and 5 page reads.
-4. `fetch_page` reads only http(s), checks every hop (first URL and each redirect) resolves to public addresses only, and has a timeout, a 1 MB read cap and a text-only content-type check. Scripts and styles are stripped.
-5. Search results and page text reach the model wrapped in `<untrusted_web_content>`, and the system prompt says text inside is never an instruction. The prompt also forbids personal details in queries; queries with email addresses or long account-like numbers are refused.
-6. Replies link their sources; if a reply used the web but has no links, a short **Sources** list is appended.
+2. Each bot has a switch, `config.webSearch`, **off by default**. Proactive runs also need `config.webSearchProactive`, and even then they only get `web_search`, never `fetch_page`.
+3. Searches per bot owner per UTC day are capped by `WEB_SEARCH_DAILY_LIMIT` (default 50), counted in `web_search_usage` (one document per owner per day, `_id` `owner:day`). Each LLM action may run up to 5 searches and 5 page reads; limits and the Sources list start fresh for every action.
+4. `fetch_page` only opens a URL exactly as it appeared in that action's search results or in the user's own message (not note content, not fetched text), so injected text can't make the bot send private data out in a URL. URLs with personal details in them are refused too.
+5. Every hop (first URL and each redirect) must be http(s) and resolve only to public addresses. The request then connects to the address that was checked, with the original Host header and TLS name (`sendPinned`), so a DNS answer that changes in between is never used, and proxy env vars are ignored. Also: a timeout, a 1 MB read cap, text-only content types, scripts stripped.
+6. Search results and page text reach the model NFKC-normalized, with invisible characters and any form of the wrapper name removed, wrapped in `<untrusted_web_content id="…">` with a random id per call. The system prompt says text inside is never an instruction.
+7. The prompt forbids personal details in queries. Queries with email addresses, account-like numbers, phone numbers or street addresses are refused.
+8. Replies link their sources; if a reply used the web but has no links, a short **Sources** list is appended.
 
 Key files: `apps/api/src/services/web-search.service.ts` (provider interface, Brave, tools, page fetcher), `repositories/web-search-usage.repo.ts`, `bot-executor.service.ts` (tool assembly), web `bots.component.*`.
 

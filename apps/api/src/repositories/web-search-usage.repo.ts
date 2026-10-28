@@ -1,14 +1,17 @@
 import { getDb } from '../db/client';
 
 /**
- * Daily web-search counts, one document per bot owner (`_id` is the owner's user id).
- * The document is reused each day: a new day resets the count instead of adding a row.
+ * Daily web-search counts: one document per bot owner per UTC day, `_id` "owner:day".
+ * Each search is a single atomic upsert-and-increment, so concurrent searches can't
+ * lose a count.
  */
 
 const COLLECTION = 'web_search_usage';
+const MAX_ATTEMPTS = 3;
 
 interface WebSearchUsageDoc {
     _id: string;
+    ownerId: string;
     /** UTC day the count belongs to, YYYY-MM-DD. */
     day: string;
     count: number;
@@ -23,17 +26,22 @@ export function utcDay(now = new Date()): string {
 export async function incrementWebSearchUsage(ownerId: string, now = new Date()): Promise<number> {
     const collection = getDb().collection<WebSearchUsageDoc>(COLLECTION);
     const day = utcDay(now);
-    const sameDay = await collection.findOneAndUpdate(
-        { _id: ownerId, day },
-        { $inc: { count: 1 }, $set: { updatedAt: now } },
-        { returnDocument: 'after' },
-    );
-    if (sameDay) return sameDay.count;
-    // First search today (or ever): start the count again.
-    const fresh = await collection.findOneAndUpdate(
-        { _id: ownerId },
-        { $set: { day, count: 1, updatedAt: now } },
-        { upsert: true, returnDocument: 'after' },
-    );
-    return fresh?.count ?? 1;
+    for (let attempt = 1; ; attempt++) {
+        try {
+            const doc = await collection.findOneAndUpdate(
+                { _id: `${ownerId}:${day}` },
+                {
+                    $inc: { count: 1 },
+                    $set: { updatedAt: now },
+                    $setOnInsert: { ownerId, day },
+                },
+                { upsert: true, returnDocument: 'after' },
+            );
+            return doc?.count ?? 1;
+        } catch (error) {
+            // Two first-of-the-day upserts can race; the loser retries and increments.
+            const duplicate = (error as { code?: number }).code === 11000;
+            if (!duplicate || attempt >= MAX_ATTEMPTS) throw error;
+        }
+    }
 }

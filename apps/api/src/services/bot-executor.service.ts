@@ -81,8 +81,6 @@ interface ExecutionContext {
     macData?: MacDataToolContext | null;
     /** Set for proactive runs, which may search the web only with their own switch. */
     proactive?: boolean;
-    /** Web search and page reading for this run; null when the bot doesn't have them. */
-    web?: WebToolContext | null;
 }
 
 /**
@@ -468,11 +466,11 @@ export class BotExecutorService {
         const web = this.webToolsFor(ctx, provider);
         // Without tool calling there is no web access, so that prompt never mentions it.
         const systemWithoutWeb = systemPrompt;
-        if (web) systemPrompt = `${systemPrompt || ''}\n\n${webSearchSystemPrompt()}`;
+        if (web) systemPrompt = `${systemPrompt || ''}\n\n${webSearchSystemPrompt(web)}`;
         // One tool set for every provider: local data and web tools side by side.
         const tools = [
             ...(macData ? macDataToolDefinitions(macData) : []),
-            ...(web ? webSearchToolDefinitions() : []),
+            ...(web ? webSearchToolDefinitions(web) : []),
         ];
         const execute = (name: string, input: Record<string, unknown>) =>
             web && isWebTool(name)
@@ -639,21 +637,20 @@ export class BotExecutorService {
     }
 
     /**
-     * Web tools for this run. Proactive runs need their own switch. Inception's server
-     * gets no tools at all, so it gets no web tools either.
+     * Web tools for one LLM action, new each time so limits and sources don't carry over.
+     * Proactive runs need their own switch and never open pages. Inception's server gets
+     * no tools at all, so it gets no web tools either.
      */
     private webToolsFor(ctx: ExecutionContext, provider: string): WebToolContext | null {
-        if (ctx.web === undefined) {
-            ctx.web =
-                provider === 'inception'
-                    ? null
-                    : webToolContextFor({
-                          config: ctx.config,
-                          ownerId: ctx.userBot.userId,
-                          proactive: ctx.proactive === true,
-                      });
-        }
-        return ctx.web;
+        if (provider === 'inception') return null;
+        const proactive = ctx.proactive === true;
+        return webToolContextFor({
+            config: ctx.config,
+            ownerId: ctx.userBot.userId,
+            proactive,
+            // Only the user's own message: links in notes or fetched text don't count.
+            userMessage: proactive ? undefined : ctx.invocation.context.mentionText,
+        });
     }
 
     private toTurns(
