@@ -40,6 +40,9 @@ vi.mock('../../repositories/device-item.repo', () => ({
     findDeviceItemsByIds: vi.fn(async (_userId: string, ids: string[]) =>
         ids.map((id) => ({ id })),
     ),
+    findDeviceItems: vi.fn(async () => ({ items: [], total: 0 })),
+    findThreadMessageHeads: vi.fn(async () => []),
+    findMyContactCard: vi.fn(async () => null),
 }));
 vi.mock('../../repositories/unread.repo', () => ({
     getLastReadAtByPageId: vi.fn().mockResolvedValue(null),
@@ -201,8 +204,10 @@ describe.runIf(mongoAvailable)('handleDeviceDataChanges', () => {
             },
         ] as any);
 
+        // Two mails: one alone is something the user's phone already showed them.
+        const second = { ...entry, item: { ...entry.item, id: 'mail:2', snippet: 'FedEx' } };
         await handleDeviceDataChanges('u1', [
-            { notebookId: 'n1', entries: [entry] },
+            { notebookId: 'n1', entries: [entry, second] },
             { notebookId: 'no-access', entries: [entry] },
         ] as never);
         await vi.waitFor(() => expect(botExecutor.runProactive).toHaveBeenCalledTimes(1));
@@ -227,7 +232,7 @@ describe.runIf(mongoAvailable)('handleDeviceDataChanges', () => {
                 source: 'imessage',
                 when: '2026-10-24T11:00:00-04:00',
                 sender: '+15185550142',
-                snippet: 'example.com/menu',
+                snippet: 'example.com/menu, does Thursday work?',
                 score: 0,
             },
             conversation: {
@@ -236,7 +241,11 @@ describe.runIf(mongoAvailable)('handleDeviceDataChanges', () => {
                 recent: [
                     { from: 'them', when: '2026-10-24T09:00:00-04:00', text: 'Coffee this week?' },
                     { from: 'me', when: '2026-10-24T10:00:00-04:00', text: 'Yes! Thursday?' },
-                    { from: 'them', when: '2026-10-24T11:00:00-04:00', text: 'example.com/menu' },
+                    {
+                        from: 'them',
+                        when: '2026-10-24T11:00:00-04:00',
+                        text: 'example.com/menu, does Thursday work?',
+                    },
                 ],
             },
         };

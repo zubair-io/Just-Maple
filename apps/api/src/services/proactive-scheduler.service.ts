@@ -14,6 +14,7 @@ import { purgeOldOverlapFlags } from '../repositories/calendar-overlap.repo';
 import { findNotebookByIdUnsafe } from '../repositories/notebook.repo';
 import {
     askAboutMeQuestion,
+    checkWaitingReplies,
     flushPendingNews,
     runDailyBrief,
     sendLeaveReminder,
@@ -21,7 +22,10 @@ import {
 import { formatInZone } from '../utils/time-zone';
 import { currentPlace } from './about-me.service';
 import { getPiles, purgeOldTriageBudgets } from '../repositories/proactive-pile.repo';
-import { holdNews, maxWaitMs } from './proactive-triage.service';
+import { holdNews, maxWaitMs, replyCheckDue } from './proactive-triage.service';
+
+/** How often a pile with an unanswered text is looked at again, at most. */
+export const REPLY_CHECK_EVERY_MS = 15 * 60_000;
 
 /**
  * Time-based proactive messages, checked every minute:
@@ -39,7 +43,9 @@ import { holdNews, maxWaitMs } from './proactive-triage.service';
  *    it asked recently or has nothing worth asking.
  * 4. **Max-wait summaries.** News a bot held back (see "Now or wait" in
  *    proactive-bot.service) goes out once it has waited the chat's maximum, outside quiet
- *    hours, unless the morning brief is about to take it in.
+ *    hours, unless the morning brief is about to take it in. A pile holding a text the
+ *    user hasn't answered is also looked at again (every 15 minutes at most) once it
+ *    may have passed its reply delay, so an unanswered question is told on time.
  *
  * Each send is claimed in the database first, so several API instances never send it twice.
  * A send that fails (the bot couldn't run, or the model errored) is retried a few times.
@@ -130,13 +136,36 @@ export async function flushWaitingNews(pages: Page[], now: Date): Promise<number
     for (const page of waiting) {
         const pile = piles.get(page.id);
         const settings = page.proactive!;
-        if (!pile || now.getTime() - pile.oldestAt.getTime() < maxWaitMs(settings)) continue;
+        if (!pile) continue;
+        const waitedMax = now.getTime() - pile.oldestAt.getTime() >= maxWaitMs(settings);
+        const replyCheck = !settings.everyItem && replyCheckDue(pile.items, now);
+        if (!waitedMax && !replyCheck) continue;
         const owner = settings.ownerUserId;
         const timeZone = (await collectorTimeZone(owner)) ?? 'UTC';
         if (holdNews(settings, now, timeZone)) continue;
-        const key = flushKey(page.id, pile.oldestAt, now, maxWaitMs(settings));
+        if (waitedMax) {
+            const key = flushKey(page.id, pile.oldestAt, now, maxWaitMs(settings));
+            if (await claimScheduledSend(key, now)) {
+                deliver(
+                    key,
+                    now,
+                    () => flushPendingNews(page, owner),
+                    `news summary for page ${page.id}`,
+                );
+                sent++;
+                continue;
+            }
+        }
+        if (!replyCheck) continue;
+        // An unanswered text may have passed its delay: look again, without a flush.
+        const key = `reply:${page.id}:${Math.floor(now.getTime() / REPLY_CHECK_EVERY_MS)}`;
         if (!(await claimScheduledSend(key, now))) continue;
-        deliver(key, now, () => flushPendingNews(page, owner), `news summary for page ${page.id}`);
+        deliver(
+            key,
+            now,
+            () => checkWaitingReplies(page, owner),
+            `reply check for page ${page.id}`,
+        );
         sent++;
     }
     return sent;

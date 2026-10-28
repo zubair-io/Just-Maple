@@ -29,8 +29,17 @@ export interface PileItem {
     addedAt: Date;
     /** Bumped for each newer version, so a post only removes the version it covered. */
     rev: number;
-    /** A triage has seen this version. */
+    /** A triage (or the code check that held it back) has seen this version. */
     triaged?: boolean;
+    /** A triage has seen this version as unanswered past its reply delay. */
+    replyChecked?: boolean;
+    /**
+     * The triage model saw this version and kept it to tell later ("wait"). Code never
+     * drops a kept item on its own: it goes out with the max-wait summary or the brief.
+     */
+    kept?: boolean;
+    /** Found in code: the user's event this message may change, told with it. */
+    planNote?: string;
     /** Must go out now (a calendar clash, or the triage said now), even after a failed post. */
     urgent?: boolean;
     /**
@@ -254,13 +263,17 @@ const sameVersion = (covered: PileItem[]) => {
 /**
  * Records a triage: the versions it saw are marked triaged (and urgent when it said now),
  * the ones it dropped leave, and its view of the pile is kept. Newer versions that came
- * in meanwhile are untouched.
+ * in meanwhile are untouched. Options: `kept` when the triage model (not the code check)
+ * saw them; `replyChecked`, the seen items it looked at as overdue replies, so they
+ * aren't looked at again for that; `planNotes`, the user's events items may change.
  */
 export function markTriaged(
     pageId: string,
     seen: PileItem[],
     verdict: { now: boolean; urgency: number; headline?: string; drop: string[] },
+    options: { kept?: boolean; replyChecked?: Set<string>; planNotes?: Map<string, string> } = {},
 ): Promise<Pile | null> {
+    const replyChecked = options.replyChecked ?? new Set<string>();
     const wasSeen = sameVersion(seen);
     const dropped = new Set(verdict.drop);
     return changePile(pageId, undefined, (current) => {
@@ -274,6 +287,11 @@ export function markTriaged(
                         ? {
                               ...item,
                               triaged: true,
+                              ...(replyChecked.has(item.key) ? { replyChecked: true } : {}),
+                              ...(options.kept ? { kept: true } : {}),
+                              ...(options.planNotes?.has(item.key)
+                                  ? { planNote: options.planNotes.get(item.key) }
+                                  : {}),
                               ...(verdict.now && !item.urgent
                                   ? { urgent: true, urgentRev: item.rev }
                                   : {}),
