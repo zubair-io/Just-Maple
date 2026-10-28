@@ -4,7 +4,7 @@ import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { of } from 'rxjs';
 import type { FollowUp, FollowUpList, Page } from '@maple/shared';
 import { FollowUpsViewComponent } from './follow-ups-view.component';
-import { FollowUpsService } from '../../services/follow-ups.service';
+import { FollowUpsService, placeFollowUp } from '../../services/follow-ups.service';
 import { PageService } from '../../services/page.service';
 
 const day = 24 * 60 * 60;
@@ -52,8 +52,26 @@ const hike = followUp({
   snoozedUntil: now + 2 * day,
 });
 
+const closedByBot = followUp({
+  id: 'u|you_promised|imessage:5',
+  direction: 'you_promised',
+  what: 'Book the dentist',
+  status: 'done',
+  closedAt: now - day / 4,
+  closedBy: { type: 'bot', name: 'Helper' },
+});
+const expired = followUp({
+  id: 'u|they_owe|imessage:6',
+  direction: 'they_owe',
+  what: 'Return the drill',
+  status: 'expired',
+  closedAt: now - day,
+  closedBy: { type: 'auto' },
+});
+
 const list: FollowUpList = {
   followUps: [carpool, photos, reply, hike],
+  recent: [expired, closedByBot],
   status: { lastRunAt: '2026-10-28T00:00:00Z', modelAvailable: true },
 };
 
@@ -77,7 +95,7 @@ describe('FollowUpsViewComponent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     state.set(list);
-    // The real service drops done and dismissed ones and keeps the rest.
+    // Like the real service: done and dismissed ones move to Recently closed.
     service.act.mockImplementation(async (item: FollowUp, action: string, until?: string) => {
       const status =
         action === 'done'
@@ -93,11 +111,7 @@ describe('FollowUpsViewComponent', () => {
         ...(until ? { snoozedUntil: Math.floor(Date.parse(until) / 1000) } : {}),
       };
       if (status !== 'snoozed') delete (updated as Partial<FollowUp>).snoozedUntil;
-      state.update((current) => {
-        const rest = current!.followUps.filter((f) => f.id !== item.id);
-        const keep = status === 'open' || status === 'snoozed';
-        return { ...current!, followUps: keep ? [...rest, updated] : rest };
-      });
+      state.update((current) => placeFollowUp(current!, updated));
       return updated;
     });
     TestBed.configureTestingModule({
@@ -280,8 +294,32 @@ describe('FollowUpsViewComponent', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="undo"]')).toBeNull();
   });
 
+  it('lists recently closed ones with who closed them, and reopens them', async () => {
+    const fixture = render();
+    const section = () => fixture.nativeElement.querySelector('[data-testid="recent"]');
+    expect(text(section().querySelector('button'))).toContain('Recently closed · 2');
+    section().querySelector('button').click();
+    fixture.detectChanges();
+    // Newest first, each saying who closed it.
+    expect(rows(fixture, 'recent')).toEqual([closedByBot.id, expired.id]);
+    const labels = [...section().querySelectorAll('[data-testid="closed-by"]')].map(text);
+    expect(labels[0]).toContain('Done by Helper');
+    expect(labels[1]).toContain('Expired');
+
+    button(fixture, closedByBot.id, 'reopen').click();
+    await settle(fixture);
+    expect(service.act).toHaveBeenCalledWith(closedByBot, 'reopen', undefined);
+    expect(rows(fixture, 'you-owe')).toContain(closedByBot.id);
+    expect(rows(fixture, 'recent')).toEqual([expired.id]);
+
+    // Marked done here: it moves to Recently closed.
+    button(fixture, photos.id, 'done').click();
+    await settle(fixture);
+    expect(rows(fixture, 'recent')).toContain(photos.id);
+  });
+
   it('says when there is nothing owed, and when the server has no model', () => {
-    state.set({ followUps: [], status: { modelAvailable: false } });
+    state.set({ followUps: [], recent: [], status: { modelAvailable: false } });
     const fixture = render();
     expect(fixture.nativeElement.querySelector('[data-testid="empty"]')).not.toBeNull();
     const summary = text(fixture.nativeElement.querySelector('[data-testid="summary"]'));

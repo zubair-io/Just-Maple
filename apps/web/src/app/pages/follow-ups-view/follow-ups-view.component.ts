@@ -24,6 +24,13 @@ export const FOLLOW_UP_KIND_LABELS: Record<FollowUp['direction'], string> = {
   waiting_reply: 'Waiting on reply',
 };
 
+/** Why Follow-ups closed one by itself. */
+const CLOSED_REASON_LABELS: Record<NonNullable<FollowUp['closed']>['reason'], string> = {
+  reply: 'Closed by itself after a reply',
+  attachment: 'Closed by itself when it was sent',
+  calendar: 'Closed by itself for a calendar event',
+};
+
 /** The last done or dismiss, so it can be undone. */
 interface LastAction {
   followUp: FollowUp;
@@ -87,6 +94,11 @@ export class FollowUpsViewComponent {
     this.open().filter((f) => followUpOwedBy(f.direction) === 'them'),
   );
   readonly snoozed = computed(() => this.all().filter((f) => f.status === 'snoozed'));
+  /** Done, dismissed and expired in the last 14 days, newest first. */
+  readonly recent = computed(() =>
+    [...(this.service.list()?.recent ?? [])].sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0)),
+  );
+  readonly showRecent = signal(false);
 
   readonly summary = computed(() => {
     const count = this.open().length;
@@ -112,6 +124,16 @@ export class FollowUpsViewComponent {
 
   kindLabel(followUp: FollowUp): string {
     return FOLLOW_UP_KIND_LABELS[followUp.direction];
+  }
+
+  /** How it closed and who closed it: "Done by you", "Done by Helper", "Expired". */
+  closedLabel(followUp: FollowUp): string {
+    const by = followUp.closedBy;
+    if (followUp.status === 'expired') return 'Expired after staying open too long';
+    const what = followUp.status === 'dismissed' ? 'Dismissed' : 'Done';
+    if (by?.type === 'you') return `${what} by you`;
+    if (by?.type === 'bot') return `${what} by ${by.name || 'a bot'}`;
+    return CLOSED_REASON_LABELS[followUp.closed?.reason ?? 'reply'];
   }
 
   isOverdue(followUp: FollowUp): boolean {

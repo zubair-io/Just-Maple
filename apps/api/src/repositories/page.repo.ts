@@ -1379,13 +1379,35 @@ export async function findFollowUpsPage(notebookId: string): Promise<Page | null
     return doc ? toPageResponse(doc) : null;
 }
 
-/** Notebooks with a Follow-ups page: the ones whose messages and mail get scanned. */
-export async function findFollowUpsNotebookIds(limit = 1000): Promise<string[]> {
+/**
+ * Follow-ups pages (notebook and who added it), a page at a time in id order: pass `next`
+ * back for the following page, until it's undefined.
+ */
+export async function findFollowUpsPages(
+    after?: string,
+    limit = 200,
+): Promise<{ pages: Array<{ notebookId: string; userId: string }>; next?: string }> {
     const docs = await getCollection()
-        .find({ type: 'followups', isTrashed: { $ne: true } }, { projection: { notebookId: 1 } })
+        .find(
+            {
+                type: 'followups',
+                isTrashed: { $ne: true },
+                ...(after && ObjectId.isValid(after) ? { _id: { $gt: new ObjectId(after) } } : {}),
+            },
+            { projection: { _id: 1, notebookId: 1, userId: 1 } },
+        )
+        .sort({ _id: 1 })
         .limit(limit)
         .toArray();
-    return [...new Set(docs.map((doc) => doc.notebookId?.toString()).filter(Boolean))] as string[];
+    return {
+        pages: docs
+            .filter((doc) => doc.notebookId && doc.userId)
+            .map((doc) => ({
+                notebookId: doc.notebookId!.toString(),
+                userId: doc.userId.toString(),
+            })),
+        ...(docs.length === limit ? { next: docs.at(-1)!._id.toString() } : {}),
+    };
 }
 
 /** Every device data page in a notebook, whoever created it. */

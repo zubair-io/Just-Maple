@@ -23,6 +23,8 @@ export const FollowUpStatusSchema = Type.Union([
     Type.Literal('done'),
     Type.Literal('dismissed'),
     Type.Literal('snoozed'),
+    /** Open too long (30 days past due, or 45 days without a due date): closed by itself. */
+    Type.Literal('expired'),
 ]);
 export type FollowUpStatus = Static<typeof FollowUpStatusSchema>;
 
@@ -62,6 +64,15 @@ export const FollowUpSchema = Type.Object({
     confidence: Type.Number(),
     evidence: Type.Array(FollowUpEvidenceSchema),
     madeBy: Type.Union([Type.Literal('rule'), Type.Literal('model')]),
+    /** Done, dismissed or expired: when, and by whom. */
+    closedAt: Type.Optional(Type.Number()),
+    closedBy: Type.Optional(
+        Type.Object({
+            type: Type.Union([Type.Literal('you'), Type.Literal('bot'), Type.Literal('auto')]),
+            /** The bot's name. */
+            name: Type.Optional(Type.String()),
+        }),
+    ),
     /** Set when it closed by itself. */
     closed: Type.Optional(
         Type.Object({
@@ -83,7 +94,10 @@ export const FollowUpActionSchema = Type.Union([
 export type FollowUpAction = Static<typeof FollowUpActionSchema>;
 
 export const FollowUpListSchema = Type.Object({
+    /** Open and snoozed. */
     followUps: Type.Array(FollowUpSchema),
+    /** Done, dismissed and expired in the last 14 days, newest first, to reopen. */
+    recent: Type.Array(FollowUpSchema),
     status: Type.Object({
         lastRunAt: Type.Optional(Type.String()),
         /** Promises are read by a model (the server has a model key). */

@@ -93,6 +93,54 @@
         </section>
       }
     }
+    @if (recent().length) {
+      <section class="mt-6" data-testid="recent">
+        <button
+          type="button"
+          class="follow-up-heading flex cursor-pointer items-center gap-1 border-none bg-transparent p-0"
+          [attr.aria-expanded]="showRecent()"
+          (click)="showRecent.set(!showRecent())"
+        >
+          <span class="material-symbols-rounded text-base" aria-hidden="true">{{
+            showRecent() ? 'expand_more' : 'chevron_right'
+          }}</span>
+          Recently closed · {{ recent().length }}
+        </button>
+        @if (showRecent()) {
+          @for (followUp of recent(); track followUp.id) {
+            <article class="follow-up-row" [attr.data-id]="followUp.id">
+              <div class="min-w-0 flex-1">
+                <p class="m-0 font-sans text-sm text-[var(--color-text-muted)]">
+                  <span class="follow-up-kind" [attr.data-kind]="followUp.direction">{{
+                    kindLabel(followUp)
+                  }}</span>
+                  {{ followUp.what }}
+                </p>
+                <p
+                  class="m-0 mt-0.5 font-sans text-xs text-[var(--color-text-muted)]"
+                  data-testid="closed-by"
+                >
+                  {{ followUp.who }} · {{ closedLabel(followUp) }}
+                  @if (followUp.closedAt) {
+                    · {{ date(followUp.closedAt) | date: 'MMM d' }}
+                  }
+                </p>
+              </div>
+              <button
+                type="button"
+                class="follow-up-button shrink-0"
+                [disabled]="busyId() === followUp.id"
+                (click)="reopen(followUp)"
+                data-action="reopen"
+              >
+                <span class="material-symbols-rounded text-base" aria-hidden="true">undo</span>
+                Reopen
+              </button>
+            </article>
+          }
+        }
+      </section>
+    }
   </div>
 </div>
 

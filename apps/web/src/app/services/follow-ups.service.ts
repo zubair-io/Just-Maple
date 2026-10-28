@@ -41,8 +41,8 @@ export class FollowUpsService {
   }
 
   /**
-   * Done, snooze (until an ISO time), dismiss or reopen. Done and dismissed ones leave the
-   * list; reopen puts one back.
+   * Done, snooze (until an ISO time), dismiss or reopen. Done and dismissed ones move to
+   * Recently closed; reopen puts one back.
    */
   async act(followUp: FollowUp, action: FollowUpAction, until?: string): Promise<FollowUp> {
     const notebookId = this.notebookId();
@@ -54,12 +54,16 @@ export class FollowUpsService {
       ),
     );
     const updated = reply.followUp;
-    this._list.update((list) => {
-      if (!list) return list;
-      const rest = list.followUps.filter((entry) => entry.id !== updated.id);
-      const keep = updated.status === 'open' || updated.status === 'snoozed';
-      return { ...list, followUps: keep ? [...rest, updated] : rest };
-    });
+    this._list.update((list) => (list ? placeFollowUp(list, updated) : list));
     return updated;
   }
+}
+
+/** Puts a changed follow-up in the open list or in Recently closed (newest first). */
+export function placeFollowUp(list: FollowUpList, updated: FollowUp): FollowUpList {
+  const followUps = list.followUps.filter((entry) => entry.id !== updated.id);
+  const recent = (list.recent ?? []).filter((entry) => entry.id !== updated.id);
+  if (updated.status === 'open' || updated.status === 'snoozed')
+    return { ...list, followUps: [...followUps, updated], recent };
+  return { ...list, followUps, recent: [updated, ...recent] };
 }

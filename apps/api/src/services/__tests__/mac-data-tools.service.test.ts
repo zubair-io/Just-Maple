@@ -6,7 +6,7 @@ vi.mock('../mac-data-relay.service', () => ({
 vi.mock('../../repositories/page.repo', () => ({
     findAboutMePage: vi.fn().mockResolvedValue({ id: 'about-page', type: 'aboutme' }),
     findFollowUpsPage: vi.fn().mockResolvedValue(null),
-    findFollowUpsNotebookIds: vi.fn().mockResolvedValue([]),
+    findFollowUpsPages: vi.fn().mockResolvedValue({ pages: [] }),
 }));
 vi.mock('../device-data-access.service', () => ({
     dataPageSlicesFor: vi.fn(),

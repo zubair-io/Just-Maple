@@ -67,6 +67,8 @@ export interface MacDataToolContext {
     readThirdPartyText?: boolean;
     /** The bot running, for "Add to calendar" proposals (calendar-proposal.service). */
     botId?: string;
+    /** Its name, recorded on follow-ups it closes. */
+    botName?: string;
     /** Proposals made in this run; their cards are attached to the reply. */
     proposedEvents?: string[];
     /** The notebook has a Follow-ups page: the bot can list and update follow-ups. */
@@ -113,6 +115,7 @@ export async function getMacDataToolContext(
         pages,
         timeZone,
         botId: bot.id,
+        botName: bot.name,
         now: formatInZone(new Date(), timeZone),
         ...(followUps ? { followUps } : {}),
         ...(about

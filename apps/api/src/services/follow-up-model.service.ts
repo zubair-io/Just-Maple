@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { config } from '../config';
+import { cleanWhat } from './follow-up-rules';
 
 /**
  * The model pass of Follow-ups: one call reads a batch of messages and emails and picks
@@ -49,7 +50,7 @@ const SYSTEM = [
     'Each numbered item says who wrote it: "me" (the person) or "them" (someone else).',
     'A promise is a specific thing someone said they will do for the other: send, call, pay, book, check, reply, get back to them. "me" promising is direction "you_promised"; "them" promising the person is "they_owe".',
     'Not promises: vague pleasantries ("let\'s catch up sometime"), questions, plans both share (that is a calendar event), automated mail, newsletters, receipts, marketing, or things already done.',
-    'For each promise give "what" as a short imperative phrase of at most 8 words from the promiser\'s side (e.g. "Send the soccer photos", "Get back about the quote"), no names.',
+    'For each promise give "what" as a short plain imperative phrase of at most 8 words from the promiser\'s side, in words from that item only (e.g. "Send the soccer photos", "Get back about the quote"): no names, links, codes or passwords.',
     'Give "due" as YYYY-MM-DD only when the text states or clearly implies a day ("tomorrow", "by Friday"), counted from when the item was sent; otherwise leave it out.',
     'Set "sensitive" to true for health, money, legal matters or relationship trouble.',
     'Give confidence from 0 to 1. Be strict: leave an item out unless it clearly holds a promise.',
@@ -98,6 +99,9 @@ export function parsePromises(text: string, request: PromiseJudgeRequest): Judge
         .filter((entry) => typeof entry.what === 'string' && entry.what.trim())
         .map((entry) => {
             const item = byN.get(entry.n as number)!;
+            // Short and plain, read from this item, and never links, codes or credentials.
+            const what = cleanWhat(entry.what as string, `${item.subject ?? ''} ${item.text}`);
+            if (!what) return null;
             const confidence =
                 typeof entry.confidence === 'number' && Number.isFinite(entry.confidence)
                     ? Math.min(Math.max(entry.confidence, 0), 1)
@@ -110,10 +114,11 @@ export function parsePromises(text: string, request: PromiseJudgeRequest): Judge
                 n: entry.n as number,
                 // The writer decides the direction: "me" can only promise, "them" only owe.
                 direction: item.from === 'me' ? ('you_promised' as const) : ('they_owe' as const),
-                what: (entry.what as string).trim().replace(/\s+/g, ' ').slice(0, 80),
+                what,
                 ...(due ? { due } : {}),
                 confidence,
                 sensitive: entry.sensitive === true,
             };
-        });
+        })
+        .filter((promise): promise is JudgedPromise => !!promise);
 }

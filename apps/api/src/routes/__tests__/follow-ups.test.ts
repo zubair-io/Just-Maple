@@ -40,11 +40,12 @@ import {
     dueFollowUps,
     followUpTick,
     listFollowUps,
-    runFollowUpPass,
+    recentFollowUps,
     runFollowUpsForNotebook,
+    runFollowUpsForUser,
     USER_DAILY_CALLS,
 } from '../../services/follow-up.service';
-import { notebookDataSlices } from '../../services/device-data-access.service';
+import { findFollowUpsPages } from '../../repositories/page.repo';
 import {
     executeMacDataTool,
     getMacDataToolContext,
@@ -211,12 +212,10 @@ describe.runIf(mongoAvailable)('follow-ups', () => {
     const setFilter = (pageId: string, deviceFilter: DeviceDataFilter) =>
         json(call(alex, `/api/device-data/pages/${pageId}`, 'PATCH', { deviceFilter }));
 
-    const pass = async (notebookId: string, at = new Date()) =>
-        runFollowUpPass(
-            alex.id,
-            (await notebookDataSlices(notebookId)).filter((s) => s.ownerId === alex.id),
-            at,
-        );
+    /** A pass for Alex over every notebook where Alex added a Follow-ups page. */
+    const pass = (_notebookId: string, at = new Date()) => runFollowUpsForUser(alex.id, at);
+    const sentTexts = () =>
+        judge.mock.calls.flatMap((c) => c[0].items.map((item) => item.text)).join(' | ');
 
     const list = async (who: { token: string }, notebookId: string) => {
         const response = await call(who, `/api/follow-ups/${notebookId}`);
@@ -310,7 +309,7 @@ describe.runIf(mongoAvailable)('follow-ups', () => {
             extra: { chatId: RILEY_CHAT },
             isFromMe: true,
             sender: 'Me',
-            body: 'Yes!',
+            body: 'Yes, I can bring four chairs',
             occurredAt: now - 2 * DAY,
         });
         const group = text('group-q', {
@@ -324,6 +323,112 @@ describe.runIf(mongoAvailable)('follow-ups', () => {
         const { notebookId } = await notebook(['imessage']);
         await pass(notebookId);
         expect((await list(alex, notebookId)).body.followUps).toEqual([]);
+        // The fresh one shows once it has waited a day.
+        const tomorrow = new Date(Date.now() + 25 * HOUR * 1000);
+        expect((await listFollowUps(notebookId, alex.id, tomorrow)).map((f) => f.what)).toEqual([
+            'Can you drive Saturday?',
+        ]);
+    });
+
+    it('does not count "lol" or an emoji as answering them', async () => {
+        const question = text('pickup-q', {
+            body: 'Can you pick up Mia at 3?',
+            occurredAt: now - 3 * DAY,
+        });
+        await upload(
+            ['imessage'],
+            [
+                question,
+                text('lol', { isFromMe: true, body: 'lol', occurredAt: now - 2 * DAY }),
+                text('thumbs', { isFromMe: true, body: '👍', occurredAt: now - 2 * DAY + 60 }),
+            ],
+        );
+        const { notebookId } = await notebook(['imessage']);
+        await pass(notebookId);
+        expect((await list(alex, notebookId)).body.followUps.map((f) => f.what)).toEqual([
+            'Can you pick up Mia at 3?',
+        ]);
+    });
+
+    it('leaves group mail out, and keeps one card per thread for the newest question', async () => {
+        const crowd = mail('crowd-q', {
+            title: 'Reunion',
+            participants: Array.from({ length: 6 }, (_, i) => `friend${i}@home.com`),
+            body: 'Could you all confirm the venue?',
+            occurredAt: now - 2 * DAY,
+        });
+        const listMail = mail('list-q', {
+            title: 'PTA',
+            sender: 'PTA Chair <chair@pta.org>',
+            extra: { listId: 'parents.pta.org' },
+            body: 'Can you volunteer Saturday?',
+            occurredAt: now - 2 * DAY,
+        });
+        const first = text('first-q', { body: 'Can you pick up Mia?', occurredAt: now - 3 * DAY });
+        const second = text('second-q', {
+            body: 'Can you bring snacks too?',
+            occurredAt: now - 3 * DAY + 60,
+        });
+        await upload(['imessage', 'mail'], [crowd, listMail, first, second]);
+        const { notebookId } = await notebook(['imessage', 'mail']);
+        await pass(notebookId);
+        expect((await list(alex, notebookId)).body.followUps.map((f) => f.what)).toEqual([
+            'Can you bring snacks too?',
+        ]);
+
+        // A newer question in the thread replaces it; the old one isn't listed as closed.
+        await upload(
+            ['imessage', 'mail'],
+            [text('third-q', { body: 'Could you call me tonight?', occurredAt: now - 2 * DAY })],
+        );
+        await pass(notebookId, new Date(Date.now() + 11 * 60_000));
+        const { body } = await list(alex, notebookId);
+        expect(body.followUps.map((f) => f.what)).toEqual(['Could you call me tonight?']);
+        expect(body.recent).toEqual([]);
+    });
+
+    it('knows mail you sent by your own address, and reads each email once', async () => {
+        promiseModel();
+        const card: MacDataItem = {
+            id: 'contacts:me',
+            source: 'contacts',
+            revision: '1',
+            occurredAt: now - 100 * DAY,
+            title: 'Alex',
+            participants: ['alex@home.com'],
+            body: '',
+            extra: { isMe: true },
+        };
+        const sent = mail('promise-sent', {
+            sender: 'Alex <alex@home.com>',
+            participants: ['Pat Lee <pat@builder.com>'],
+            mailbox: '[Gmail]/Sent Mail',
+            body: "Thanks Pat. I'll send you the measurements tomorrow.",
+            extra: { messageId: '<m1@home.com>' },
+        });
+        // The same email again in All Mail.
+        const copy = { ...sent, id: 'mail:promise-all', mailbox: '[Gmail]/All Mail' };
+        // Your question, filed in a German Sent folder.
+        const question = mail('question-sent', {
+            sender: 'Alex <alex@home.com>',
+            participants: ['Pat Lee <pat@builder.com>'],
+            mailbox: 'Gesendete Objekte',
+            title: 'Deck colour',
+            body: 'Do you have the stain samples?',
+            occurredAt: now - 4 * DAY,
+        });
+        await upload(['mail', 'contacts'], [card, sent, copy, question]);
+        const { notebookId } = await notebook(['mail']);
+        await pass(notebookId);
+
+        const asked = judge.mock.calls.flatMap((c) => c[0].items);
+        expect(asked).toHaveLength(1);
+        expect(asked[0]).toMatchObject({ from: 'me', who: 'Pat Lee' });
+        const { body } = await list(alex, notebookId);
+        expect(body.followUps.map((f) => [f.direction, f.who]).sort()).toEqual([
+            ['waiting_reply', 'Pat Lee'],
+            ['you_promised', 'Pat Lee'],
+        ]);
     });
 
     it('finds explicit promises by rule when the server has no model', async () => {
@@ -343,7 +448,7 @@ describe.runIf(mongoAvailable)('follow-ups', () => {
         expect(body.status.modelAvailable).toBe(false);
     });
 
-    it('keeps model calls within the daily cap, and gives back failed calls', async () => {
+    it('counts failed calls against the daily cap, and sets aside a batch that keeps failing', async () => {
         const many = Array.from({ length: 400 }, (_, i) =>
             text(`promise-${i}`, {
                 isFromMe: true,
@@ -354,10 +459,20 @@ describe.runIf(mongoAvailable)('follow-ups', () => {
         await upload(['imessage'], many);
         const { notebookId } = await notebook(['imessage']);
 
-        // A failed reply is not counted.
-        judge.mockResolvedValueOnce(null);
-        const failed = await pass(notebookId);
-        expect(failed).toMatchObject({ modelCalls: 1, pending: many.length });
+        const batchOf = (call: number) => judge.mock.calls[call]![0].items.map((i) => i.text);
+
+        // An unreadable reply: the call counts, the pass stops, the batch gets a strike.
+        judge.mockResolvedValue(null);
+        expect(await pass(notebookId)).toMatchObject({ modelCalls: 1, pending: many.length });
+        // It fails again: set aside after two strikes...
+        await pass(notebookId);
+        expect(batchOf(1)).toEqual(batchOf(0));
+        // ...so the next pass moves on to newer-than-stuck items.
+        await pass(notebookId);
+        expect(batchOf(2)).not.toContain(batchOf(0)[0]);
+        // A call that throws counts too.
+        judge.mockRejectedValueOnce(new Error('overloaded'));
+        await pass(notebookId);
 
         judge.mockResolvedValue([]);
         let calls = 0;
@@ -365,9 +480,13 @@ describe.runIf(mongoAvailable)('follow-ups', () => {
             const result = await pass(notebookId);
             calls += result?.modelCalls ?? 0;
         }
-        // Each pass makes at most 3; the day allows USER_DAILY_CALLS successful ones.
-        expect(judge.mock.calls.length - 1).toBe(USER_DAILY_CALLS);
-        expect(calls).toBe(USER_DAILY_CALLS);
+        // Failed calls used 4 of the day's calls; the cap holds across all of them.
+        expect(judge.mock.calls.length).toBe(USER_DAILY_CALLS);
+        expect(calls).toBe(USER_DAILY_CALLS - 4);
+        // The batch that failed twice was never sent again.
+        expect(
+            judge.mock.calls.slice(2).flatMap((c) => c[0].items.map((i) => i.text)),
+        ).not.toContain(batchOf(0)[0]);
     });
 
     // MARK: - Closing by itself
@@ -411,7 +530,7 @@ describe.runIf(mongoAvailable)('follow-ups', () => {
                     revision: '1',
                     occurredAt: now + 2 * DAY,
                     title: 'Measure deck size',
-                    participants: [],
+                    participants: ['Pat Lee <pat@builder.com>'],
                     body: '',
                     extra: { createdAt: new Date((now - HOUR) * 1000).toISOString() },
                 },
@@ -419,7 +538,13 @@ describe.runIf(mongoAvailable)('follow-ups', () => {
         );
         const result = await pass(notebookId, new Date(Date.now() + 11 * 60_000));
         expect(result?.closed).toBe(4);
-        expect((await list(alex, notebookId)).body.followUps).toEqual([]);
+        const after = (await list(alex, notebookId)).body;
+        expect(after.followUps).toEqual([]);
+        // Recently closed: each one, closed by Follow-ups itself, with why.
+        expect(after.recent).toHaveLength(4);
+        expect(after.recent.every((f) => f.closedBy?.type === 'auto')).toBe(true);
+        expect(find(after.recent, 'owe_reply')?.closed?.reason).toBe('calendar');
+        expect(find(after.recent, 'you_promised')?.closed?.reason).toBe('attachment');
 
         // Undo brings one back, and it stays open.
         const { followUp } = await json(
@@ -431,6 +556,175 @@ describe.runIf(mongoAvailable)('follow-ups', () => {
         expect((await list(alex, notebookId)).body.followUps.map((f) => f.what)).toEqual([
             'Send the photos',
         ]);
+    });
+
+    it('closes a promise only on a message that delivers it, one promise per message', async () => {
+        judge.mockImplementation(async (request: PromiseJudgeRequest) =>
+            request.items.map((item) => ({
+                n: item.n,
+                direction: 'you_promised' as const,
+                what: /photos/.test(item.text) ? 'Send the photos' : 'Send the schedule',
+                confidence: 0.9,
+                sensitive: false,
+            })),
+        );
+        const schedule = text('schedule', {
+            isFromMe: true,
+            occurredAt: now - 2 * DAY + 60,
+            body: "And I'll send you the schedule tonight.",
+        });
+        await upload(['imessage'], [photosPromise, schedule]);
+        const { notebookId } = await notebook(['imessage']);
+        await pass(notebookId);
+        await upload(
+            ['imessage'],
+            [
+                text('done', { isFromMe: true, body: 'done', occurredAt: now - DAY }),
+                text('lol', { isFromMe: true, body: 'lol', occurredAt: now - DAY + 60 }),
+            ],
+        );
+        expect((await pass(notebookId))?.closed).toBe(0);
+        // One attachment delivers one of them.
+        await upload(
+            ['imessage'],
+            [text('pic', { isFromMe: true, body: '(attachment)', occurredAt: now - HOUR })],
+        );
+        expect((await pass(notebookId))?.closed).toBe(1);
+        expect((await list(alex, notebookId)).body.followUps).toHaveLength(1);
+    });
+
+    it('expires open follow-ups after a while, and lists them as recently closed', async () => {
+        promiseModel();
+        await upload(['imessage'], [photosPromise, rileyQuestion]);
+        const { notebookId } = await notebook(['imessage']);
+        await pass(notebookId);
+        // Both were due yesterday: still open three weeks on, expired after 30 days.
+        expect((await pass(notebookId, new Date(Date.now() + 21 * DAY * 1000)))?.expired).toBe(0);
+        const later = new Date(Date.now() + 31 * DAY * 1000);
+        expect((await pass(notebookId, later))?.expired).toBe(2);
+        expect(await listFollowUps(notebookId, alex.id, later)).toEqual([]);
+        const recent = await recentFollowUps(notebookId, alex.id, later);
+        expect(recent.map((f) => [f.status, f.closedBy?.type])).toEqual([
+            ['expired', 'auto'],
+            ['expired', 'auto'],
+        ]);
+        // Two weeks later they're gone from Recently closed too.
+        expect(
+            await recentFollowUps(notebookId, alex.id, new Date(Date.now() + 46 * DAY * 1000)),
+        ).toEqual([]);
+    });
+
+    it('drops a follow-up whose message was deleted', async () => {
+        promiseModel();
+        await upload(['imessage'], [photosPromise]);
+        const { notebookId } = await notebook(['imessage']);
+        await pass(notebookId);
+        expect((await list(alex, notebookId)).body.followUps).toHaveLength(1);
+        const removed = await json(
+            call(alex, '/api/device-data/items', 'POST', {
+                deviceId: `device-${alex.id}`,
+                upserts: [],
+                removals: [photosPromise.id],
+            }),
+        );
+        expect(removed.removed).toBe(1);
+        expect((await list(alex, notebookId)).body.followUps).toEqual([]);
+    });
+
+    // MARK: - What a pass reads
+
+    it('reads only what changed since the last pass, and everything when the pages change', async () => {
+        promiseModel();
+        await upload(['imessage'], [photosPromise]);
+        const { notebookId, pages } = await notebook(['imessage']);
+        expect(await pass(notebookId)).toMatchObject({ incremental: false, modelCalls: 1 });
+
+        const schedule = text('schedule', {
+            isFromMe: true,
+            occurredAt: now - HOUR,
+            body: "I'll send you the schedule tonight.",
+        });
+        await upload(['imessage'], [schedule]);
+        expect(await pass(notebookId, new Date(Date.now() + 11 * 60_000))).toMatchObject({
+            incremental: true,
+            modelCalls: 1,
+        });
+        expect(judge.mock.calls[1]![0].items.map((i) => i.text)).toEqual([schedule.body]);
+
+        // The page's filter changed: read everything again (nothing new for the model).
+        await setFilter(pages.imessage!, { includeAll: true });
+        expect(await pass(notebookId, new Date(Date.now() + 22 * 60_000))).toMatchObject({
+            incremental: false,
+            modelCalls: 0,
+        });
+    });
+
+    it('scans only the data of the member who added the Follow-ups page', async () => {
+        promiseModel();
+        await upload(['imessage'], [photosPromise]);
+        const invoice = text('sam-invoice', {
+            isFromMe: true,
+            occurredAt: now - DAY,
+            body: "I'll send you the invoice tomorrow.",
+        });
+        await upload(['imessage'], [invoice], sam);
+        const { notebookId, pages } = await notebook(['imessage'], true);
+        await setFilter(pages.imessage!, { includeAll: true });
+        // Sam shares everything through a data page in the same notebook.
+        const { page } = await json(
+            call(sam, '/api/pages', 'POST', {
+                type: 'devicedata',
+                deviceSource: 'imessage',
+                title: 'Sam messages',
+                notebookId,
+            }),
+        );
+        await call(sam, `/api/device-data/pages/${page.id}`, 'PATCH', {
+            deviceFilter: { includeAll: true },
+        });
+        await followUpTick(new Date(Date.now() + 11 * 60_000));
+        expect(sentTexts()).toMatch(/photos/);
+        expect(sentTexts()).not.toMatch(/invoice/);
+        expect(await listFollowUps(notebookId, sam.id)).toEqual([]);
+
+        // Sam opts in with a Follow-ups page of their own: then Sam's data is read.
+        const own = await createNotebookFixture({ createdBy: sam.id });
+        const ownId = own._id.toString();
+        await call(sam, '/api/pages', 'POST', {
+            type: 'devicedata',
+            deviceSource: 'imessage',
+            title: 'Messages',
+            notebookId: ownId,
+        });
+        await createPageFixture({
+            id: followUpsPageId(ownId),
+            userId: sam.id,
+            notebookId: ownId,
+            type: 'followups',
+            title: 'Follow-ups',
+        });
+        await followUpTick(new Date(Date.now() + 22 * 60_000));
+        expect(sentTexts()).toMatch(/invoice/);
+        expect((await listFollowUps(ownId, sam.id)).map((f) => f.what)).toEqual([
+            'Send the photos',
+        ]);
+    });
+
+    it('pages through every Follow-ups page', async () => {
+        const made = [];
+        for (let i = 0; i < 3; i++) made.push((await notebook([])).notebookId);
+        const first = await findFollowUpsPages(undefined, 2);
+        expect(first.pages).toHaveLength(2);
+        expect(first.next).toBeDefined();
+        const seen = first.pages.map((p) => p.notebookId);
+        let after = first.next;
+        while (after) {
+            const next = await findFollowUpsPages(after, 2);
+            seen.push(...next.pages.map((p) => p.notebookId));
+            after = next.next;
+        }
+        expect(new Set(seen).size).toBe(seen.length);
+        expect(seen).toEqual(expect.arrayContaining(made));
     });
 
     // MARK: - Reading through the pages
@@ -502,15 +796,11 @@ describe.runIf(mongoAvailable)('follow-ups', () => {
         await upload(['imessage', 'mail'], [photosPromise, jordanPromise, patQuestion]);
         const { notebookId } = await notebook(['imessage', 'mail']);
         await pass(notebookId);
-        const id = (direction: FollowUp['direction']) =>
-            `${alex.id}|${direction}|${
-                {
-                    you_promised: photosPromise,
-                    they_owe: jordanPromise,
-                    owe_reply: patQuestion,
-                    waiting_reply: rileyQuestion,
-                }[direction].id
-            }`;
+        // Mail follow-ups are keyed by the email, not one mailbox's copy: take the ids listed.
+        const ids = new Map(
+            (await list(alex, notebookId)).body.followUps.map((f) => [f.direction, f.id]),
+        );
+        const id = (direction: FollowUp['direction']) => ids.get(direction)!;
 
         // Snooze a week: it stays on the list as snoozed, then wakes up.
         const until = new Date(Date.now() + 7 * DAY * 1000).toISOString();
@@ -535,6 +825,14 @@ describe.runIf(mongoAvailable)('follow-ups', () => {
         await act(notebookId, id('you_promised'), 'done');
         ({ body } = await list(alex, notebookId));
         expect(find(body.followUps, 'you_promised')).toBeUndefined();
+        expect(find(body.recent, 'you_promised')).toMatchObject({
+            status: 'done',
+            closedBy: { type: 'you' },
+        });
+        expect(find(body.recent, 'owe_reply')).toMatchObject({
+            status: 'dismissed',
+            closedBy: { type: 'you' },
+        });
         await act(notebookId, id('you_promised'), 'reopen');
         await act(notebookId, id('owe_reply'), 'reopen');
         ({ body } = await list(alex, notebookId));
@@ -578,15 +876,31 @@ describe.runIf(mongoAvailable)('follow-ups', () => {
         ]);
         const promise = listed.followUps.find((f: { kind: string }) => f.kind === 'you promised');
         expect(promise.evidence).toEqual([photosPromise.id]);
+        // The wording is quoted from messages: framed as untrusted, like other message text.
+        expect(listed.note).toMatch(/untrusted/);
+        expect(ctx.readThirdPartyText).toBe(true);
 
         expect(
             await executeMacDataTool(ctx, 'update_follow_up', { id: promise.id, action: 'done' }),
         ).toMatch(/Marked done/);
         let { body } = await list(alex, notebookId);
         expect(find(body.followUps, 'you_promised')).toBeUndefined();
+        // Visible, with the bot's name, and reversible.
+        expect(find(body.recent, 'you_promised')?.closedBy).toEqual({
+            type: 'bot',
+            name: 'Helper',
+        });
         expect(
             await executeMacDataTool(ctx, 'update_follow_up', { id: promise.id, action: 'reopen' }),
         ).toMatch(/Reopened/);
+        // A bot can't bring back one the user dismissed.
+        const owed = listed.followUps.find((f: { kind: string }) => f.kind === 'you owe a reply');
+        await act(notebookId, owed.id, 'dismiss');
+        expect(
+            await executeMacDataTool(ctx, 'update_follow_up', { id: owed.id, action: 'reopen' }),
+        ).toMatch(/only they can/);
+        ({ body } = await list(alex, notebookId));
+        expect(find(body.recent, 'owe_reply')?.status).toBe('dismissed');
         expect(
             await executeMacDataTool(ctx, 'update_follow_up', {
                 id: promise.id,
