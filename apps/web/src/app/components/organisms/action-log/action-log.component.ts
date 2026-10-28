@@ -91,6 +91,43 @@ export class ActionLogComponent {
     return row.undo?.state === 'queued' || row.undo?.state === 'delivered';
   }
 
+  /** The status, told apart where one status covers two cases. */
+  statusLabel(row: BotAction): string {
+    if (row.status === 'denied' && row.cancelRequestedAt) return 'Cancelled';
+    if (row.status === 'done' && row.undo?.state === 'not_found')
+      return "Couldn't find it on your Mac";
+    return ACTION_STATUS_LABELS[row.status];
+  }
+
+  /** "on Mac two (…)" while undoing, when we know where. */
+  undoWhere(row: BotAction): string {
+    const undo = row.undo;
+    if (!undo?.deviceName) return '';
+    return undo.fallback
+      ? ` on ${undo.deviceName} (the Mac that added it no longer collects your calendar)`
+      : ` on ${undo.deviceName}`;
+  }
+
+  isCancelling(row: BotAction): boolean {
+    return !!row.cancelRequestedAt && row.status !== 'denied' && row.status !== 'undone';
+  }
+
+  async cancel(row: BotAction): Promise<void> {
+    if (this.undoing() || !row.canCancel) return;
+    this.undoing.set(row.id);
+    this.undoError.set(null);
+    try {
+      await this.service.cancel(row.id);
+    } catch (error) {
+      this.undoError.set({
+        id: row.id,
+        message: error instanceof Error ? error.message : 'Could not cancel it.',
+      });
+    } finally {
+      this.undoing.set(null);
+    }
+  }
+
   async undo(row: BotAction): Promise<void> {
     if (this.undoing() || !row.canUndo) return;
     this.undoing.set(row.id);

@@ -101,6 +101,24 @@ export class BotActionService {
     }
   }
 
+  /** The owner's Cancel of a queued action. Throws with the server's reason. */
+  async cancel(id: string): Promise<BotAction> {
+    try {
+      const { action } = await firstValueFrom(
+        this.http.post<{ action: BotAction }>(
+          `/api/bot-actions/${encodeURIComponent(id)}/cancel`,
+          {},
+        ),
+      );
+      this.merge([action]);
+      return action;
+    } catch (error) {
+      const message = (error as { error?: { error?: string } })?.error?.error;
+      void this.load(id, true);
+      throw new Error(message || 'Could not cancel it. Try again.');
+    }
+  }
+
   async autonomy(botId: string): Promise<Record<BotActionKind, BotAutonomy>> {
     const { settings } = await firstValueFrom(
       this.http.get<{ settings: Record<BotActionKind, BotAutonomy> }>(
@@ -150,6 +168,11 @@ export class BotActionService {
           isOwner,
           // Whether Undo is offered comes from the full row.
           canUndo: isOwner && update.status === 'done' && !!current?.canUndo,
+          canCancel:
+            isOwner &&
+            (update.status === 'queued' || update.status === 'auto') &&
+            !update.cancelRequestedAt &&
+            !!current?.canCancel,
         } as BotAction,
       };
     });

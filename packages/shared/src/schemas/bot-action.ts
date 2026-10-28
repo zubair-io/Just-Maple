@@ -76,6 +76,8 @@ export interface BotActionKindInfo {
     autoAllowed: boolean;
     /** Done actions of this kind can be undone (within `BOT_ACTION_UNDO_WINDOW_MS`). */
     undoable: boolean;
+    /** Queued actions of this kind can be cancelled before they're done. */
+    cancellable?: boolean;
     /** Material symbol for lists. */
     icon: string;
     /** What a "Done" card says: "Added to your calendar". */
@@ -88,6 +90,7 @@ export const BOT_ACTION_KINDS: Record<BotActionKind, BotActionKindInfo> = {
         description: 'Events the bot finds in your mail and messages.',
         autoAllowed: true,
         undoable: true,
+        cancellable: true,
         icon: 'calendar_add_on',
         doneLabel: 'Added to your calendar',
     },
@@ -112,35 +115,86 @@ export const BOT_ACTION_KINDS: Record<BotActionKind, BotActionKindInfo> = {
 
 export const BOT_ACTION_KIND_IDS = Object.keys(BOT_ACTION_KINDS) as BotActionKind[];
 
-/** Home Assistant calls that send messages, unlock, open or disarm: never automatic. */
-export function isSensitiveHomeService(params: unknown): boolean {
+/**
+ * Home Assistant domains whose calls are always Ask unless the server knows the entity is
+ * safe: they can run anything (`homeassistant.*`, scripts, scenes, buttons), switch
+ * something we can't see (switches, valves), or open the house (locks, alarms, covers).
+ * Shared on purpose so the Home Assistant connector can use the same list.
+ */
+export const ALWAYS_ASK_HOME_DOMAINS: readonly string[] = [
+    'homeassistant',
+    'script',
+    'scene',
+    'button',
+    'switch',
+    'valve',
+    'lock',
+    'alarm_control_panel',
+    'cover',
+];
+
+/** Domains that send a message somewhere: always Ask, whatever the server knows. */
+export const MESSAGE_HOME_DOMAINS: readonly string[] = ['notify', 'tts'];
+
+/**
+ * What the server itself knows about an entity (from Home Assistant, never from the bot).
+ * `safe: true` lets an `ALWAYS_ASK_HOME_DOMAINS` entity follow the setting; unlocking,
+ * disarming and opening a garage, gate or door still always ask.
+ */
+export interface KnownHomeEntity {
+    safe?: boolean;
+    deviceClass?: string | null;
+}
+
+/** The domain of a Home Assistant call, taken only from its entity id (`lock.front_door`). */
+export function homeEntityDomain(params: unknown): string {
     const p = (params ?? {}) as Record<string, unknown>;
-    const text = (value: unknown) => (typeof value === 'string' ? value.toLowerCase() : '');
-    const entity = text(p['entityId'] ?? p['entity_id']);
-    const domain = text(p['domain']) || entity.split('.')[0] || '';
-    const service = text(p['service']);
-    const deviceClass = text(p['deviceClass'] ?? p['device_class']);
-    if (domain === 'notify' || domain === 'tts') return true; // Sends a message
-    if (domain === 'lock') return service !== 'lock'; // unlock, open
-    if (domain === 'alarm_control_panel') return service.includes('disarm');
+    const entity = p['entityId'] ?? p['entity_id'];
+    if (typeof entity !== 'string') return '';
+    const dot = entity.indexOf('.');
+    return dot > 0 ? entity.slice(0, dot).toLowerCase() : '';
+}
+
+/**
+ * Home Assistant calls that are never automatic. The domain comes only from the entity id,
+ * and a device class only from `known` (the server): whatever else the bot sends (`domain`,
+ * `deviceClass`) is ignored.
+ */
+export function isSensitiveHomeService(params: unknown, known?: KnownHomeEntity): boolean {
+    const p = (params ?? {}) as Record<string, unknown>;
+    const domain = homeEntityDomain(p);
+    if (!domain) return true; // Can't tell what it is
+    const rawEntity = p['entityId'] ?? p['entity_id'];
+    const entity = typeof rawEntity === 'string' ? rawEntity.toLowerCase() : '';
+    const service = typeof p['service'] === 'string' ? p['service'].toLowerCase() : '';
+    const deviceClass = (known?.deviceClass ?? '').toLowerCase();
+    if (MESSAGE_HOME_DOMAINS.includes(domain)) return true;
+    // Never safe, whatever the server knows:
+    if (domain === 'lock' && service !== 'lock') return true; // unlock, open
+    if (domain === 'alarm_control_panel' && service.includes('disarm')) return true;
     if (domain === 'cover') {
         const opens =
             service.startsWith('open') || service === 'toggle' || service.startsWith('set_cover');
         const door =
             ['garage', 'gate', 'door'].includes(deviceClass) || /garage|gate|door/.test(entity);
-        return opens && door;
+        if (opens && door) return true;
     }
-    // Anything that can't be told apart is treated as sensitive.
-    return !domain;
+    if (ALWAYS_ASK_HOME_DOMAINS.includes(domain)) return known?.safe !== true;
+    return false;
 }
 
 /**
  * The hard floors: actions that are always Ask, whatever the setting says. Sending
- * messages or email, and unlocking locks or opening garage doors.
+ * messages or email, unlocking locks or opening garage doors, and Home Assistant calls
+ * the server can't vouch for (`known`, see `isSensitiveHomeService`).
  */
-export function isAlwaysAsk(kind: BotActionKind, params?: unknown): boolean {
+export function isAlwaysAsk(
+    kind: BotActionKind,
+    params?: unknown,
+    known?: KnownHomeEntity,
+): boolean {
     if (!BOT_ACTION_KINDS[kind]?.autoAllowed) return true;
-    if (kind === 'home_service') return isSensitiveHomeService(params);
+    if (kind === 'home_service') return isSensitiveHomeService(params, known);
     return false;
 }
 
@@ -166,10 +220,19 @@ export const BotActionUndoSchema = Type.Object({
         Type.Literal('delivered'),
         Type.Literal('done'),
         Type.Literal('failed'),
+        /** The Mac couldn't find the event: nothing was removed. */
+        Type.Literal('not_found'),
     ]),
     error: Type.Optional(Type.String()),
     requestedAt: Type.String(),
     completedAt: Type.Optional(Type.String()),
+    /** The Mac asked to remove it. */
+    deviceName: Type.Optional(Type.String()),
+    /**
+     * True when the Mac that added it no longer collects the calendar, so another one
+     * was asked instead.
+     */
+    fallback: Type.Optional(Type.Boolean()),
 });
 export type BotActionUndo = Static<typeof BotActionUndoSchema>;
 
@@ -204,6 +267,10 @@ export const BotActionSchema = Type.Object({
     undo: Type.Optional(BotActionUndoSchema),
     /** The owner can undo it now. */
     canUndo: Type.Boolean(),
+    /** The owner can still cancel it: queued, and no device has started on it. */
+    canCancel: Type.Optional(Type.Boolean()),
+    /** The owner cancelled it while a device was already on it: undone once it's done. */
+    cancelRequestedAt: Type.Optional(Type.String()),
     /** While done and undoable: until when. */
     undoableUntil: Type.Optional(Type.String()),
     createdAt: Type.String(),
@@ -216,7 +283,7 @@ export type BotAction = Static<typeof BotActionSchema>;
 /** What the chat hears when an action changes: no parameters, everyone gets it. */
 export type BotActionUpdate = Omit<
     BotAction,
-    'isOwner' | 'params' | 'result' | 'error' | 'undo' | 'canUndo'
+    'isOwner' | 'params' | 'result' | 'error' | 'undo' | 'canUndo' | 'canCancel'
 >;
 
 /** A notebook's Activity page has a fixed id, so a notebook can only ever have one. */

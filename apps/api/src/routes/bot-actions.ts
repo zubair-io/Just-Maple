@@ -10,6 +10,7 @@ import {
 } from '@maple/shared';
 import { ActionError, getAutonomySettings, setAutonomy } from '../services/bot-action.service';
 import {
+    cancelActivityItem,
     getActivityItem,
     listBotActivity,
     listNotebookActivity,
@@ -23,6 +24,7 @@ import {
  * - `GET /api/bot-actions?botId=…|notebookId=…&kind=&status=&limit=` newest first.
  * - `GET /api/bot-actions/:id` one row (a "Done · Undo" card).
  * - `POST /api/bot-actions/:id/undo` the owner's Undo.
+ * - `POST /api/bot-actions/:id/cancel` the owner's Cancel of a queued action.
  * - `GET /api/bot-autonomy/:botId`, `PUT /api/bot-autonomy/:botId` { kind, autonomy }:
  *   the owner's settings for one of their bots.
  */
@@ -99,6 +101,19 @@ export const botActionRoutes = new Elysia({ prefix: '/api' })
             if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
             try {
                 return { action: await undoActivityItem(params.id, auth.user._id) };
+            } catch (error) {
+                return failure(error, set);
+            }
+        },
+        { params: t.Object({ id: t.String() }) },
+    )
+
+    .post(
+        '/bot-actions/:id/cancel',
+        async ({ auth, params, set }) => {
+            if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
+            try {
+                return { action: await cancelActivityItem(params.id, auth.user._id) };
             } catch (error) {
                 return failure(error, set);
             }

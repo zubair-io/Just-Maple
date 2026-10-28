@@ -15,9 +15,18 @@ import {
 export interface BotActionUndoDocument {
     /** The id the device sees for the undo action (not the action's own id). */
     id: string;
-    state: 'queued' | 'delivered' | 'done' | 'failed';
+    /** `not_found`: the device found nothing to remove, so nothing was removed. */
+    state: 'queued' | 'delivered' | 'done' | 'failed' | 'not_found';
     requestedAt: Date;
     requestedBy: string;
+    /**
+     * The device that should do it (for an added event: the Mac that added it). Another
+     * device takes it only once this one stops collecting; `fallback` then says so.
+     */
+    targetDeviceId?: string;
+    deviceName?: string;
+    fallback?: boolean;
+    /** The device holding it now. */
     deviceId?: string;
     deliveredTo?: string[];
     deliveredAt?: Date;
@@ -46,6 +55,8 @@ export interface BotActionDocument {
     result?: Record<string, unknown>;
     error?: string;
     undo?: BotActionUndoDocument;
+    /** The owner cancelled it while it was queued (or already on a device). */
+    cancelRequestedAt?: Date;
     createdAt: Date;
     updatedAt: Date;
     completedAt?: Date;
@@ -106,15 +117,46 @@ export async function attachActionsToMessage(
 /** How far back Activity reads go. */
 export const ACTIVITY_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
 
-/** A bot's rows for its owner, or a notebook's rows; newest first, at most `limit`. */
+export interface ActionListFilter {
+    kind?: BotActionKind;
+    status?: BotActionStatus;
+    /**
+     * Only rows this person may see in a notebook: their own, and other people's that were
+     * posted in its chats. Applied in the query, before the limit.
+     */
+    visibleTo?: string;
+}
+
+/**
+ * A bot's rows for its owner, or a notebook's rows; newest first, at most `limit`. The
+ * filters run in the query and every read is bounded by `limit` (sorted on the
+ * `createdAt` index). Visibility is two queries rather than an `$or`, which Cosmos DB
+ * can't sort.
+ */
 export async function listActions(
     scope: { ownerId: string; botId: string } | { notebookId: string },
     limit: number,
+    filter: ActionListFilter = {},
 ): Promise<BotActionDocument[]> {
     const since = new Date(Date.now() - ACTIVITY_WINDOW_MS);
-    const docs = await actions()
-        .find({ ...scope, createdAt: { $gte: since } })
-        .toArray();
+    const base: Filter<BotActionDocument> = {
+        ...scope,
+        createdAt: { $gte: since },
+        ...(filter.kind ? { kind: filter.kind } : {}),
+        ...(filter.status ? { status: filter.status } : {}),
+    };
+    const read = (query: Filter<BotActionDocument>) =>
+        actions().find(query).sort({ createdAt: -1 }).limit(limit).toArray();
+    const docs = filter.visibleTo
+        ? [
+              ...(await read({ ...base, ownerId: filter.visibleTo })),
+              ...(await read({
+                  ...base,
+                  ownerId: { $ne: filter.visibleTo },
+                  messageId: { $exists: true },
+              })),
+          ]
+        : await read(base);
     return docs.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, limit);
 }
 

@@ -15,6 +15,8 @@ import type { CalendarEventDraft, DeviceAction, DeviceActionResult } from '@mapl
 //
 // failed ──tap again──▶ queued
 // added ──Undo in the action log, Mac removed it──▶ removed (calendar-action.service)
+//   └──Undo, but the Mac couldn't find it──▶ not_found (may be proposed again)
+// queued ──the owner cancelled an automatic add──▶ cancelled
 //
 // Queries sort in code: Cosmos DB needs a matching index for every sort.
 
@@ -25,7 +27,9 @@ export type StoredProposalStatus =
     | 'added'
     | 'failed'
     | 'expired'
-    | 'removed';
+    | 'removed'
+    | 'not_found'
+    | 'cancelled';
 
 export interface CalendarProposalDocument {
     _id: string;
@@ -46,6 +50,8 @@ export interface CalendarProposalDocument {
     error?: string;
     createdAt: Date;
     confirmedAt?: Date;
+    /** The last confirm was the owner's "Do it and tell me" setting, not a tap. */
+    autoConfirmed?: boolean;
     deliveredAt?: Date;
     completedAt?: Date;
     /** 7 days from proposing, then 7 days from each tap. */
@@ -104,7 +110,8 @@ export async function findDuplicate(
         .find({
             userId,
             'event.start': event.start,
-            status: { $in: [...OPEN, 'added', 'removed'] },
+            // Not `not_found`: it isn't on the calendar any more, so it may be offered again.
+            status: { $in: [...OPEN, 'added', 'removed', 'cancelled'] },
         })
         .toArray();
     const title = event.title.trim().toLowerCase();
@@ -137,6 +144,7 @@ export async function attachToMessage(
 export async function queueProposal(
     id: string,
     userId: string,
+    options: { auto?: boolean } = {},
 ): Promise<CalendarProposalDocument | null> {
     const now = new Date();
     return getCollection().findOneAndUpdate(
@@ -155,6 +163,7 @@ export async function queueProposal(
             $set: {
                 status: 'queued',
                 confirmedAt: now,
+                autoConfirmed: options.auto === true,
                 expiresAt: new Date(now.getTime() + PROPOSAL_LIFETIME_MS),
                 updatedAt: now,
             },
@@ -183,9 +192,12 @@ export async function failProposal(
 export async function requeueStranded(
     userId: string,
     calendarDeviceId: string | null,
+    onlyId?: string,
 ): Promise<CalendarProposalDocument[]> {
     const now = new Date();
-    const delivered = await getCollection().find({ userId, status: 'delivered' }).toArray();
+    const delivered = await getCollection()
+        .find({ userId, status: 'delivered', ...(onlyId ? { _id: onlyId } : {}) })
+        .toArray();
     const moved: CalendarProposalDocument[] = [];
     for (const doc of delivered) {
         if (doc.deviceId === calendarDeviceId && !isStaleDelivery(doc, now.getTime())) continue;
@@ -250,8 +262,8 @@ export async function completeAction(
 ): Promise<{ doc: CalendarProposalDocument; changed: boolean } | null> {
     const doc = await getCollection().findOne({ _id: id, userId });
     if (!doc || (doc.deviceId !== deviceId && !doc.deliveredTo?.includes(deviceId))) return null;
-    // Added, or added and then removed by an undo: a repeated success changes nothing.
-    if (doc.status === 'added' || doc.status === 'removed') return { doc, changed: false };
+    // Added (and maybe undone since): a repeated success changes nothing.
+    if (ADDED_ONCE.includes(doc.status)) return { doc, changed: false };
     const now = new Date();
     const update = result.ok
         ? {
@@ -274,13 +286,37 @@ export async function completeAction(
           };
     // A failure only replaces an action still in flight.
     const filter = result.ok
-        ? { _id: id, status: { $nin: ['added' as const, 'removed' as const] } }
+        ? { _id: id, status: { $nin: ADDED_ONCE } }
         : { _id: id, status: 'delivered' as const, deviceId };
     const updated = await getCollection().findOneAndUpdate(filter, update, {
         returnDocument: 'after',
     });
     if (updated) return { doc: updated, changed: true };
     return { doc: (await getCollection().findOne({ _id: id }))!, changed: false };
+}
+
+/** Statuses of a proposal whose event was added at some point. */
+const ADDED_ONCE: StoredProposalStatus[] = ['added', 'removed', 'not_found'];
+
+/**
+ * The owner cancelled it before any Mac took it. Null when a Mac already has it (or it
+ * isn't queued any more).
+ */
+export async function cancelQueued(id: string): Promise<CalendarProposalDocument | null> {
+    return getCollection().findOneAndUpdate(
+        { _id: id, status: 'queued' },
+        { $set: { status: 'cancelled', updatedAt: new Date() } },
+        { returnDocument: 'after' },
+    );
+}
+
+/** Undo found nothing on the Mac: it isn't on the calendar. Null unless it was `added`. */
+export async function markNotFound(id: string): Promise<CalendarProposalDocument | null> {
+    return getCollection().findOneAndUpdate(
+        { _id: id, status: 'added' },
+        { $set: { status: 'not_found', updatedAt: new Date() } },
+        { returnDocument: 'after' },
+    );
 }
 
 /** An added event the Mac removed again (undo). Null unless it was `added`. */
@@ -293,10 +329,18 @@ export async function markRemoved(id: string): Promise<CalendarProposalDocument 
 }
 
 /** Open proposals past their date become `expired`. Returns the ones that changed. */
-export async function expireStale(userId: string): Promise<CalendarProposalDocument[]> {
+export async function expireStale(
+    userId: string,
+    onlyId?: string,
+): Promise<CalendarProposalDocument[]> {
     const now = new Date();
     const stale = await getCollection()
-        .find({ userId, status: { $in: OPEN }, expiresAt: { $lte: now } })
+        .find({
+            userId,
+            status: { $in: OPEN },
+            expiresAt: { $lte: now },
+            ...(onlyId ? { _id: onlyId } : {}),
+        })
         .toArray();
     const expired: CalendarProposalDocument[] = [];
     for (const doc of stale) {

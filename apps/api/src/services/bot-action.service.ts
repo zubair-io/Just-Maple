@@ -16,6 +16,7 @@ import {
     type BotAutonomySettings,
     type BotUIBlock,
     type BotUIResponse,
+    type KnownHomeEntity,
 } from '@maple/shared';
 import {
     attachActionsToMessage,
@@ -106,10 +107,12 @@ export async function decideAutonomy(input: {
     kind: BotActionKind;
     notebookId: string;
     params?: unknown;
+    /** What the server (never the bot) knows about the target, e.g. a Home Assistant entity. */
+    known?: KnownHomeEntity;
 }): Promise<AutonomyDecision> {
     const setting = effectiveSetting(input.kind, await findAutonomy(input.ownerId, input.botId));
     if (setting !== 'auto') return { autonomy: setting, setting };
-    if (isAlwaysAsk(input.kind, input.params))
+    if (isAlwaysAsk(input.kind, input.params, input.known))
         return { autonomy: 'ask', setting, lowered: 'always_ask' };
     if (!(await isOwnersPrivateNotebook(input.notebookId, input.ownerId)))
         return { autonomy: 'ask', setting, lowered: 'shared_notebook' };
@@ -146,19 +149,21 @@ export interface RecordActionInput {
     approvedBy?: string;
     approvedAt?: Date;
     expiresAt?: Date;
+    /** When it happened, if earlier than now (a proposal from before the log). */
+    createdAt?: Date;
 }
 
 /** Adds an action to the log. With a fixed id, a second call returns the first row. */
 export async function recordAction(input: RecordActionInput): Promise<BotActionDocument> {
     const now = new Date();
-    const { id, botName, ...rest } = input;
+    const { id, botName, createdAt, ...rest } = input;
     const doc = await insertAction({
         ...rest,
         _id: id ?? randomUUID(),
         botName: botName ?? (await botDisplayName(input.botId)),
         summary: input.summary.slice(0, 500),
         status: input.status ?? 'proposed',
-        createdAt: now,
+        createdAt: createdAt && createdAt < now ? createdAt : now,
         updatedAt: now,
     });
     await broadcastAction(doc);
@@ -227,8 +232,18 @@ export function undoableUntil(doc: BotActionDocument): Date | null {
 
 export function canUndo(doc: BotActionDocument, now = Date.now()): boolean {
     const until = undoableUntil(doc);
-    const busy = doc.undo?.state === 'queued' || doc.undo?.state === 'delivered';
-    return !!until && until.getTime() > now && !busy;
+    // Under way, or the Mac already found nothing to remove.
+    const settled = ['queued', 'delivered', 'not_found'].includes(doc.undo?.state ?? '');
+    return !!until && until.getTime() > now && !settled;
+}
+
+/** Queued (not done yet), of a kind that can be cancelled, and not cancelled already. */
+export function canCancel(doc: BotActionDocument): boolean {
+    return (
+        !!BOT_ACTION_KINDS[doc.kind]?.cancellable &&
+        (doc.status === 'auto' || doc.status === 'queued') &&
+        !doc.cancelRequestedAt
+    );
 }
 
 /** What everyone in the chat may see: no parameters, results or errors. */
@@ -252,6 +267,9 @@ export function toActionUpdate(doc: BotActionDocument): BotActionUpdate {
         updatedAt: doc.updatedAt.toISOString(),
         ...(doc.completedAt ? { completedAt: doc.completedAt.toISOString() } : {}),
         ...(doc.expiresAt ? { expiresAt: doc.expiresAt.toISOString() } : {}),
+        ...(doc.cancelRequestedAt
+            ? { cancelRequestedAt: doc.cancelRequestedAt.toISOString() }
+            : {}),
     };
 }
 
@@ -262,6 +280,7 @@ export function toActionView(doc: BotActionDocument, viewerId: string): BotActio
     if (!isOwner) return base;
     return {
         ...base,
+        canCancel: canCancel(doc),
         ...(doc.approvedBy ? { approvedBy: doc.approvedBy } : {}),
         params: doc.params,
         ...(doc.result ? { result: doc.result } : {}),
@@ -275,6 +294,8 @@ export function toActionView(doc: BotActionDocument, viewerId: string): BotActio
                           ? { completedAt: doc.undo.completedAt.toISOString() }
                           : {}),
                       ...(doc.undo.error ? { error: doc.undo.error } : {}),
+                      ...(doc.undo.deviceName ? { deviceName: doc.undo.deviceName } : {}),
+                      ...(doc.undo.fallback ? { fallback: true } : {}),
                   },
               }
             : {}),

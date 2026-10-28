@@ -28,7 +28,10 @@ export type CalendarEventDraft = Static<typeof CalendarEventDraftSchema>;
  * - `added`: on the calendar (`itemId` opens it once the Mac uploads it);
  * - `failed`: the Mac couldn't add it (`error` says why); the owner can try again;
  * - `expired`: nobody tapped, or the Mac never picked it up, within 7 days;
- * - `removed`: added, then undone from the action log; the Mac removed it again.
+ * - `removed`: added, then undone from the action log; the Mac removed it again;
+ * - `not_found`: added, but on Undo the Mac couldn't find it any more (removed by hand,
+ *   or moved); the bot may offer it again;
+ * - `cancelled`: the owner cancelled an automatic add before the Mac picked it up.
  */
 export const CalendarProposalStatusSchema = Type.Union([
     Type.Literal('proposed'),
@@ -37,6 +40,8 @@ export const CalendarProposalStatusSchema = Type.Union([
     Type.Literal('failed'),
     Type.Literal('expired'),
     Type.Literal('removed'),
+    Type.Literal('not_found'),
+    Type.Literal('cancelled'),
 ]);
 export type CalendarProposalStatus = Static<typeof CalendarProposalStatusSchema>;
 
@@ -80,7 +85,7 @@ export const CreateEventActionSchema = Type.Object({
 /**
  * Undo of an added event (bot-action log). The Mac removes the event only when it still
  * carries the marker of the `create_event` action `createdBy`, so it never removes an
- * event Just Maple didn't add. Gone already counts as done. `event` is the one that was
+ * event Just Maple didn't add. Gone already is reported as `outcome: 'not_found'`. `event` is the one that was
  * added, also so Macs from before undo decode the list (and refuse this action).
  */
 export const DeleteEventActionSchema = Type.Object({
@@ -108,5 +113,10 @@ export const DeviceActionResultSchema = Type.Object({
     /** The item id the next calendar upload will use for it. */
     itemId: Type.Optional(Type.String({ maxLength: 600 })),
     error: Type.Optional(Type.String({ maxLength: 500 })),
+    /**
+     * `not_found` (with `ok: true`): a `delete_event` found nothing to remove, so nothing
+     * was removed. Macs from before this field report a missing event as plain success.
+     */
+    outcome: Type.Optional(Type.Literal('not_found')),
 });
 export type DeviceActionResult = Static<typeof DeviceActionResultSchema>;

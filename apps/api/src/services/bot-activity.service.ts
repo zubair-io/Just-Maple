@@ -15,7 +15,7 @@ import {
 } from '../repositories/bot-action.repo';
 import { findUserBotById } from '../repositories/user-bot.repo';
 import { isMemberOf } from './device-data-access.service';
-import { ActionError, canUndo, toActionView, updateAction } from './bot-action.service';
+import { ActionError, canCancel, canUndo, toActionView, updateAction } from './bot-action.service';
 import { ACTION_KIND_HANDLERS } from './bot-action-kinds';
 
 /**
@@ -45,8 +45,11 @@ export async function listBotActivity(
     const bot = await findUserBotById(botId);
     if (!bot || bot.userId !== viewerId) throw new ActionError(404, 'Bot not found');
     await settle(viewerId);
-    const rows = await listActions({ ownerId: viewerId, botId }, MAX_LIMIT * 2);
-    return present(rows, viewerId, filters);
+    const rows = await listActions({ ownerId: viewerId, botId }, limitOf(filters), {
+        ...(filters.kind ? { kind: filters.kind } : {}),
+        ...(filters.status ? { status: filters.status } : {}),
+    });
+    return present(rows, viewerId);
 }
 
 export async function listNotebookActivity(
@@ -56,23 +59,44 @@ export async function listNotebookActivity(
 ): Promise<BotAction[]> {
     if (!(await isMemberOf(notebookId, viewerId))) throw new ActionError(404, 'Notebook not found');
     await settle(viewerId);
-    const rows = await listActions({ notebookId }, MAX_LIMIT * 4);
+    // Visibility and filters run in the query, so the limit counts only rows shown.
+    const rows = await listActions({ notebookId }, limitOf(filters), {
+        visibleTo: viewerId,
+        ...(filters.kind ? { kind: filters.kind } : {}),
+        ...(filters.status ? { status: filters.status } : {}),
+    });
     return present(
         rows.filter((row) => isVisibleTo(row, viewerId, true)),
         viewerId,
-        filters,
     );
 }
 
-/** One row, for a "Done · Undo" card or the Activity list. Null when the viewer can't see it. */
+/**
+ * One row, for a "Done · Undo" card or the Activity list. Null when the viewer can't see
+ * it. Only this row catches up, and only while something about it can still change: a
+ * chat with 20 cards doesn't settle everything 20 times.
+ */
 export async function getActivityItem(id: string, viewerId: string): Promise<BotAction | null> {
     let row = await findAction(id);
     if (!row || !(await canSee(row, viewerId))) return null;
-    if (row.ownerId === viewerId) {
-        await settle(viewerId);
+    if (row.ownerId === viewerId && isUnsettled(row)) {
+        await settleRow(row);
         row = (await findAction(id)) ?? row;
     }
     return toActionView(row, viewerId);
+}
+
+/** The owner's Cancel of a queued action. Repeating it returns the current state. */
+export async function cancelActivityItem(id: string, viewerId: string): Promise<BotAction> {
+    const row = await findAction(id);
+    if (!row || !(await canSee(row, viewerId))) throw new ActionError(404, 'Action not found');
+    if (row.ownerId !== viewerId)
+        throw new ActionError(403, 'Only the person this was done for can cancel it.');
+    if (row.cancelRequestedAt) return toActionView(row, viewerId);
+    const handler = ACTION_KIND_HANDLERS[row.kind]?.cancel;
+    if (!handler || !canCancel(row))
+        throw new ActionError(409, 'Only actions that are still waiting can be cancelled.');
+    return toActionView(await handler(row, viewerId), viewerId);
 }
 
 /** The owner's Undo. Repeating it while the undo is under way returns the current state. */
@@ -136,17 +160,31 @@ async function canSee(row: BotActionDocument, viewerId: string): Promise<boolean
     return isVisibleTo(row, viewerId, await isMemberOf(row.notebookId, viewerId));
 }
 
-function present(
-    rows: BotActionDocument[],
-    viewerId: string,
-    filters: ActivityFilters,
-): BotAction[] {
-    const limit = Math.min(Math.max(filters.limit ?? 100, 1), MAX_LIMIT);
-    return rows
-        .filter((row) => !filters.kind || row.kind === filters.kind)
-        .filter((row) => !filters.status || row.status === filters.status)
-        .slice(0, limit)
-        .map((row) => toActionView(row, viewerId));
+function limitOf(filters: ActivityFilters): number {
+    return Math.min(Math.max(filters.limit ?? 100, 1), MAX_LIMIT);
+}
+
+function present(rows: BotActionDocument[], viewerId: string): BotAction[] {
+    return rows.map((row) => toActionView(row, viewerId));
+}
+
+function isUnsettled(row: BotActionDocument): boolean {
+    return (
+        OPEN_BOT_ACTION_STATUSES.includes(row.status) ||
+        row.undo?.state === 'queued' ||
+        row.undo?.state === 'delivered'
+    );
+}
+
+async function settleRow(row: BotActionDocument): Promise<void> {
+    const handler = ACTION_KIND_HANDLERS[row.kind]?.settleOne;
+    if (handler) {
+        await handler(row).catch((error) => console.error('[BotActivity]', error));
+        return;
+    }
+    if (ACTION_KIND_HANDLERS[row.kind]?.settle) return; // Its rows expire on list reads
+    if (row.expiresAt && row.expiresAt.getTime() <= Date.now())
+        await updateAction(row._id, { status: 'expired' }, { from: OPEN_BOT_ACTION_STATUSES });
 }
 
 /**
