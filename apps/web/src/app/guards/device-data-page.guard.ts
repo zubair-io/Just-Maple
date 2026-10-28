@@ -34,3 +34,4 @@ export const CalendarPageGuard = createDeviceDataPageGuard('calendar');
 export const ContactsPageGuard = createDeviceDataPageGuard('contacts');
 export const PlacesPageGuard = createDeviceDataPageGuard('location');
 export const HealthPageGuard = createDeviceDataPageGuard('health');
+export const HomePageGuard = createDeviceDataPageGuard('home');

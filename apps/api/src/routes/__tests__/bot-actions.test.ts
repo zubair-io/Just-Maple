@@ -12,6 +12,7 @@ import {
     ALWAYS_ASK_HOME_DOMAINS,
     isAlwaysAsk,
     isSensitiveHomeService,
+    isSensitiveHomeEntity,
     type BotAction,
     type CalendarProposal,
     type ChatEvent,
@@ -354,7 +355,9 @@ describe.runIf(mongoAvailable)('Bot action log and autonomy', () => {
             expect(ALWAYS_ASK_HOME_DOMAINS).toContain(domain);
             const service = domain === 'lock' ? 'lock' : 'turn_on';
             expect(call({ service, entityId: `${domain}.thing` })).toBe(true);
-            expect(call({ service, entityId: `${domain}.thing` }, { safe: true })).toBe(false);
+            // Locks, scripts and scenes always ask (the card's double confirm): no "safe".
+            const always = ['lock', 'script', 'scene'].includes(domain);
+            expect(call({ service, entityId: `${domain}.thing` }, { safe: true })).toBe(always);
         }
         // Even a "safe" entity never unlocks, disarms or opens a door on its own.
         expect(call({ service: 'unlock', entityId: 'lock.front' }, { safe: true })).toBe(true);
@@ -379,6 +382,30 @@ describe.runIf(mongoAvailable)('Bot action log and autonomy', () => {
             ),
         ).toBe(false);
         expect(call({ service: 'mobile_app', entityId: 'notify.x' }, { safe: true })).toBe(true);
+        // One rule with the Home Assistant card (isSensitiveHomeEntity): openers by name or
+        // class, and garage covers whatever the service, always ask.
+        expect(call({ service: 'turn_on', entityId: 'switch.garage_opener' }, { safe: true })).toBe(
+            true,
+        );
+        expect(
+            call({ service: 'turn_on', entityId: 'switch.relay_1' }, { safe: true, name: 'Gate' }),
+        ).toBe(true);
+        expect(
+            call(
+                { service: 'turn_on', entityId: 'switch.relay_2' },
+                { safe: true, deviceClass: 'door' },
+            ),
+        ).toBe(true);
+        expect(
+            call({ service: 'close_cover', entityId: 'cover.garage_door' }, { safe: true }),
+        ).toBe(true);
+        expect(call({ service: 'turn_on', entityId: 'switch.kettle' }, { safe: true })).toBe(false);
+        for (const entityId of ['lock.front', 'scene.movie', 'script.leave', 'cover.garage']) {
+            expect(
+                isSensitiveHomeEntity({ entityId, deviceClass: 'garage' }) &&
+                    call({ service: 'turn_on', entityId }, { safe: true, deviceClass: 'garage' }),
+            ).toBe(true);
+        }
 
         // Through decideAutonomy: the server's knowledge is an input, the bot's isn't.
         await setAutonomy('home_service', 'auto');
@@ -394,8 +421,12 @@ describe.runIf(mongoAvailable)('Bot action log and autonomy', () => {
         expect(
             await decide({ service: 'turn_on', entityId: 'scene.movie', safe: true }),
         ).toMatchObject({ autonomy: 'ask', lowered: 'always_ask' });
+        // Scenes ask even when the server vouches for them; a known-safe switch doesn't.
         expect(
             await decide({ service: 'turn_on', entityId: 'scene.movie' }, { safe: true }),
+        ).toMatchObject({ autonomy: 'ask', lowered: 'always_ask' });
+        expect(
+            await decide({ service: 'turn_on', entityId: 'switch.kettle' }, { safe: true }),
         ).toMatchObject({ autonomy: 'auto' });
     });
 

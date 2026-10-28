@@ -41,14 +41,21 @@ nonisolated struct DeviceAction: Codable, Equatable, Sendable {
     }
 
     var id: String
+    /// `create_event` / `delete_event` (calendar) or `home_service` (Home Assistant,
+    /// HomeActions.swift).
     var type: String
     var source: String
-    /// The event to add, or (for `delete_event`) the one that was added.
-    var event: Event
+    /// The event to add, or (for `delete_event`) the one that was added. Optional because
+    /// `home_service` actions have none; calendar actions always carry one.
+    var event: Event?
     /// `delete_event`: EventKit's identifier for the event, as this Mac reported it.
     var eventIdentifier: String? = nil
     /// `delete_event`: the `create_event` action that added it (its marker).
     var createdBy: String? = nil
+    /// `home_service`: the call the owner confirmed (HomeActions.swift).
+    var call: HomeServiceCall? = nil
+    /// ISO 8601; home actions expire 15 minutes after the tap.
+    var expiresAt: String? = nil
 }
 
 nonisolated struct DeviceActionResult: Codable, Equatable, Sendable {
@@ -132,6 +139,9 @@ nonisolated struct CalendarActionRunner: Sendable {
     let ledger: DeviceActionLedger
     /// The calendar chosen in settings; nil (or one that's gone) means the default.
     let calendarId: String?
+    /// Runs `home_service` actions; nil when this Mac isn't connected to Home Assistant.
+    var home: HomeActionPerforming? = nil
+    var now: @Sendable () -> Date = { Date() }
 
     static func marker(for id: String) -> URL {
         URL(string: "justmaple://calendar-action/\(id)")!
@@ -144,7 +154,12 @@ nonisolated struct CalendarActionRunner: Sendable {
         var reported = 0
         for action in try await api.pendingActions() {
             let saved = try await ledger.result(for: action.id).flatMap { $0.ok ? $0 : nil }
-            let result = saved ?? perform(action)
+            let result: DeviceActionResult
+            if let saved {
+                result = saved
+            } else {
+                result = await perform(action)
+            }
             if saved == nil, result.ok { try await ledger.save(result, for: action.id) }
             try await api.report(action.id, result)
             reported += 1
@@ -152,10 +167,11 @@ nonisolated struct CalendarActionRunner: Sendable {
         return reported
     }
 
-    private func perform(_ action: DeviceAction) -> DeviceActionResult {
-        switch action.type {
-        case "create_event": return add(action)
-        case "delete_event": return remove(action)
+    private func perform(_ action: DeviceAction) async -> DeviceActionResult {
+        switch (action.type, action.event) {
+        case ("create_event", let event?): return add(action, event)
+        case ("delete_event", let event?): return remove(action, event)
+        case ("home_service", _): return await performHome(action)
         default:
             return DeviceActionResult(
                 ok: false, error: CalendarActionError.unsupported(action.type).localizedDescription)
@@ -164,7 +180,7 @@ nonisolated struct CalendarActionRunner: Sendable {
 
     /// Undo of an added event. Gone already is reported as `not_found` (nothing was
     /// removed); a repeat after a lost reply sends the saved result again.
-    private func remove(_ action: DeviceAction) -> DeviceActionResult {
+    private func remove(_ action: DeviceAction, _ event: DeviceAction.Event) -> DeviceActionResult {
         guard let createdBy = action.createdBy, let identifier = action.eventIdentifier else {
             return DeviceActionResult(
                 ok: false, error: CalendarActionError.notAddedByJustMaple.localizedDescription)
@@ -172,7 +188,7 @@ nonisolated struct CalendarActionRunner: Sendable {
         do {
             let removed = try writer.remove(
                 identifier: identifier, marker: Self.marker(for: createdBy),
-                around: Date(timeIntervalSince1970: action.event.start))
+                around: Date(timeIntervalSince1970: event.start))
             return DeviceActionResult(
                 ok: true, eventIdentifier: identifier,
                 outcome: removed ? nil : DeviceActionResult.notFound)
@@ -181,10 +197,10 @@ nonisolated struct CalendarActionRunner: Sendable {
         }
     }
 
-    private func add(_ action: DeviceAction) -> DeviceActionResult {
+    private func add(_ action: DeviceAction, _ event: DeviceAction.Event) -> DeviceActionResult {
         let marker = Self.marker(for: action.id)
         if let existing = writer.existingEvent(
-            marker: marker, around: Date(timeIntervalSince1970: action.event.start))
+            marker: marker, around: Date(timeIntervalSince1970: event.start))
         {
             return DeviceActionResult(
                 ok: true, eventIdentifier: existing.eventIdentifier, itemId: existing.itemId)
@@ -194,12 +210,29 @@ nonisolated struct CalendarActionRunner: Sendable {
         }
         do {
             let written = try writer.create(
-                action.event, calendarId: chosen ?? writer.defaultCalendarId(), marker: marker)
+                event, calendarId: chosen ?? writer.defaultCalendarId(), marker: marker)
             return DeviceActionResult(
                 ok: true, eventIdentifier: written.eventIdentifier, itemId: written.itemId)
         } catch {
             return DeviceActionResult(ok: false, error: String(error.localizedDescription.prefix(500)))
         }
+    }
+
+    /// A Home Assistant service call: not after it expired, and only through the
+    /// connector, which checks the call and the entity's exposure again first.
+    private func performHome(_ action: DeviceAction) async -> DeviceActionResult {
+        guard let call = action.call else {
+            return DeviceActionResult(ok: false, error: "This action has nothing to do.")
+        }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let expires = action.expiresAt.flatMap {
+            formatter.date(from: $0) ?? ISO8601DateFormatter().date(from: $0)
+        }
+        // No expiry is treated as expired: the server always sends one.
+        guard let expires, expires > now() else { return HomeActionError.expired() }
+        guard let home else { return HomeActionError.notConnected() }
+        return await home.perform(call)
     }
 }
 
@@ -287,9 +320,9 @@ nonisolated struct EventKitCalendarWriter: CalendarWriting, @unchecked Sendable 
 extension MacDataEngine {
     static let actionCalendarKey = "action_calendar_id"
 
-    /// Adds the events the user confirmed in Just Maple. Overlapping calls coalesce into
-    /// one extra pass. Only while this Mac collects the calendar: the server gives
-    /// calendar actions to that Mac alone.
+    /// Does what the user confirmed in Just Maple. Overlapping calls coalesce into one
+    /// extra pass. Only while this Mac collects the calendar or Home Assistant: the server
+    /// gives each source's actions to its collector alone.
     func runActions() async {
         if isRunningActions {
             runActionsAgain = true
@@ -299,11 +332,13 @@ extension MacDataEngine {
         defer { isRunningActions = false }
         repeat {
             runActionsAgain = false
-            guard registration?.activeSources.contains(.calendar) == true else { return }
+            let active = registration?.activeSources ?? []
+            guard active.contains(.calendar) || active.contains(.home) else { return }
             let runner = CalendarActionRunner(
                 api: client, writer: EventKitCalendarWriter(store: eventStore),
                 ledger: EngineActionLedger(engine: self),
-                calendarId: (try? store().value(Self.actionCalendarKey)).flatMap { $0?.isEmpty == false ? $0 : nil })
+                calendarId: (try? store().value(Self.actionCalendarKey)).flatMap { $0?.isEmpty == false ? $0 : nil },
+                home: active.contains(.home) ? homePerformer : nil)
             do {
                 try await runner.run()
             } catch {

@@ -24,6 +24,8 @@ export interface DeviceDataListOptions {
   /** Extra query constraints; re-read whenever the signals they read change. */
   order?: () => 'asc' | 'desc';
   range?: () => { from?: number; to?: number };
+  /** Home only: list current states or changes. */
+  homeKind?: 'state' | 'change';
 }
 
 /**
@@ -110,6 +112,7 @@ export function injectDeviceDataList(source: MacDataSource, options: DeviceDataL
         order: options.order?.() ?? 'desc',
         limit,
         offset,
+        ...(options.homeKind ? { homeKind: options.homeKind } : {}),
         ...options.range?.(),
       });
       // A newer search or refresh started while this one was in flight.

@@ -1,0 +1,72 @@
+<section class="home-card" [attr.data-status]="status() ?? 'loading'">
+  <div class="home-head">
+    <span class="material-symbols-rounded" aria-hidden="true">{{ icon() }}</span>
+    <h3>{{ summary() }}</h3>
+  </div>
+  @if (call().area) {
+    <p class="home-detail">{{ call().area }}</p>
+  }
+
+  <div class="home-state" role="status">
+    @switch (status()) {
+      @case ('proposed') {
+        @if (canConfirm()) {
+          @if (armed()) {
+            <ng-container [ngTemplateOutlet]="areYouSure" />
+          } @else {
+            <button type="button" class="home-do" [disabled]="tapping()" (click)="tap()">
+              {{ tapping() ? 'Sending…' : 'Do it' }}
+            </button>
+          }
+        } @else {
+          <button type="button" class="home-do" disabled>Do it</button>
+          <span class="home-muted">Only the home's owner can do this.</span>
+        }
+      }
+      @case ('running') {
+        <span class="home-progress">
+          <span class="spinner" aria-hidden="true"></span>
+          @if (proposal()?.device?.offline) {
+            {{ proposal()!.device!.name }} is offline. It happens when it's next on, if within 15
+            minutes.
+          } @else {
+            Sending to Home Assistant through {{ proposal()?.device?.name ?? 'your Mac' }}…
+          }
+        </span>
+      }
+      @case ('done') {
+        <span class="home-done">
+          <span class="material-symbols-rounded" aria-hidden="true">check_circle</span>
+          Done
+        </span>
+      }
+      @case ('failed') {
+        <span class="home-error">Couldn't do it: {{ proposal()?.error }}</span>
+        @if (canConfirm()) {
+          @if (armed()) {
+            <ng-container [ngTemplateOutlet]="areYouSure" />
+          } @else {
+            <button type="button" class="home-do" [disabled]="tapping()" (click)="tap()">
+              Try again
+            </button>
+          }
+        }
+      }
+      @case ('expired') {
+        <span class="home-muted">This offer expired. Ask again if you still want it.</span>
+      }
+    }
+    @if (tapError(); as message) {
+      <span class="home-error">{{ message }}</span>
+    }
+  </div>
+</section>
+
+<!-- The second tap for sensitive actions, on the first try and on every retry. -->
+<ng-template #areYouSure>
+  <span class="home-warn">Are you sure? This will {{ warning() }}.</span>
+  <button type="button" class="home-do" [disabled]="tapping()" (click)="tap()">
+    {{ tapping() ? 'Sending…' : 'Yes, do it' }}
+  </button>
+  <button type="button" class="home-link" (click)="cancel()">Cancel</button>
+</ng-template>

@@ -1,0 +1,62 @@
+<app-device-data-panel [list]="list" searchPlaceholder="Search devices">
+  @if (devices().length) {
+    <h2
+      class="m-0 mt-5 font-sans text-xs! font-semibold uppercase tracking-wider text-[var(--color-text-muted)]"
+    >
+      Devices
+    </h2>
+    <table class="device-data-table" aria-label="Devices">
+      <thead>
+        <tr>
+          <th scope="col">Device</th>
+          <th scope="col">State</th>
+          <th scope="col">Area</th>
+          <th scope="col">Since</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of devices(); track row.id) {
+          <tr>
+            <td>
+              <span class="font-semibold">{{ row.name }}</span>
+              <span class="block text-xs text-[var(--color-text-muted)]">{{ row.entityId }}</span>
+            </td>
+            <td class="nowrap">{{ row.state }}</td>
+            <td class="nowrap muted">{{ row.area ?? '' }}</td>
+            <td class="nowrap muted">
+              {{ row.since === null ? '' : (row.since | date: 'MMM d, h:mm a') }}
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  }
+
+  @if (changes().length) {
+    <h2
+      class="m-0 mt-6 font-sans text-xs! font-semibold uppercase tracking-wider text-[var(--color-text-muted)]"
+    >
+      Recent changes
+    </h2>
+    <table class="device-data-table" aria-label="Recent changes">
+      <thead>
+        <tr>
+          <th scope="col">When</th>
+          <th scope="col">Device</th>
+          <th scope="col">Change</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of changes(); track row.id) {
+          <tr>
+            <td class="nowrap">
+              {{ row.when === null ? '' : (row.when | date: 'EEE, MMM d, h:mm a') }}
+            </td>
+            <td class="font-semibold">{{ row.name }}</td>
+            <td class="nowrap muted">{{ row.from }} → {{ row.to }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  }
+</app-device-data-panel>

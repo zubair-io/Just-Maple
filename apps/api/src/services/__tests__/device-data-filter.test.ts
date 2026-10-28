@@ -4,7 +4,12 @@ import {
     deviceFilterIsEmpty,
     deviceItemMatchesFilter,
     deviceItemThreadKey,
+    describeHomeCall,
+    homeItemVisibleToBots,
     imessageHandleKey,
+    isHomePresence,
+    isHomePresenceEntity,
+    isSensitiveHomeEntity,
     imessageThreadKey,
     type MacDataItem,
 } from '@maple/shared';
@@ -140,5 +145,153 @@ describe('device data page filters', () => {
         expect(
             deviceItemThreadKey({ ...base, source: 'calendar', extra: { chatId: 'x;-;y' } }),
         ).toBeUndefined();
+    });
+});
+
+describe('Home page filters', () => {
+    const home = (entityId: string, area?: string): MacDataItem => ({
+        id: `home:${entityId}`,
+        source: 'home',
+        revision: '1',
+        occurredAt: 0,
+        participants: [],
+        body: '',
+        extra: { entityId, ...(area ? { area } : {}) },
+    });
+    const light = home('light.kitchen', 'Kitchen');
+    const person = home('person.alex');
+    const tracker = home('device_tracker.alex_phone', 'Hall');
+
+    it('shares entities by id or area, and nothing when empty', () => {
+        expect(deviceFilterIsEmpty('home', {})).toBe(true);
+        expect(deviceFilterIsEmpty('home', { homeAreas: ['Kitchen'] })).toBe(false);
+        expect(deviceItemMatchesFilter(light, { homeAreas: ['Kitchen'] }, utc)).toBe(true);
+        expect(deviceItemMatchesFilter(light, { homeAreas: ['Garage'] }, utc)).toBe(false);
+        expect(deviceItemMatchesFilter(light, { homeEntities: ['light.kitchen'] }, utc)).toBe(true);
+        expect(deviceItemMatchesFilter(home('light.kitchen'), { includeAll: true }, utc)).toBe(
+            true,
+        );
+    });
+
+    it("leaves out who's home unless picked or turned on", () => {
+        expect(deviceItemMatchesFilter(person, { includeAll: true }, utc)).toBe(false);
+        expect(deviceItemMatchesFilter(tracker, { homeAreas: ['Hall'] }, utc)).toBe(false);
+        expect(
+            deviceItemMatchesFilter(tracker, { homeAreas: ['Hall'], includePresence: true }, utc),
+        ).toBe(true);
+        expect(deviceItemMatchesFilter(person, { homeEntities: ['person.alex'] }, utc)).toBe(true);
+        expect(isHomePresenceEntity('person.alex')).toBe(true);
+        expect(isHomePresenceEntity('light.kitchen')).toBe(false);
+    });
+
+    it("hides who's home from bots on pages without a filter", () => {
+        expect(homeItemVisibleToBots(person, undefined)).toBe(false);
+        expect(homeItemVisibleToBots(light, undefined)).toBe(true);
+        expect(homeItemVisibleToBots(person, { includeAll: true, includePresence: true })).toBe(
+            true,
+        );
+        expect(homeItemVisibleToBots(person, { homeEntities: ['person.alex'] })).toBe(true);
+    });
+
+    it('treats zones, people groups, presence and place-revealing sensors as presence', () => {
+        expect(isHomePresence({ entityId: 'zone.work' })).toBe(true);
+        expect(isHomePresence({ entityId: 'group.family', state: 'home' })).toBe(true);
+        expect(isHomePresence({ entityId: 'group.family', state: 'not_home' })).toBe(true);
+        expect(isHomePresence({ entityId: 'group.downstairs_lights', state: 'on' })).toBe(false);
+        expect(isHomePresence({ entityId: 'binary_sensor.alex_presence' })).toBe(true);
+        expect(isHomePresence({ entityId: 'binary_sensor.front_door' })).toBe(false);
+        expect(isHomePresence({ entityId: 'sensor.alex_phone_geocoded_location' })).toBe(true);
+        expect(isHomePresence({ entityId: 'sensor.alex_phone_ssid' })).toBe(true);
+        expect(isHomePresence({ entityId: 'sensor.alex_phone_bssid' })).toBe(true);
+        expect(isHomePresence({ entityId: 'sensor.alex_phone_wifi_connection' })).toBe(true);
+        expect(isHomePresence({ entityId: 'sensor.kitchen_temperature' })).toBe(false);
+        expect(isHomePresence({ entityId: 'binary_sensor.alex', deviceClass: 'presence' })).toBe(
+            true,
+        );
+        // Occupancy with no area is a person's; a room's sensor has one.
+        expect(isHomePresence({ entityId: 'binary_sensor.alex', deviceClass: 'occupancy' })).toBe(
+            true,
+        );
+        expect(
+            isHomePresence({
+                entityId: 'binary_sensor.office',
+                deviceClass: 'occupancy',
+                area: 'Office',
+            }),
+        ).toBe(false);
+
+        const item = (entityId: string, extra: Record<string, unknown>): MacDataItem => ({
+            ...home(entityId),
+            extra: { entityId, ...extra },
+        });
+        const family = item('group.family', { state: 'home' });
+        expect(deviceItemMatchesFilter(home('zone.work'), { includeAll: true }, utc)).toBe(false);
+        expect(deviceItemMatchesFilter(family, { includeAll: true }, utc)).toBe(false);
+        expect(homeItemVisibleToBots(family, undefined)).toBe(false);
+        expect(homeItemVisibleToBots(home('sensor.alex_phone_ssid'), undefined)).toBe(false);
+        expect(
+            deviceItemMatchesFilter(family, { includeAll: true, includePresence: true }, utc),
+        ).toBe(true);
+    });
+
+    it('marks locks, scenes, scripts and entry openers as sensitive', () => {
+        expect(isSensitiveHomeEntity({ entityId: 'lock.front_door' })).toBe(true);
+        expect(isSensitiveHomeEntity({ entityId: 'scene.movie_night' })).toBe(true);
+        expect(isSensitiveHomeEntity({ entityId: 'script.leave_home' })).toBe(true);
+        expect(isSensitiveHomeEntity({ entityId: 'switch.garage_opener' })).toBe(true);
+        expect(isSensitiveHomeEntity({ entityId: 'switch.relay_1', name: 'Driveway gate' })).toBe(
+            true,
+        );
+        expect(isSensitiveHomeEntity({ entityId: 'switch.relay_2', deviceClass: 'door' })).toBe(
+            true,
+        );
+        expect(isSensitiveHomeEntity({ entityId: 'cover.garage', deviceClass: 'garage' })).toBe(
+            true,
+        );
+        expect(isSensitiveHomeEntity({ entityId: 'cover.living_room_blinds' })).toBe(false);
+        expect(isSensitiveHomeEntity({ entityId: 'switch.kettle', name: 'Kettle' })).toBe(false);
+        expect(isSensitiveHomeEntity({ entityId: 'light.garage' })).toBe(false);
+    });
+
+    it('describes what a Home page shares', () => {
+        expect(describeDeviceFilter('home', { includeAll: true })).toBe('All exposed devices');
+        expect(describeDeviceFilter('home', { includeAll: true, includePresence: true })).toBe(
+            "All exposed devices and who's home",
+        );
+        expect(describeDeviceFilter('home', { homeAreas: ['Kitchen', 'Garage'] })).toBe(
+            'Devices in Kitchen and Garage',
+        );
+        expect(describeDeviceFilter('home', { homeEntities: ['a.b', 'c.d'] })).toBe(
+            '2 chosen devices',
+        );
+        expect(describeDeviceFilter('home', {})).toBe('Nothing yet');
+    });
+
+    it('describes proposed actions', () => {
+        expect(
+            describeHomeCall({
+                entityId: 'light.kitchen',
+                domain: 'light',
+                service: 'turn_on',
+                name: 'Kitchen Light',
+                data: { brightness_pct: 40 },
+            }),
+        ).toBe('Turn on Kitchen Light at 40%');
+        expect(
+            describeHomeCall({
+                entityId: 'scene.movie',
+                domain: 'scene',
+                service: 'turn_on',
+                name: 'Movie',
+            }),
+        ).toBe('Run Movie');
+        expect(
+            describeHomeCall({
+                entityId: 'lock.front',
+                domain: 'lock',
+                service: 'unlock',
+                name: 'Front Door',
+            }),
+        ).toBe('Unlock Front Door');
     });
 });

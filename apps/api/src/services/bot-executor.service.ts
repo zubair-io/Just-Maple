@@ -13,6 +13,7 @@ import { isBotModel } from '@maple/shared';
 import { botUIPrompt, parseBotResponse, botUIToText } from './bot-ui.service';
 import { attachProposals, withProposalCards } from './calendar-proposal.service';
 import { draftRunNotice, expireUnpostedDrafts, withReplyDraftCards } from './reply-draft.service';
+import { attachHomeProposalCards, withHomeProposalCards } from './home.service';
 import { attachActions, withActionReceipts } from './bot-action.service';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { SDKAssistantMessage } from '@anthropic-ai/claude-agent-sdk';
@@ -1020,7 +1021,9 @@ export class BotExecutorService {
         // "Add to calendar" cards come from the proposals saved in this run, never from
         // what the model wrote.
         const proposals = ctx.macData?.proposedEvents ?? [];
+        const homeActions = ctx.macData?.proposedHomeActions ?? [];
         let ui = proposals.length ? await withProposalCards(parsed.ui, proposals) : parsed.ui;
+        if (homeActions.length) ui = await withHomeProposalCards(ui, homeActions);
         // So do "Done · Undo" cards, from actions done without a tap (bot-action.service).
         const receipts = ctx.macData?.actionReceipts ?? [];
         if (receipts.length) ui = await withActionReceipts(ui, receipts);
@@ -1040,6 +1043,11 @@ export class BotExecutorService {
         if (proposals.length)
             await attachProposals(proposals, pageId, messageId).catch((error) =>
                 console.error('[BotExecutor] Could not attach proposals:', error),
+            );
+        const homeActions = ctx.macData?.proposedHomeActions ?? [];
+        if (homeActions.length)
+            await attachHomeProposalCards(homeActions, pageId, messageId).catch((error) =>
+                console.error('[BotExecutor] Could not attach home proposals:', error),
             );
         // Calendar proposals share their id with their action log row.
         const actions = [

@@ -3,6 +3,7 @@ import {
   Component,
   OnInit,
   computed,
+  effect,
   inject,
   signal,
 } from '@angular/core';
@@ -15,6 +16,7 @@ import { DeviceDataService } from '../../services/device-data.service';
 import {
   MacDataService,
   type MacActionCalendars,
+  type MacHomeStatus,
   type MacSourceStatus,
 } from '../../services/mac-data.service';
 import { IPhoneCollectorService } from '../../services/iphone-collector.service';
@@ -78,6 +80,33 @@ export class DevicesComponent implements OnInit {
     const info = this.actionCalendars();
     return info?.calendars.find((c) => c.id === info.defaultId)?.title ?? null;
   });
+
+  /** This Mac's Home Assistant connection (Mac app only). */
+  readonly homeStatus = signal<MacHomeStatus | null>(null);
+  readonly homeLine = computed(() => {
+    const home = this.homeStatus();
+    if (!home?.configured) return 'Not set up: add your Home Assistant address and a token';
+    const where = home.url ? `${home.url} · ` : '';
+    switch (home.state) {
+      case 'connected':
+        return `${where}${home.exposed ?? 0} exposed ${home.exposed === 1 ? 'entity' : 'entities'}`;
+      case 'connecting':
+        return `${where}Connecting…`;
+      case 'retrying':
+      case 'failed':
+        return `${where}${home.error ?? 'Not connected'}`;
+      default:
+        return `${where}Not connected`;
+    }
+  });
+
+  constructor() {
+    // The Mac reports status after every change, Home Assistant's included.
+    effect(() => {
+      this.macData.statusBySource();
+      void this.loadHomeStatus();
+    });
+  }
 
   readonly hasData = computed(() =>
     this.collectors().some((c) => Object.values(c.itemCounts ?? {}).some((n) => n > 0)),
@@ -148,7 +177,7 @@ export class DevicesComponent implements OnInit {
     const confirmed = await this.dialog.confirm({
       title: 'Remove all your device data?',
       message:
-        'Messages, email, events, contacts, places and health data your devices uploaded are deleted from the cloud. Your devices stop uploading until you turn sources back on.',
+        'Messages, email, events, contacts, places, health and home data your devices uploaded are deleted from the cloud. Your devices stop uploading until you turn sources back on.',
       confirmLabel: 'Remove all',
     });
     if (!confirmed) return;
@@ -192,6 +221,14 @@ export class DevicesComponent implements OnInit {
 
   async macTurnOff(source: MacDataSource): Promise<void> {
     await this.run(`mac:${source}`, () => this.macData.disableSource(source), false);
+  }
+
+  private async loadHomeStatus(): Promise<void> {
+    this.homeStatus.set(await this.macData.homeStatus().catch(() => null));
+  }
+
+  async openHomeSettings(): Promise<void> {
+    await this.run('mac:home-settings', () => this.macData.openHomeSettings(), false);
   }
 
   private async loadActionCalendars(): Promise<void> {

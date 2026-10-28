@@ -12,6 +12,7 @@ export const MacDataSourceSchema = Type.Union([
     Type.Literal('contacts'),
     Type.Literal('location'),
     Type.Literal('health'),
+    Type.Literal('home'), // Home Assistant, through the Mac: exposed entities only (home.ts)
 ]);
 
 export type MacDataSource = Static<typeof MacDataSourceSchema>;
@@ -234,8 +235,16 @@ export const UploadDeviceItemsResultSchema = Type.Object({
 });
 export type UploadDeviceItemsResult = Static<typeof UploadDeviceItemsResultSchema>;
 
-/** Items older than this are removed, except contacts and calendar events that haven't ended. */
+/**
+ * Items older than this are removed, except contacts, calendar events that haven't ended,
+ * and Home entities' current state (only their recorded changes age out).
+ */
 export const DEVICE_DATA_RETENTION_DAYS = 30;
+
+/** A Home item that holds an entity's current state (`home:<entity_id>`), not one change (`home:<entity_id>@<time>`). */
+export function isHomeStateItemId(id: string): boolean {
+    return id.startsWith('home:') && !id.includes('@');
+}
 
 // ============================================
 // Travel time to upcoming events (computed on the iPhone with Apple Maps)

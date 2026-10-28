@@ -48,6 +48,8 @@
         {{ copy.all }}
       } @else if (isPlaces()) {
         Share visits
+      } @else if (isHome()) {
+        Share every exposed device
       } @else {
         Share everything
       }
@@ -81,6 +83,76 @@
               <p class="m-0 text-xs text-[var(--color-text-muted)]">
                 @if (options()) {
                   Nothing to choose from yet: your devices haven't uploaded any.
+                } @else {
+                  {{ optionsError() ?? 'Loading…' }}
+                }
+              </p>
+            }
+          </div>
+        </div>
+      }
+    }
+
+    @if (isHome()) {
+      <label class="flex items-center gap-2 pl-6 text-sm text-[var(--color-text-main)]">
+        <input
+          type="checkbox"
+          name="includePresence"
+          [checked]="includePresence()"
+          (change)="includePresence.set($any($event.target).checked)"
+          class="accent-[var(--color-primary)]"
+        />
+        Include who's home (people and phones)
+      </label>
+      @if (!includeAll()) {
+        <div class="flex flex-col gap-2 pl-6" role="group" aria-label="Areas">
+          <p class="m-0 text-xs font-semibold text-[var(--color-text-main)]">Areas</p>
+          @for (area of homeAreaChoices(); track area) {
+            <label class="flex items-center gap-2 text-sm text-[var(--color-text-main)]">
+              <input
+                type="checkbox"
+                [checked]="homeAreas().includes(area)"
+                (change)="toggleHomeArea(area, $any($event.target).checked)"
+                class="accent-[var(--color-primary)]"
+              />
+              {{ area }}
+            </label>
+          } @empty {
+            <p class="m-0 text-xs text-[var(--color-text-muted)]">
+              No areas yet: assign devices to areas in Home Assistant.
+            </p>
+          }
+        </div>
+        <div class="flex flex-col gap-2 pl-6" role="group" aria-label="Devices">
+          <p class="m-0 text-xs font-semibold text-[var(--color-text-main)]">Devices</p>
+          @if ((options()?.homeEntities?.length ?? 0) > 12) {
+            <input
+              type="search"
+              name="pickQuery"
+              [value]="pickQuery()"
+              (input)="pickQuery.set($any($event.target).value)"
+              placeholder="Find devices"
+              class="h-8 w-64 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-xs text-[var(--color-text-main)] outline-none focus:border-[var(--color-primary)] max-md:w-full"
+            />
+          }
+          <div class="flex max-h-56 flex-col gap-1 overflow-auto">
+            @for (entity of homeChoices(); track entity.id) {
+              <label class="flex items-center gap-2 text-sm text-[var(--color-text-main)]">
+                <input
+                  type="checkbox"
+                  [checked]="homeEntities().includes(entity.id)"
+                  (change)="toggleHomeEntity(entity.id, $any($event.target).checked)"
+                  class="accent-[var(--color-primary)]"
+                />
+                <span class="truncate">{{ entity.name }}</span>
+                @if (entity.area) {
+                  <span class="text-xs text-[var(--color-text-muted)]">{{ entity.area }}</span>
+                }
+              </label>
+            } @empty {
+              <p class="m-0 text-xs text-[var(--color-text-muted)]">
+                @if (options()) {
+                  Nothing to choose from yet: expose devices to assistants in Home Assistant.
                 } @else {
                   {{ optionsError() ?? 'Loading…' }}
                 }

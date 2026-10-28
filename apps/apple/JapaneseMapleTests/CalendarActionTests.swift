@@ -284,8 +284,8 @@ struct CalendarActionTests {
             """
         struct Reply: Decodable { var actions: [DeviceAction] }
         let reply = try JSONDecoder().decode(Reply.self, from: Data(json.utf8))
-        #expect(reply.actions.first?.event.allDay == true)
-        #expect(reply.actions.first?.event.location == nil)
+        #expect(reply.actions.first?.event?.allDay == true)
+        #expect(reply.actions.first?.event?.location == nil)
     }
 }
 #endif

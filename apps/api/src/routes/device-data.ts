@@ -7,11 +7,13 @@ import {
     UploadTravelEstimatesSchema,
     MacDataSourceSchema,
     UpdateDeviceDataPageSchema,
+    isHomeStateItemId,
     type DeviceDataAccess,
     type JWTPayload,
     type MacDataSource,
 } from '@maple/shared';
 import { saveTravelEstimates } from '../repositories/travel-estimate.repo';
+import { deleteHomeExposure } from '../repositories/home-exposure.repo';
 import {
     deleteCollector,
     findCollector,
@@ -33,6 +35,7 @@ import {
     isMemberOf,
     loadDataPageView,
     filterOptionsFor,
+    homeExposureMatcher,
     itemMatcherFor,
     itemQueryFor,
 } from '../services/device-data-access.service';
@@ -249,6 +252,20 @@ export const deviceDataRoutes = new Elysia({ prefix: '/api' })
                 if (!pageQuery) {
                     return { items: [], total: 0, collector: null, access };
                 }
+            } else if (query.source === 'home') {
+                // Even the owner's own list shows only what they expose in Home Assistant.
+                pageQuery = { match: await homeExposureMatcher(ownerId) };
+            }
+            // Home lists current states and changes separately, so a busy day of changes
+            // can't push devices off the first page.
+            const homeKind = query.homeKind;
+            if (homeKind && sources[0] === 'home' && pageQuery?.match) {
+                const match = pageQuery.match;
+                const wantState = homeKind === 'state';
+                pageQuery = {
+                    ...pageQuery,
+                    match: (item) => isHomeStateItemId(item.id) === wantState && match(item),
+                };
             }
             // Which device collects it: shown to the person whose data it is.
             const collector =
@@ -289,6 +306,7 @@ export const deviceDataRoutes = new Elysia({ prefix: '/api' })
                 limit: t.Optional(t.Numeric({ minimum: 1, maximum: 500 })),
                 offset: t.Optional(t.Numeric({ minimum: 0 })),
                 order: t.Optional(t.Union([t.Literal('asc'), t.Literal('desc')])),
+                homeKind: t.Optional(t.Union([t.Literal('state'), t.Literal('change')])),
             }),
         },
     )
@@ -396,7 +414,7 @@ export const deviceDataRoutes = new Elysia({ prefix: '/api' })
                 return { item };
             }
             const item = await findDeviceItem(auth.user._id, params.id);
-            if (!item) {
+            if (!item || !(await homeExposureMatcher(auth.user._id))(item)) {
                 set.status = 404;
                 return { error: 'Item not found' };
             }
@@ -413,6 +431,7 @@ export const deviceDataRoutes = new Elysia({ prefix: '/api' })
     .delete('/device-data', async ({ auth, set }) => {
         if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
         const removed = await deleteDeviceItems(auth.user._id);
+        await deleteHomeExposure(auth.user._id);
         // Devices stay off until the user picks "Collect here" again.
         await disableAllSources(auth.user._id);
         await bumpDeviceDataVersion(auth.user._id);
