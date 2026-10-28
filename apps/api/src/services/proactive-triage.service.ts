@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { PROACTIVE_TIMING_DEFAULTS, type ProactiveBotSettings } from '@maple/shared';
 import { config } from '../config';
 import { formatInZone } from '../utils/time-zone';
-import type { PileItem } from '../repositories/proactive-pile.repo';
+import type { PileItem, PileOverflow } from '../repositories/proactive-pile.repo';
 import type { OverlapNews } from './calendar-overlap.service';
 
 /**
@@ -79,13 +79,12 @@ function awaitingReply(conversation: PileItem['entry']['conversation']): boolean
  */
 export function deterministicSignals(
     items: PileItem[],
-    overlaps: Pick<OverlapNews, 'flagged' | 'cleared'> | undefined,
     now: Date,
+    overflow?: PileOverflow,
 ): TriageSignals {
-    const notes: string[] = [];
-    const forceNow = !!(overlaps?.flagged.length || overlaps?.cleared.length);
-    for (const note of overlaps?.flagged ?? []) notes.push(`New calendar clash: ${note.summary}`);
-    for (const note of overlaps?.cleared ?? []) notes.push(`Clash cleared: ${note.summary}`);
+    // Urgent items (a clash, or an earlier "now" whose post failed) go out now.
+    const forceNow = items.some((item) => item.urgent);
+    const notes: string[] = [...new Set(items.flatMap((item) => item.notes ?? []))];
     const soon = now.getTime() + 24 * 60 * 60 * 1000;
     for (const { entry } of items) {
         const start = Date.parse(entry.item.when);
@@ -104,9 +103,52 @@ export function deterministicSignals(
         )
             notes.push(`Someone is waiting on a reply: ${entry.item.id}`);
     }
-    if (items.length >= 10)
-        notes.push(`${items.length} items are pending; together they may be worth a summary.`);
+    const total = items.length + (overflow?.count ?? 0);
+    if (total >= 10)
+        notes.push(`${total} items are pending; together they may be worth a summary.`);
+    if (overflow?.count) notes.push(overflowLine(overflow));
     return { forceNow, notes };
+}
+
+/** The folded items, in words: "+12 more older items (mail 9, imessage 3)". */
+export function overflowLine(overflow: PileOverflow): string {
+    const bySource = Object.entries(overflow.sources)
+        .sort((a, b) => b[1] - a[1])
+        .map(([source, count]) => `${source} ${count}`)
+        .join(', ');
+    return `+${overflow.count} more older items not listed (${bySource})`;
+}
+
+/**
+ * Clash notes for the pile, attached to the calendar items they're about (or the batch's
+ * first calendar item): they make those items urgent until a post covers them.
+ */
+export function clashMarks(
+    entries: PileItem['entry'][],
+    overlaps: Pick<OverlapNews, 'flagged' | 'cleared'> | undefined,
+): { urgent: Set<string>; notes: Map<string, string[]> } {
+    const urgent = new Set<string>();
+    const notes = new Map<string, string[]>();
+    const calendarIds = entries.filter((e) => e.item.source === 'calendar').map((e) => e.item.id);
+    const all = [
+        ...(overlaps?.flagged ?? []).map((note) => ({
+            note,
+            text: `New calendar clash: ${note.summary}`,
+        })),
+        ...(overlaps?.cleared ?? []).map((note) => ({
+            note,
+            text: `Clash cleared: ${note.summary}`,
+        })),
+    ];
+    for (const { note, text } of all) {
+        const key =
+            note.events.map((event) => event.id).find((id) => calendarIds.includes(id)) ??
+            calendarIds[0];
+        if (!key) continue;
+        urgent.add(key);
+        notes.set(key, [...(notes.get(key) ?? []), text]);
+    }
+    return { urgent, notes };
 }
 
 /** Without a model (no key, out of budget, an error): only code's signals decide. */

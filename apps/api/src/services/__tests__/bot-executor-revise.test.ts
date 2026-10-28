@@ -24,6 +24,7 @@ vi.mock('../../repositories/message.repo', () => ({
     reviseBotMessage: vi.fn(),
 }));
 vi.mock('../../repositories/page.repo', () => ({ findPageByIdForBot: vi.fn() }));
+vi.mock('../../repositories/unread.repo', () => ({ getLastReadAtByPageId: vi.fn() }));
 vi.mock('../realtime.service', () => ({
     broadcastChatEvent: vi.fn().mockResolvedValue(undefined),
 }));
@@ -52,6 +53,7 @@ import { broadcastChatEvent } from '../realtime.service';
 import { sendMessageReceivedNotification } from '../notification.service';
 import { runAnthropicWithTools } from '../llm-tool-loop.service';
 import { extractTextFromContent } from '../../utils/content-utils';
+import { getLastReadAtByPageId } from '../../repositories/unread.repo';
 
 const template: any = {
     _id: 'template',
@@ -99,6 +101,7 @@ describe('revising an unread proactive post', () => {
             'earlier',
             'bot',
             expect.objectContaining({ proactiveMeta: { kind: 'news', urgency: 2 } }),
+            expect.objectContaining({ stillUnread: expect.any(Function) }),
         );
         const update = vi.mocked(reviseBotMessage).mock.calls[0]![2];
         expect(extractTextFromContent(update.content)).toContain('Practice moved to 6');
@@ -137,6 +140,20 @@ describe('revising an unread proactive post', () => {
             expect.objectContaining({ action: 'message' }),
         );
         expect(sendMessageReceivedNotification).toHaveBeenCalledTimes(1);
+    });
+
+    it("re-checks the owner's read marker just before writing", async () => {
+        await run({ messageId: 'earlier' });
+        const guard = vi.mocked(reviseBotMessage).mock.calls[0]![3]!;
+        const postedAt = new Date('2026-10-28T13:30:00Z');
+        vi.mocked(getLastReadAtByPageId).mockResolvedValueOnce(null);
+        expect(await guard.stillUnread!(postedAt)).toBe(true);
+        vi.mocked(getLastReadAtByPageId).mockResolvedValueOnce(new Date('2026-10-28T13:00:00Z'));
+        expect(await guard.stillUnread!(postedAt)).toBe(true);
+        // Read after it was posted (even before a revision): never revised again.
+        vi.mocked(getLastReadAtByPageId).mockResolvedValueOnce(new Date('2026-10-28T13:31:00Z'));
+        expect(await guard.stillUnread!(postedAt)).toBe(false);
+        expect(getLastReadAtByPageId).toHaveBeenCalledWith('owner', 'page');
     });
 
     it('leaves the post alone on NO_UPDATE', async () => {

@@ -593,8 +593,12 @@ const MAX_REVISIONS = 10;
 /**
  * A proactive bot rewrites its own top-level post in place (it was still unread and
  * nothing came after it). The version it replaces is kept in `revisions`, the first
- * version always. Null when the post is gone, isn't this bot's, has thread replies, or
- * changed while the revision was written (the caller then posts a new message instead).
+ * version always. Everything that allows a revision is checked again here, right before
+ * the write, since the revision took a model run to write: null (the caller then posts a
+ * new message) when the post is gone, isn't this bot's, has thread replies, is no longer
+ * the chat's latest top-level message, has been read (`stillUnread`, given when it was
+ * posted), or changed meanwhile (another revision got in first: the write only lands on
+ * the version that was read).
  */
 export async function reviseBotMessage(
     id: string,
@@ -605,6 +609,7 @@ export async function reviseBotMessage(
         botModel?: string;
         proactiveMeta?: ProactiveMessageMeta;
     },
+    guard: { stillUnread?: (postedAt: Date) => Promise<boolean> } = {},
 ): Promise<Message | null> {
     const current = await getCollection().findOne({
         id,
@@ -613,6 +618,15 @@ export async function reviseBotMessage(
     });
     // Only top-level posts without replies.
     if (!current || current.threadId || current.hasThread) return null;
+    // Still the latest top-level message in the chat.
+    const latestQuery: Record<string, unknown> = {
+        pageId: current.pageId,
+        threadId: { $in: [null] },
+        deletedAt: { $exists: false },
+    };
+    const [latest] = await getCollection().find(latestQuery).sort({ _id: -1 }).limit(1).toArray();
+    if (!latest || !latest._id.equals(current._id)) return null;
+    if (guard.stillUnread && !(await guard.stillUnread(current.createdAt))) return null;
     const previous = {
         content: current.content,
         ...(current.botUI ? { botUI: current.botUI } : {}),

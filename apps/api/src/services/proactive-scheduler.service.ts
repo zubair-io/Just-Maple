@@ -111,6 +111,17 @@ export async function tick(now = new Date()): Promise<void> {
  * oldest item has waited the chat's maximum (two hours unless set). Not in quiet hours,
  * and not when the daily brief is coming up soon: the brief takes the pile in.
  */
+/**
+ * The claim key for a pile's summary. Each send gets a few quick retries (see
+ * `claimScheduledSend`); if those run out, a new key opens after a growing pause (1, 3,
+ * 7, 15... hours after the summary was due), so a pile is never stuck for good.
+ */
+export function flushKey(pageId: string, oldestAt: Date, now: Date, maxWait: number): string {
+    const hoursLate = Math.max(0, now.getTime() - oldestAt.getTime() - maxWait) / 3_600_000;
+    const round = Math.floor(Math.log2(1 + hoursLate));
+    return `flush:${pageId}:${oldestAt.toISOString()}:${round}`;
+}
+
 export async function flushWaitingNews(pages: Page[], now: Date): Promise<number> {
     // Chats switched to "every item" may still have a pile from before: it drains too.
     const waiting = pages.filter((page) => page.proactive?.enabled);
@@ -123,7 +134,7 @@ export async function flushWaitingNews(pages: Page[], now: Date): Promise<number
         const owner = settings.ownerUserId;
         const timeZone = (await collectorTimeZone(owner)) ?? 'UTC';
         if (holdNews(settings, now, timeZone)) continue;
-        const key = `flush:${page.id}:${pile.oldestAt.toISOString()}`;
+        const key = flushKey(page.id, pile.oldestAt, now, maxWaitMs(settings));
         if (!(await claimScheduledSend(key, now))) continue;
         deliver(key, now, () => flushPendingNews(page, owner), `news summary for page ${page.id}`);
         sent++;

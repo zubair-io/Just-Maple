@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+    clashMarks,
     compactItem,
     deterministicSignals,
     fallbackVerdict,
@@ -12,7 +13,7 @@ const settings: any = { userBotId: 'b', instructions: '', enabled: true, ownerUs
 const NY = 'America/New_York';
 const at = (local: string) => new Date(`${local}-04:00`);
 
-const item = (entry: any) => ({ key: entry.item.id, entry, addedAt: new Date() });
+const item = (entry: any) => ({ key: entry.item.id, entry, addedAt: new Date(), rev: 0 });
 
 describe('quiet hours', () => {
     it('defaults to 10pm to 7am in the owner’s zone, across midnight', () => {
@@ -43,20 +44,40 @@ describe('quiet hours', () => {
 describe('signals found in code', () => {
     const now = at('2026-10-28T12:00:00');
 
-    it('a calendar clash always goes out now', () => {
-        const signals = deterministicSignals(
-            [],
-            {
-                flagged: [{ kind: 'overlap', summary: 'Dental overlaps Party', events: [] }],
-                cleared: [],
+    it('a calendar clash marks its item urgent, and urgent items always go out now', () => {
+        const dental = {
+            kind: 'changed',
+            item: {
+                id: 'calendar:dental',
+                source: 'calendar',
+                when: '',
+                snippet: 'Dental',
+                score: 0,
             },
+        } as any;
+        const marks = clashMarks([dental], {
+            flagged: [
+                {
+                    kind: 'overlap',
+                    summary: 'Dental overlaps Party',
+                    events: [{ id: 'calendar:party' } as any, { id: 'calendar:dental' } as any],
+                },
+            ],
+            cleared: [{ kind: 'overlap', summary: 'Gym and Lunch', events: [] }],
+        } as any);
+        expect([...marks.urgent]).toEqual(['calendar:dental']);
+        expect(marks.notes.get('calendar:dental')).toEqual([
+            'New calendar clash: Dental overlaps Party',
+            'Clash cleared: Gym and Lunch',
+        ]);
+        const signals = deterministicSignals(
+            [{ ...item(dental), urgent: true, notes: marks.notes.get('calendar:dental') }],
             now,
         );
         expect(signals.forceNow).toBe(true);
+        expect(signals.notes[0]).toBe('New calendar clash: Dental overlaps Party');
         expect(fallbackVerdict(signals)).toMatchObject({ now: true, urgency: 2 });
-        expect(fallbackVerdict(deterministicSignals([], undefined, now))).toMatchObject({
-            now: false,
-        });
+        expect(fallbackVerdict(deterministicSignals([], now))).toMatchObject({ now: false });
     });
 
     it('notes changed events starting soon, threads waiting on the user and big piles', () => {
@@ -94,7 +115,7 @@ describe('signals found in code', () => {
                 recent: [],
             },
         });
-        const notes = deterministicSignals([changed, waiting, answered], undefined, now).notes;
+        const notes = deterministicSignals([changed, waiting, answered], now).notes;
         expect(notes).toEqual([
             'Calendar event changed, starts within a day: calendar:1',
             'Someone is waiting on a reply: imessage:1',
@@ -112,7 +133,17 @@ describe('signals found in code', () => {
                 item: { id: `mail:${n}`, source: 'mail', when: '', snippet: '', score: 0 },
             }),
         );
-        expect(deterministicSignals(pile, undefined, now).notes.at(-1)).toContain('12 items');
+        expect(deterministicSignals(pile, now).notes.at(-1)).toContain('12 items');
+        // Folded items count, and are named.
+        const folded = deterministicSignals(pile.slice(0, 2), now, {
+            count: 9,
+            sources: { mail: 7, imessage: 2 },
+            oldestAt: now,
+        }).notes;
+        expect(folded).toEqual([
+            '11 items are pending; together they may be worth a summary.',
+            '+9 more older items not listed (mail 7, imessage 2)',
+        ]);
     });
 });
 

@@ -2,6 +2,7 @@ import type { Page, ProactiveBotSettings, UpdateProactiveBotInput } from '@maple
 import { findPageByIdForBot, setPageProactive } from '../repositories/page.repo';
 import { findUserBotById } from '../repositories/user-bot.repo';
 import { findBotTemplateById } from '../repositories/bot-template.repo';
+import { clearPile } from '../repositories/proactive-pile.repo';
 
 export const MAX_PROACTIVE_INSTRUCTIONS = 8000;
 
@@ -56,6 +57,8 @@ export async function saveProactiveSettings(
     };
     const updated = await setPageProactive(page.id, settings);
     if (!updated) throw new ProactiveSettingsError('Page not found.', 404);
+    // Turned off: news it was holding back isn't told later.
+    if (!settings.enabled) await clearPile(page.id);
     return updated;
 }
 
@@ -95,6 +98,7 @@ export async function clearProactiveSettings(
     assertCanChange(page, userId, options.isNotebookOwner);
     const updated = await setPageProactive(page.id, null);
     if (!updated) throw new ProactiveSettingsError('Page not found.', 404);
+    await clearPile(page.id);
     return updated;
 }
 

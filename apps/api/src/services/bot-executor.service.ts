@@ -35,6 +35,7 @@ import {
     reviseBotMessage,
 } from '../repositories/message.repo';
 import { sendMessageReceivedNotification } from './notification.service';
+import { getLastReadAtByPageId } from '../repositories/unread.repo';
 import { broadcastChatEvent } from './realtime.service';
 import { extractTextFromContent } from '../utils/content-utils';
 import { markdownToProseMirror } from '../utils/markdown-to-prosemirror';
@@ -1162,12 +1163,23 @@ export class BotExecutorService {
     ): Promise<Message | null> {
         const { page, userBot, template, revise } = params;
         if (!revise || !page.notebookId) return null;
-        const message = await reviseBotMessage(revise.messageId, userBot._id, {
-            content,
-            botUI: ctx.variables.$botUI as Message['botUI'],
-            botModel: ctx.variables.$model as string | undefined,
-            ...(params.proactiveMeta ? { proactiveMeta: params.proactiveMeta } : {}),
-        });
+        const message = await reviseBotMessage(
+            revise.messageId,
+            userBot._id,
+            {
+                content,
+                botUI: ctx.variables.$botUI as Message['botUI'],
+                botModel: ctx.variables.$model as string | undefined,
+                ...(params.proactiveMeta ? { proactiveMeta: params.proactiveMeta } : {}),
+            },
+            {
+                // Read by the owner while this was written: a new message instead.
+                stillUnread: async (postedAt) => {
+                    const readAt = await getLastReadAtByPageId(params.macData.userId, page.id);
+                    return !readAt || readAt < postedAt;
+                },
+            },
+        );
         if (!message) return null;
         await this.attachProposalCards(ctx, page.id, message.id);
         // The normal edit path: open clients replace the message, card included.
