@@ -39,6 +39,8 @@ export const ReplyDraftParamsSchema = Type.Object({
     subject: Type.Optional(Type.String({ maxLength: 300 })),
     /** The draft; the owner's edits replace it. */
     body: Type.String({ maxLength: 5000 }),
+    /** ISO 8601: when the owner last edited it. A redraft never overwrites their edits. */
+    editedAt: Type.Optional(Type.String()),
 });
 export type ReplyDraftParams = Static<typeof ReplyDraftParamsSchema>;
 
@@ -53,6 +55,11 @@ export const REPLY_DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export const UpdateReplyDraftSchema = Type.Object({
     body: Type.String({ minLength: 1, maxLength: 5000 }),
+    /**
+     * The row's `updatedAt` the edit was made on. When the draft changed since (the bot
+     * redrafted it, another device saved), the save is refused instead of overwriting.
+     */
+    updatedAt: Type.Optional(Type.String()),
 });
 export type UpdateReplyDraftInput = Static<typeof UpdateReplyDraftSchema>;
 

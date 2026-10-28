@@ -67,11 +67,28 @@ export class ReplyDraftCardComponent {
       const id = this.actionId();
       untracked(() => void this.actions.load(id));
     });
+    // The box follows the saved draft until the owner types. Their edits then stay put,
+    // even when a newer draft arrives; their save says which version it was based on.
     effect(() => {
+      const action = this.action();
       const saved = this.draft()?.body;
-      if (saved !== undefined && !untracked(() => this.edited())) this.body.set(saved);
+      if (!action || saved === undefined) return;
+      untracked(() => {
+        if (!this.edited()) {
+          this.body.set(saved);
+          this.basedOn = action.updatedAt;
+        } else if (this.conflicted) {
+          // They were told it changed; saving again now keeps their text on purpose.
+          this.basedOn = action.updatedAt;
+          this.conflicted = false;
+        }
+      });
     });
   }
+
+  /** The version of the draft the owner's text started from. */
+  private basedOn: string | undefined;
+  private conflicted = false;
 
   onInput(value: string): void {
     this.body.set(value);
@@ -86,7 +103,10 @@ export class ReplyDraftCardComponent {
     this.error.set(null);
     void this.actions
       .openDraft(this.actionId(), body)
-      .then(() => this.edited.set(false))
+      .then(({ action }) => {
+        this.basedOn = action.updatedAt;
+        this.edited.set(false);
+      })
       .catch((error: unknown) => this.error.set(messageOf(error, 'Could not save the draft.')));
   }
 
@@ -125,9 +145,13 @@ export class ReplyDraftCardComponent {
 
   private async save(body: string): Promise<void> {
     try {
-      await this.actions.saveDraft(this.actionId(), body);
+      const action = await this.actions.saveDraft(this.actionId(), body, this.basedOn);
+      this.basedOn = action.updatedAt;
       this.edited.set(false);
+      this.error.set(null);
     } catch (error) {
+      // Their text stays in the box; the newer draft is loaded behind it.
+      this.conflicted = true;
       this.error.set(messageOf(error, 'Could not save your changes.'));
     }
   }

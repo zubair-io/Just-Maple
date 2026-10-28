@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ObjectId } from 'mongodb';
 import { createTestApp } from '../../__tests__/helpers/app';
 import {
     createAuthToken,
@@ -39,7 +40,13 @@ import {
     type MacDataToolContext,
 } from '../../services/mac-data-tools.service';
 import { attachActions } from '../../services/bot-action.service';
-import { withoutDraftText, withReplyDraftCards } from '../../services/reply-draft.service';
+import {
+    draftRunNotice,
+    expireUnpostedDrafts,
+    SHARED_DRAFT_FAILED_NOTICE,
+    SHARED_DRAFT_NOTICE,
+    withReplyDraftCards,
+} from '../../services/reply-draft.service';
 import { macDataRelay } from '../../services/mac-data-relay.service';
 import { broadcastChatEvent } from '../../services/realtime.service';
 
@@ -139,6 +146,23 @@ describe.runIf(mongoAvailable)('Drafted replies', () => {
             mailbox: 'Sent Messages',
             body: 'Hi Jen,\n\nWorks for me.\n\nBest,\nAlex',
         }),
+        // Filed away from another device: still the user's, by address.
+        item('mail:3', 'mail', {
+            occurredAt: NOW - 7200,
+            sender: 'Alex <ALEX@home.example>',
+            title: 'Re: Soccer',
+            participants: ['coach@example.com'],
+            mailbox: 'Archive',
+            body: 'Thanks coach!\n\nOn Sun, Coach wrote:\n> practice moved',
+        }),
+        // In a folder named "Sent" but someone else's.
+        item('mail:4', 'mail', {
+            sender: 'Newsletter <news@example.com>',
+            title: 'Weekly',
+            participants: ['alex@example.com'],
+            mailbox: 'Sent',
+            body: 'Big sale this week',
+        }),
     ];
 
     async function upload() {
@@ -179,12 +203,15 @@ describe.runIf(mongoAvailable)('Drafted replies', () => {
         return page.id as string;
     }
 
+    /** A chat run the owner started (bot-executor allows drafts only there). */
     async function botContext(notebookId = shared) {
-        return getMacDataToolContext(owner.id, notebookId, {
+        const ctx = await getMacDataToolContext(owner.id, notebookId, {
             id: botId,
             name: 'Maple',
             ownerId: owner.id,
         });
+        if (ctx) ctx.draftsAllowed = true;
+        return ctx;
     }
 
     /** Both calls of the tool; the reply is posted as `msg-1`. */
@@ -208,8 +235,11 @@ describe.runIf(mongoAvailable)('Drafted replies', () => {
         call(who, `/api/reply-drafts/${id}/open`, 'POST', body ? { body } : {});
     const discard = (who: { token: string }, id: string) =>
         call(who, `/api/reply-drafts/${id}/discard`, 'POST');
-    const edit = (who: { token: string }, id: string, body: string) =>
-        call(who, `/api/reply-drafts/${id}`, 'PATCH', { body });
+    const edit = (who: { token: string }, id: string, body: string, updatedAt?: string) =>
+        call(who, `/api/reply-drafts/${id}`, 'PATCH', {
+            body,
+            ...(updatedAt ? { updatedAt } : {}),
+        });
     const row = (id: string) => testDb!.collection('bot_actions').findOne({ _id: id as never });
     const actionBroadcasts = () =>
         vi
@@ -236,7 +266,26 @@ describe.runIf(mongoAvailable)('Drafted replies', () => {
         botId = (
             await createUserBotFixture({ userId: owner.id, displayName: 'Maple' })
         )._id.toString();
+        // The owner's account email, and another address on their "me" card.
+        await testDb!
+            .collection('users')
+            .updateOne({ _id: new ObjectId(owner.id) }, { $set: { email: 'alex@example.com' } });
         await upload();
+        await testDb!.collection('device_items').insertOne({
+            _id: `${owner.id}:contacts:me` as never,
+            userId: owner.id,
+            deviceId: 'mac-one-1',
+            id: 'contacts:me',
+            source: 'contacts',
+            revision: '1',
+            occurredAt: NOW,
+            item: {
+                ...item('contacts:me', 'contacts', { title: 'Alex' }),
+                extra: { isMe: true, emails: [{ label: 'home', value: 'alex@home.example' }] },
+            },
+            searchText: 'alex',
+            updatedAt: new Date(),
+        });
         messagesPage = await dataPage(shared, 'imessage');
         await dataPage(shared, 'mail');
     });
@@ -367,6 +416,7 @@ describe.runIf(mongoAvailable)('Drafted replies', () => {
             name: 'Sam bot',
             ownerId: member.id,
         }))!;
+        theirs.draftsAllowed = true;
         expect(theirs.pages!.length).toBeGreaterThan(0);
         expect(macDataToolDefinitions(theirs).map((tool) => tool.name)).not.toContain(
             'draft_reply',
@@ -387,7 +437,10 @@ describe.runIf(mongoAvailable)('Drafted replies', () => {
             subject: 'Re: Dinner plans',
             message: { text: 'Does Thursday at 7 work?' },
         });
-        expect(context.the_users_recent_messages[0].text).toContain('Works for me.');
+        // "From me" by address (account email and "me" card), not by folder name.
+        const voice = context.the_users_recent_messages.map((m: { text: string }) => m.text);
+        expect(voice).toEqual(['Hi Jen,\n\nWorks for me.\n\nBest,\nAlex', 'Thanks coach!']);
+        expect(voice.join()).not.toContain('Big sale');
 
         await executeMacDataTool(ctx, 'draft_reply', {
             item_id: 'mail:1',
@@ -406,6 +459,12 @@ describe.runIf(mongoAvailable)('Drafted replies', () => {
         expect(await executeMacDataTool(ctx, 'draft_reply', { item_id: 'mail:2' })).toContain(
             'email the user sent',
         );
+        expect(await executeMacDataTool(ctx, 'draft_reply', { item_id: 'mail:3' })).toContain(
+            'email the user sent',
+        );
+        expect(
+            JSON.parse(await executeMacDataTool(ctx, 'draft_reply', { item_id: 'mail:4' })),
+        ).toMatchObject({ replying_to: 'Newsletter' });
     });
 
     // MARK: - Never sent
@@ -532,13 +591,117 @@ describe.runIf(mongoAvailable)('Drafted replies', () => {
         const ui = await withReplyDraftCards(undefined, [id!]);
         expect(ui!.blocks).toEqual([{ type: 'reply_draft', actionId: id }]);
         expect(botUIToText(ui!)).not.toContain('saturday');
+    });
 
-        // The bot repeating its draft in the reply: taken out.
-        const reply = await withoutDraftText(
-            'Here is a draft for Jen:\n\n> yes! saturday at 4 works for me\n\nWant changes?',
-            [id!],
+    it('posts a fixed line instead of the bot’s text whenever it drafted in a shared notebook', async () => {
+        const { ctx, result } = await draft('imessage:jen-1', 'yes! saturday at 4');
+        // The bot isn't even told who it's for, here.
+        expect(result).not.toContain('Jen');
+        expect(draftRunNotice(ctx)).toBe(SHARED_DRAFT_NOTICE);
+
+        // Only looked at the thread, saved nothing: still not the bot's own words.
+        const peeked = (await botContext())!;
+        await executeMacDataTool(peeked, 'draft_reply', { item_id: 'imessage:jen-1' });
+        expect(draftRunNotice(peeked)).toBe(SHARED_DRAFT_FAILED_NOTICE);
+
+        // No drafting at all: the bot's text stands.
+        expect(draftRunNotice((await botContext())!)).toBeNull();
+
+        // The owner's own private notebook: their text stands, with the recipient named.
+        const solo = (await createNotebookFixture({ createdBy: owner.id }))._id.toString();
+        await dataPage(solo, 'imessage');
+        const mine = await draft('imessage:jen-1', 'yes!', (await botContext(solo))!);
+        expect(mine.result).toContain('for Jen');
+        expect(draftRunNotice(mine.ctx)).toBeNull();
+    });
+
+    it('never offers drafting to proactive runs', async () => {
+        // Proactive runs build their context without the chat flag.
+        const proactive = (await getMacDataToolContext(
+            owner.id,
+            shared,
+            { id: botId, name: 'Maple', ownerId: owner.id },
+            { proactive: true },
+        ))!;
+        expect(macDataToolDefinitions(proactive).map((tool) => tool.name)).not.toContain(
+            'draft_reply',
         );
-        expect(reply).not.toContain('saturday');
-        expect(reply).toContain('(draft on the card)');
+        expect(
+            await executeMacDataTool(proactive, 'draft_reply', { item_id: 'imessage:jen-1' }),
+        ).toBe('Unknown tool: draft_reply');
+        expect(await testDb!.collection('bot_actions').countDocuments()).toBe(0);
+    });
+
+    // MARK: - Redrafting and edits
+
+    it('keeps the owner’s edits when the bot drafts again, and refuses stale saves', async () => {
+        const { id } = await draft('imessage:jen-1', 'first try');
+        const loaded = await action(owner, id!);
+        expect((await edit(owner, id!, 'my own words', loaded.updatedAt)).status).toBe(200);
+        // A save made on the old version is refused instead of overwriting.
+        const stale = await edit(owner, id!, 'old tab', loaded.updatedAt);
+        expect(stale.status).toBe(409);
+        expect((await row(id!))!.params.body).toBe('my own words');
+
+        // The bot drafts the same message again: a new card; the edit stays.
+        const other = await createUserBotFixture({ userId: owner.id, displayName: 'Helper' });
+        const ctx = (await getMacDataToolContext(owner.id, shared, {
+            id: other._id.toString(),
+            name: 'Helper',
+            ownerId: owner.id,
+        }))!;
+        ctx.draftsAllowed = true;
+        const again = await draft('imessage:jen-1', 'second try', ctx);
+        expect(again.id).not.toBe(id);
+        expect((await row(id!))!.params.body).toBe('my own words');
+        expect((await row(again.id!))!).toMatchObject({
+            botId: other._id.toString(),
+            botName: 'Helper',
+            params: { body: 'second try' },
+        });
+
+        // Untouched drafts are replaced in place, with a fresh week and the new bot.
+        await testDb!
+            .collection('bot_actions')
+            .updateOne(
+                { _id: again.id as never },
+                { $set: { expiresAt: new Date(Date.now() + 60_000), botId: 'old-bot' } },
+            );
+        const third = await draft('imessage:jen-1', 'third try', (await botContext())!);
+        expect(third.id).toBe(again.id);
+        const replaced = (await row(again.id!))!;
+        expect(replaced).toMatchObject({ botId, botName: 'Maple', params: { body: 'third try' } });
+        expect(replaced.expiresAt.getTime()).toBeGreaterThan(Date.now() + 6 * 86400_000);
+    });
+
+    it('expires drafts whose reply was never posted', async () => {
+        const ctx = (await botContext())!;
+        await executeMacDataTool(ctx, 'draft_reply', { item_id: 'imessage:jen-1' });
+        await executeMacDataTool(ctx, 'draft_reply', { item_id: 'imessage:jen-1', body: 'hi' });
+        const posted = await draft('mail:1', 'Thursday works.');
+        const stranded = ctx.draftedReplies![0]!;
+        await expireUnpostedDrafts([stranded, posted.id!]);
+        expect((await row(stranded))!.status).toBe('expired');
+        expect((await row(posted.id!))!.status).toBe('proposed');
+    });
+
+    it('refuses to edit, open or discard a denied row, and says why', async () => {
+        await call(owner, `/api/bot-autonomy/${botId}`, 'PUT', {
+            kind: 'send_reply',
+            autonomy: 'never',
+        });
+        await draft('imessage:jen-1', 'secret plans');
+        const denied = (await testDb!.collection('bot_actions').findOne())!._id as string;
+        for (const response of [
+            await edit(owner, denied, 'try'),
+            await open(owner, denied, 'try'),
+            await discard(owner, denied),
+        ]) {
+            expect(response.status).toBe(409);
+            expect((await response.json()).error).toBe(
+                'There is no draft here: drafting replies is turned off for this bot.',
+            );
+        }
+        expect((await row(denied))!.status).toBe('denied');
     });
 });

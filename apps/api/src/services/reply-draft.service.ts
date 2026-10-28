@@ -1,10 +1,14 @@
 import {
     deviceItemThreadKey,
+    emailAddressOf,
+    isMailFromMe,
+    ownEmailAddresses,
     REPLY_DRAFT_MAX_CHARS,
     REPLY_DRAFT_TTL_MS,
     replyChannelName,
     replyComposeUrl,
     type BotAction,
+    type BotActionStatus,
     type BotUIBlock,
     type BotUIResponse,
     type MacDataItem,
@@ -14,16 +18,23 @@ import {
 } from '@maple/shared';
 import {
     findAction,
-    findOpenReplyDraft,
+    findOpenReplyDrafts,
     updateActionDoc,
     type BotActionDocument,
 } from '../repositories/bot-action.repo';
-import { findDeviceItem, findDeviceItems } from '../repositories/device-item.repo';
+import {
+    findDeviceItem,
+    findDeviceItemsByIds,
+    findMyContactCard,
+    findRecentItemHeads,
+} from '../repositories/device-item.repo';
+import { findUserById } from '../repositories/user.repo';
 import { isMemberOf, type DataPageSlice } from './device-data-access.service';
 import {
     ActionError,
     broadcastAction,
     decideAutonomy,
+    isOwnersPrivateNotebook,
     recordAction,
     toActionView,
     updateAction,
@@ -34,15 +45,17 @@ import { formatInZone } from '../utils/time-zone';
 /**
  * Drafted replies.
  *
- * 1. A bot calls `draft_reply` with the id of a message in an iMessage or Mail thread
- *    the notebook's data pages share with the bot's owner. The first call returns the
- *    message and a few of the owner's own sent messages (their voice); the second, with
- *    the draft, saves it as a `send_reply` row in the action log.
+ * 1. In a chat, when the user asks, a bot calls `draft_reply` with the id of a message
+ *    in an iMessage or Mail thread the notebook's data pages share with the bot's owner.
+ *    Proactive runs never get the tool. The first call returns the message and a few of
+ *    the owner's own sent messages (their voice); the second, with the draft, saves it
+ *    as a `send_reply` row in the action log.
  * 2. Who it goes to comes from the thread itself (its participants, the email's sender),
  *    never from the bot, so text in a message can't redirect a reply.
  * 3. The reply gets a `reply_draft` card, built from the saved row. Only the owner sees
- *    the draft; everyone else sees "Drafted a reply". Draft text the bot repeats in its
- *    reply is taken out of it.
+ *    the draft; everyone else sees "Drafted a reply". In a notebook anyone else can read,
+ *    the bot's own text for that run is replaced by a fixed line (`draftRunNotice`), so
+ *    nothing it wrote can carry the draft into the chat.
  * 4. The owner edits it, copies it, opens it in Messages or Mail (a prefilled compose
  *    they send themselves), or discards it. Maple never sends anything: `send_reply` is
  *    always Ask, and there is no send path at all.
@@ -51,20 +64,31 @@ import { formatInZone } from '../utils/time-zone';
 export const MAX_DRAFTS_PER_RUN = 2;
 const VOICE_SAMPLES = 5;
 const VOICE_SAMPLE_CHARS = 300;
+/** How many recent message heads (no bodies) a voice lookup reads at most. */
+const VOICE_SCAN = 200;
+const VOICE_WINDOW_SECONDS = 30 * 24 * 60 * 60;
 const QUOTE_CHARS = 1000;
 const DRAFTED_SUMMARY = 'Drafted a reply';
 
+/** What the chat sees instead of the bot's text when it drafted in a shared notebook. */
+export const SHARED_DRAFT_NOTICE = 'Drafted a reply — only you can see it.';
+export const SHARED_DRAFT_FAILED_NOTICE =
+    "I started a reply draft but didn't save it. Ask me again to draft it.";
+
 // MARK: - The bot tool
 
-/** Bots get the tool when the notebook shares one of the user's own message or mail pages. */
+/**
+ * Bots get the tool in chat runs the user started (`draftsAllowed`), when the notebook
+ * shares one of the user's own message or mail pages.
+ */
 export function canDraftReplies(ctx: MacDataToolContext): boolean {
-    return !!ctx.botId && ownSlices(ctx).length > 0;
+    return !!ctx.botId && !!ctx.draftsAllowed && ownSlices(ctx).length > 0;
 }
 
 export const draftReplyTool: ToolDefinition = {
     name: 'draft_reply',
     description:
-        'Draft a reply, in the user\'s own voice, to an iMessage or email they need to answer ("draft a reply to Jen"). ' +
+        'Draft a reply, in the user\'s own voice, to an iMessage or email, when the user asks you to ("draft a reply to Jen"). ' +
         'Call it first with only item_id (a message from the other person, from search_local_data or get_local_item): it returns ' +
         'that message and a few messages the user wrote, so you can match their voice. Then call it again with the same item_id and body. ' +
         'The reply always goes back to that thread, to its own participants. ' +
@@ -85,10 +109,10 @@ export const draftReplyTool: ToolDefinition = {
     },
 };
 
-/** System prompt lines for bots that have the tool. */
+/** System prompt line for bots that have the tool. */
 export const draftReplyPrompt =
-    'When the user asks you to draft or write a reply to a message or email, or a thread clearly needs a reply from them, use draft_reply. ' +
-    'Never say a draft was sent: the user sends it themselves. Do not repeat the draft text in your reply, the card shows it to them.';
+    'Only when the user asks you to draft or write a reply to a message or email, use draft_reply. ' +
+    'Never say a draft was sent: the user sends it themselves. Do not repeat the draft text in your reply; the card shows it to them.';
 
 /** Runs `draft_reply`; saved drafts collect on the context for the reply's cards. */
 export async function executeDraftReply(
@@ -96,10 +120,13 @@ export async function executeDraftReply(
     input: Record<string, unknown>,
 ): Promise<string> {
     if (!canDraftReplies(ctx)) return 'Unknown tool: draft_reply';
+    // Decided once per run: can anyone else read this notebook's chats?
+    ctx.draftsShared ??= !(await isOwnersPrivateNotebook(ctx.notebookId, ctx.userId));
     const itemId = typeof input['item_id'] === 'string' ? input['item_id'].trim() : '';
     const found = await findOwnMessage(ctx, itemId);
     if (!found) return 'No message with that id that you can reply to in this notebook.';
-    const target = replyTarget(found.item);
+    const own = await ownAddresses(ctx);
+    const target = replyTarget(found.item, own);
     if (typeof target === 'string') return target;
     ctx.readThirdPartyText = true;
 
@@ -107,7 +134,7 @@ export async function executeDraftReply(
     const seen = ctx.replyContextSeen ?? [];
     if (!body || !seen.includes(found.item.id)) {
         ctx.replyContextSeen = [...seen, found.item.id];
-        return JSON.stringify(await replyContext(ctx, found, target));
+        return JSON.stringify(await replyContext(ctx, found, target, own));
     }
     if (body.length > REPLY_DRAFT_MAX_CHARS[target.channel])
         return `Error: keep it under ${REPLY_DRAFT_MAX_CHARS[target.channel]} characters.`;
@@ -138,9 +165,18 @@ export async function executeDraftReply(
     }
 
     const params: ReplyDraftParams = { ...target, itemId: found.item.id, body };
-    const existing = await findOpenReplyDraft(ctx.userId, ctx.notebookId, found.item.id);
+    const expiresAt = new Date(Date.now() + REPLY_DRAFT_TTL_MS);
+    // A waiting draft the owner hasn't touched is replaced; ones they edited are kept and
+    // the new draft gets its own card.
+    const existing = (await findOpenReplyDrafts(ctx.userId, ctx.notebookId, found.item.id)).find(
+        (doc) => !draftParams(doc).editedAt,
+    );
     const doc = existing
-        ? await saveParams(existing._id, { ...params }, ['proposed'])
+        ? await redraft(existing._id, params, {
+              expiresAt,
+              botId: ctx.botId!,
+              botName: ctx.botName,
+          })
         : await recordAction({
               kind: 'send_reply',
               ownerId: ctx.userId,
@@ -152,15 +188,30 @@ export async function executeDraftReply(
               status: 'proposed',
               // `send_reply` is always Ask (isAlwaysAsk): only the owner opens it.
               decision: 'ask',
-              expiresAt: new Date(Date.now() + REPLY_DRAFT_TTL_MS),
+              expiresAt,
           });
     if (!doc) return 'Error: the draft could not be saved.';
     ctx.draftedReplies = [...new Set([...(ctx.draftedReplies ?? []), doc._id])];
+    if (ctx.draftsShared)
+        // Others read this chat: no name, and the run's text is replaced anyway.
+        return 'Saved. A card only the user can see is attached to your reply; nothing was sent. Reply in one short line without names or details.';
     return (
         `Saved. A card with the draft for ${target.recipientLabel} is attached to your reply; ` +
         `nothing was sent. The user can edit it and open it in ${replyChannelName(target.channel)} to send it themselves. ` +
         'Say you drafted it, without repeating the draft.'
     );
+}
+
+/**
+ * What the chat gets instead of the bot's own text, or null to post it as written. In a
+ * notebook anyone besides the owner can read, any run that used `draft_reply` posts a
+ * fixed line: no wording the bot chose can carry a draft (or who it's for) into the chat.
+ */
+export function draftRunNotice(ctx: MacDataToolContext | null | undefined): string | null {
+    if (!ctx?.draftsShared) return null;
+    if (ctx.draftedReplies?.length) return SHARED_DRAFT_NOTICE;
+    if (ctx.replyContextSeen?.length) return SHARED_DRAFT_FAILED_NOTICE;
+    return null;
 }
 
 /** The user's own data pages for messages and mail in this notebook. */
@@ -185,6 +236,17 @@ async function findOwnMessage(
     return null;
 }
 
+/** The user's email addresses: their account and their own contact card. */
+async function ownAddresses(ctx: MacDataToolContext): Promise<string[]> {
+    if (ctx.ownEmailAddresses) return ctx.ownEmailAddresses;
+    const [user, meCard] = await Promise.all([
+        findUserById(ctx.userId).catch(() => null),
+        findMyContactCard(ctx.userId).catch(() => null),
+    ]);
+    ctx.ownEmailAddresses = ownEmailAddresses({ accountEmail: user?.email, meCard });
+    return ctx.ownEmailAddresses;
+}
+
 type ReplyTarget = Pick<
     ReplyDraftParams,
     'channel' | 'recipients' | 'recipientLabel' | 'quoted' | 'subject'
@@ -194,7 +256,7 @@ type ReplyTarget = Pick<
  * Who the reply goes to and what it answers, from the message alone: an iMessage's
  * thread participants, an email's sender. A string when it can't be answered.
  */
-function replyTarget(item: MacDataItem): ReplyTarget | string {
+function replyTarget(item: MacDataItem, own: string[]): ReplyTarget | string {
     const at = new Date(item.occurredAt * 1000).toISOString();
     if (item.source === 'imessage') {
         if (item.isFromMe)
@@ -215,7 +277,7 @@ function replyTarget(item: MacDataItem): ReplyTarget | string {
         };
     }
     if (item.source === 'mail') {
-        if (/sent/i.test(item.mailbox ?? ''))
+        if (isMailFromMe(item, own))
             return "That is an email the user sent. Use the email from the other person they're answering.";
         const sender = parseMailbox(item.sender ?? '');
         if (!sender) return "Error: can't tell who sent this email.";
@@ -248,18 +310,14 @@ function imessageRecipients(item: MacDataItem): ReplyRecipient[] {
 
 /** A phone number or email address, nothing that could carry a URL or a parameter. */
 function isHandle(value: string): boolean {
-    return (
-        /^\+?[\d\s().-]{3,20}$/.test(value) ||
-        /^[^\s@,;?&#/]{1,64}@[^\s@,;?&#/]{1,255}$/.test(value)
-    );
+    return /^\+?[\d\s().-]{3,20}$/.test(value) || !!emailAddressOf(value);
 }
 
 /** "Jen Park <jen@example.com>" or "jen@example.com". */
 function parseMailbox(value: string): ReplyRecipient | null {
-    const match = /^\s*"?([^"<]*?)"?\s*<([^>]+)>\s*$/.exec(value);
-    const address = (match ? match[2]! : value).trim();
-    if (!/^[^\s@,;?&#/<>]{1,64}@[^\s@,;?&#/<>]{1,255}$/.test(address)) return null;
-    const name = match?.[1]?.trim();
+    const address = emailAddressOf(value);
+    if (!address) return null;
+    const name = /^\s*"?([^"<]*?)"?\s*<[^>]+>\s*$/.exec(value)?.[1]?.trim();
     return { address, ...(name ? { name: name.slice(0, 200) } : {}) };
 }
 
@@ -285,8 +343,9 @@ async function replyContext(
     ctx: MacDataToolContext,
     found: { item: MacDataItem; slice: DataPageSlice },
     target: ReplyTarget,
+    own: string[],
 ) {
-    const samples = await voiceSamples(ctx, found, target);
+    const samples = await voiceSamples(ctx, found, target, own);
     return {
         replying_to: target.recipientLabel,
         channel: replyChannelName(target.channel),
@@ -308,59 +367,63 @@ async function replyContext(
 
 /**
  * A few things the user wrote, newest first: in this thread when they have, otherwise
- * elsewhere in what this notebook shares. Only messages already shared here.
+ * elsewhere in what this notebook shares. Only messages already shared here. Reads at
+ * most `VOICE_SCAN` recent heads (no bodies) per query, then the bodies of the samples.
  */
 async function voiceSamples(
     ctx: MacDataToolContext,
     found: { item: MacDataItem; slice: DataPageSlice },
     target: ReplyTarget,
+    own: string[],
 ): Promise<{ when: string; text: string }[]> {
-    const slices = ownSlices(ctx).filter((slice) => slice.source === found.item.source);
-    const match = (item: MacDataItem) => slices.some((slice) => slice.match(item));
-    const since = Date.now() / 1000 - 30 * 24 * 60 * 60;
-    let items: MacDataItem[] = [];
-    if (found.item.source === 'imessage') {
+    const source = found.item.source;
+    const slices = ownSlices(ctx).filter((slice) => slice.source === source);
+    const shared = (item: MacDataItem) => slices.some((slice) => slice.match(item));
+    const since = Date.now() / 1000 - VOICE_WINDOW_SECONDS;
+    const heads = (filter: Record<string, unknown>) =>
+        findRecentItemHeads(ctx.userId, source, filter, since, VOICE_SCAN).then((items) =>
+            items.filter(shared),
+        );
+    let picked: MacDataItem[] = [];
+    if (source === 'imessage') {
         const threadKey = deviceItemThreadKey(found.item);
-        const mine = (conditions: Record<string, unknown>) =>
-            findDeviceItems(ctx.userId, {
-                sources: ['imessage'],
-                from: since,
-                conditions: { 'item.isFromMe': true, ...conditions },
-                match,
-                order: 'desc',
-                limit: VOICE_SAMPLES,
-            }).then((result) => result.items);
-        items = threadKey ? await mine({ threadKey }) : [];
-        if (items.length < 3) {
-            const seen = new Set(items.map((item) => item.id));
-            items.push(...(await mine({})).filter((item) => !seen.has(item.id)));
+        picked = threadKey ? await heads({ threadKey, 'item.isFromMe': true }) : [];
+        if (picked.length < 3) {
+            const seen = new Set(picked.map((item) => item.id));
+            picked.push(
+                ...(await heads({ 'item.isFromMe': true })).filter((item) => !seen.has(item.id)),
+            );
         }
     } else {
-        const sent = await findDeviceItems(ctx.userId, {
-            sources: ['mail'],
-            from: since,
-            conditions: { 'item.mailbox': { $regex: 'sent', $options: 'i' } },
-            match,
-            order: 'desc',
-            limit: 20,
-        });
+        // Sent by the user: by their address; only without one, by mailbox name.
+        const filter = own.length
+            ? { 'item.sender': { $regex: own.map(escapeRegex).join('|'), $options: 'i' } }
+            : { 'item.mailbox': { $regex: 'sent', $options: 'i' } };
         const to = target.recipients[0]!.address.toLowerCase();
-        items = [...sent.items].sort(
-            (a, b) =>
-                Number(b.participants.some((p) => p.toLowerCase() === to)) -
-                Number(a.participants.some((p) => p.toLowerCase() === to)),
-        );
+        picked = (await heads(filter))
+            .filter((item) => isMailFromMe(item, own))
+            .sort(
+                (a, b) =>
+                    Number(b.participants.some((p) => emailAddressOf(p) === to)) -
+                    Number(a.participants.some((p) => emailAddressOf(p) === to)),
+            );
     }
-    return items
-        .filter((item) => item.body.trim() && !/^\((attachment|unsent)\)$/.test(item.body))
+    const ids = picked.slice(0, VOICE_SAMPLES * 2).map((item) => item.id);
+    const bodies = new Map(
+        (await findDeviceItemsByIds(ctx.userId, ids, 2_000)).map((item) => [item.id, item.body]),
+    );
+    return picked
+        .map((item) => ({ item, body: bodies.get(item.id) ?? '' }))
+        .filter(({ body }) => body.trim() && !/^\((attachment|unsent)\)$/.test(body))
         .slice(0, VOICE_SAMPLES)
-        .map((item) => ({
+        .map(({ item, body }) => ({
             when: formatInZone(new Date(item.occurredAt * 1000), ctx.timeZone),
-            text: (item.source === 'mail' ? withoutQuotedText(item.body) : item.body).slice(
-                0,
-                VOICE_SAMPLE_CHARS,
-            ),
+            text: (source === 'mail' ? withoutQuotedText(body) : body).slice(0, VOICE_SAMPLE_CHARS),
         }));
+}
+
+function escapeRegex(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 // MARK: - The reply's cards
@@ -381,40 +444,59 @@ export async function withReplyDraftCards(
 }
 
 /**
- * The bot's reply without the drafts in it: in a shared chat the draft is for its owner
- * only, and the card already shows it to them. Whole drafts and their longer lines.
+ * At the end of a run: drafts that never got a posted card (the run failed, or the
+ * reply wasn't posted) expire now instead of waiting a week where nobody can see them.
  */
-export async function withoutDraftText(response: string, actionIds: string[]): Promise<string> {
-    let text = response;
-    for (const id of [...new Set(actionIds)]) {
-        const doc = await findAction(id);
-        const body = typeof doc?.params['body'] === 'string' ? doc.params['body'].trim() : '';
-        if (!body) continue;
-        const pieces = [
-            body,
-            ...body
-                .split(/\r?\n/)
-                .map((line) => line.trim())
-                .filter((line) => line.length >= 20),
-        ];
-        for (const piece of pieces) text = text.split(piece).join('(draft on the card)');
+export async function expireUnpostedDrafts(actionIds: string[] | undefined): Promise<void> {
+    for (const id of [...new Set(actionIds ?? [])]) {
+        const doc = await findAction(id).catch(() => null);
+        if (!doc || doc.kind !== 'send_reply' || doc.messageId) continue;
+        await updateAction(
+            id,
+            { status: 'expired', error: "The reply with this draft wasn't posted." },
+            { from: ['proposed'] },
+        ).catch((error) => console.error('[ReplyDraft] Could not expire a draft:', error));
     }
-    return text;
 }
 
 // MARK: - The owner's card actions
 
-/** The owner saves their edits. */
-export async function saveReplyDraft(id: string, userId: string, body: string): Promise<BotAction> {
+/**
+ * The owner saves their edits. With `expectedUpdatedAt`, only if the draft hasn't
+ * changed since they loaded it (the bot may have redrafted it, or another device saved).
+ */
+export async function saveReplyDraft(
+    id: string,
+    userId: string,
+    body: string,
+    expectedUpdatedAt?: string,
+): Promise<BotAction> {
     const row = await ownersDraft(id, userId);
-    if (!['proposed', 'opened'].includes(row.status))
-        throw new ActionError(409, closedMessage(row));
+    if (!isWaiting(row.status)) throw new ActionError(409, closedMessage(row));
+    if (expectedUpdatedAt && row.updatedAt.toISOString() !== expectedUpdatedAt)
+        throw new ActionError(
+            409,
+            'This draft changed since you opened it. Check it and try again.',
+        );
     const params = draftParams(row);
-    const doc = await saveParams(id, { ...params, body: checkBody(params.channel, body) }, [
-        'proposed',
-        'opened',
-    ]);
-    if (!doc) throw new ActionError(409, closedMessage((await findAction(id)) ?? row));
+    const now = new Date();
+    const doc = await updateActionDoc(
+        id,
+        {
+            $set: {
+                'params.body': checkBody(params.channel, body),
+                'params.editedAt': now.toISOString(),
+                updatedAt: now,
+            },
+        },
+        { status: { $in: ['proposed', 'opened'] }, updatedAt: row.updatedAt },
+    );
+    if (!doc)
+        throw new ActionError(
+            409,
+            'This draft changed since you opened it. Check it and try again.',
+        );
+    await broadcastAction(doc);
     return toActionView(doc, userId);
 }
 
@@ -428,8 +510,7 @@ export async function openReplyDraft(
     body?: string,
 ): Promise<{ action: BotAction; url: string }> {
     const row = await ownersDraft(id, userId);
-    if (!['proposed', 'opened'].includes(row.status))
-        throw new ActionError(409, closedMessage(row));
+    if (!isWaiting(row.status)) throw new ActionError(409, closedMessage(row));
     const params = draftParams(row);
     const text = body === undefined ? params.body : checkBody(params.channel, body);
     const now = new Date();
@@ -439,6 +520,7 @@ export async function openReplyDraft(
         {
             $set: {
                 'params.body': text,
+                ...(text !== params.body ? { 'params.editedAt': now.toISOString() } : {}),
                 status: 'opened',
                 approvedBy: row.approvedBy ?? userId,
                 approvedAt: row.approvedAt ?? now,
@@ -458,6 +540,7 @@ export async function openReplyDraft(
 export async function discardReplyDraft(id: string, userId: string): Promise<BotAction> {
     const row = await ownersDraft(id, userId);
     if (row.status === 'discarded') return toActionView(row, userId);
+    if (!isWaiting(row.status)) throw new ActionError(409, closedMessage(row));
     const doc = await updateAction(
         id,
         { status: 'discarded', completedAt: new Date() },
@@ -485,6 +568,10 @@ async function ownersDraft(id: string, userId: string): Promise<BotActionDocumen
     return row;
 }
 
+function isWaiting(status: BotActionStatus): boolean {
+    return status === 'proposed' || status === 'opened';
+}
+
 function draftParams(row: BotActionDocument): ReplyDraftParams {
     return row.params as unknown as ReplyDraftParams;
 }
@@ -498,21 +585,36 @@ function checkBody(channel: ReplyChannel, body: string): string {
 }
 
 function closedMessage(row: BotActionDocument): string {
-    return row.status === 'expired'
-        ? 'This draft expired. Ask the bot to draft it again.'
-        : 'This draft was discarded.';
+    switch (row.status) {
+        case 'expired':
+            return 'This draft expired. Ask the bot to draft it again.';
+        case 'discarded':
+            return 'This draft was discarded.';
+        case 'denied':
+            return 'There is no draft here: drafting replies is turned off for this bot.';
+        default:
+            return 'This draft can no longer be changed.';
+    }
 }
 
-/** Replaces the row's parameters (the draft), only while it's in one of `from`. */
-async function saveParams(
+/** A new draft over a waiting one the owner hasn't edited: fresh expiry, this bot. */
+async function redraft(
     id: string,
     params: ReplyDraftParams,
-    from: BotActionDocument['status'][],
+    changes: { expiresAt: Date; botId: string; botName?: string },
 ): Promise<BotActionDocument | null> {
     const doc = await updateActionDoc(
         id,
-        { $set: { params: { ...params }, updatedAt: new Date() } },
-        { status: { $in: from } },
+        {
+            $set: {
+                params: { ...params },
+                expiresAt: changes.expiresAt,
+                botId: changes.botId,
+                ...(changes.botName ? { botName: changes.botName } : {}),
+                updatedAt: new Date(),
+            },
+        },
+        { status: 'proposed', 'params.editedAt': { $exists: false } },
     );
     if (doc) await broadcastAction(doc);
     return doc;

@@ -82,6 +82,15 @@ export interface MacDataToolContext {
     draftedReplies?: string[];
     /** Messages `draft_reply` has shown the bot (with the user's voice) in this run. */
     replyContextSeen?: string[];
+    /**
+     * `draft_reply` is offered: only in chat runs a person started (bot-executor sets
+     * it), never in proactive runs.
+     */
+    draftsAllowed?: boolean;
+    /** Set once `draft_reply` runs: someone besides the user can read this notebook. */
+    draftsShared?: boolean;
+    /** The user's email addresses, once looked up (reply-draft.service). */
+    ownEmailAddresses?: string[];
 }
 
 export interface ToolDefinition {

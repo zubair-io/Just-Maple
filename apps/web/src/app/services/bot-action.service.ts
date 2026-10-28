@@ -118,9 +118,13 @@ export class BotActionService {
     }
   }
 
-  /** The owner's edits to a drafted reply. */
-  async saveDraft(id: string, body: string): Promise<BotAction> {
-    return this.draftCall(id, '', body);
+  /**
+   * The owner's edits to a drafted reply. With `updatedAt` (the version the text was
+   * based on), the server refuses the save if the draft changed since (a redraft, or a
+   * save from another device), so a stale save can't overwrite a newer draft.
+   */
+  async saveDraft(id: string, body: string, updatedAt?: string): Promise<BotAction> {
+    return this.draftCall(id, '', { body, ...(updatedAt ? { updatedAt } : {}) });
   }
 
   /**
@@ -147,13 +151,17 @@ export class BotActionService {
     return this.draftCall(id, '/discard');
   }
 
-  private async draftCall(id: string, path: '' | '/discard', body?: string): Promise<BotAction> {
+  private async draftCall(
+    id: string,
+    path: '' | '/discard',
+    body?: { body: string; updatedAt?: string },
+  ): Promise<BotAction> {
     const url = `/api/reply-drafts/${encodeURIComponent(id)}${path}`;
     try {
       const { action } = await firstValueFrom(
         path
           ? this.http.post<{ action: BotAction }>(url, {})
-          : this.http.patch<{ action: BotAction }>(url, { body }),
+          : this.http.patch<{ action: BotAction }>(url, body),
       );
       this.merge([action]);
       return action;

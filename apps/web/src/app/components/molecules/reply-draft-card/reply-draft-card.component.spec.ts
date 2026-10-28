@@ -164,10 +164,51 @@ describe('ReplyDraftCardComponent', () => {
     expect(writeText).toHaveBeenCalledWith('edited!');
     const save = http.expectOne(`/api/reply-drafts/${ID}`);
     expect(save.request.method).toBe('PATCH');
-    expect(save.request.body).toEqual({ body: 'edited!' });
+    // It says which version the edit started from.
+    expect(save.request.body).toEqual({ body: 'edited!', updatedAt: '2026-10-27T14:01:00.000Z' });
     save.flush({ action: draftAction({ params: { ...messageDraft, body: 'edited!' } }) });
     await settle();
     expect(button('Copied')).toBeTruthy();
+  });
+
+  it('keeps the owner’s text when a newer draft beat their save', async () => {
+    const { textarea, settle, text, fixture } = await render(draftAction());
+    textarea().value = 'my own words';
+    textarea().dispatchEvent(new Event('input'));
+    await settle();
+    textarea().dispatchEvent(new Event('blur'));
+    const save = http.expectOne(`/api/reply-drafts/${ID}`);
+    expect(save.request.body.updatedAt).toBe('2026-10-27T14:01:00.000Z');
+    save.flush(
+      { error: 'This draft changed since you opened it. Check it and try again.' },
+      { status: 409, statusText: 'Conflict' },
+    );
+    await settle();
+    // The newer draft is loaded behind their text, which stays in the box.
+    const newer = draftAction({
+      params: { ...messageDraft, body: 'the bot redrafted this' },
+      updatedAt: '2026-10-27T14:03:00.000Z',
+    });
+    http.expectOne(`/api/bot-actions/${ID}`).flush({ action: newer });
+    await settle();
+    expect(textarea().value).toBe('my own words');
+    expect(text()).toContain('This draft changed since you opened it.');
+
+    // Saving again, now that they've been told, is based on the newer version.
+    textarea().dispatchEvent(new Event('blur'));
+    const again = http.expectOne(`/api/reply-drafts/${ID}`);
+    expect(again.request.body).toEqual({
+      body: 'my own words',
+      updatedAt: '2026-10-27T14:03:00.000Z',
+    });
+    again.flush({
+      action: draftAction({
+        params: { ...messageDraft, body: 'my own words' },
+        updatedAt: '2026-10-27T14:04:00.000Z',
+      }),
+    });
+    await settle();
+    expect(fixture.componentInstance.error()).toBeNull();
   });
 
   it('discards it, and then offers nothing to open', async () => {

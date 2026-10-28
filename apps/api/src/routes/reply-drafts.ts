@@ -35,7 +35,14 @@ export const replyDraftRoutes = new Elysia({ prefix: '/api/reply-drafts' })
         async ({ auth, params, body, set }) => {
             if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
             try {
-                return { action: await saveReplyDraft(params.id, auth.user._id, body.body) };
+                return {
+                    action: await saveReplyDraft(
+                        params.id,
+                        auth.user._id,
+                        body.body,
+                        body.updatedAt,
+                    ),
+                };
             } catch (error) {
                 return failure(error, set);
             }

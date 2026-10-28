@@ -11,7 +11,7 @@ import type {
 import { isBotModel } from '@maple/shared';
 import { botUIPrompt, parseBotResponse, botUIToText } from './bot-ui.service';
 import { attachProposals, withProposalCards } from './calendar-proposal.service';
-import { withoutDraftText, withReplyDraftCards } from './reply-draft.service';
+import { draftRunNotice, expireUnpostedDrafts, withReplyDraftCards } from './reply-draft.service';
 import { attachActions, withActionReceipts } from './bot-action.service';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { SDKAssistantMessage } from '@anthropic-ai/claude-agent-sdk';
@@ -318,9 +318,11 @@ export class BotExecutorService {
                 executionTimeMs,
                 variables: ctx.variables as Record<string, unknown>,
             });
+            await expireUnpostedDrafts(ctx.macData?.draftedReplies);
 
             this.broadcastStatus(invocation, namedBot, 'completed', responseContent);
         } catch (error) {
+            await expireUnpostedDrafts(ctx.macData?.draftedReplies);
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             await updateInvocationStatus(invocationId, 'failed', {
                 error: {
@@ -590,6 +592,9 @@ export class BotExecutorService {
             name: ctx.userBot.displayName || ctx.template.name,
             ownerId: ctx.userBot.userId,
         }).catch(() => null);
+        // Drafted replies only when a person asked in chat (never proactive runs, which
+        // preset their context above).
+        if (macData && sourceType === 'message') macData.draftsAllowed = true;
         if (macData && sourceType === 'message') {
             const message = await findMessageById(sourceId).catch(() => null);
             const page = message ? await findPageByIdForBot(message.pageId) : null;
@@ -940,13 +945,29 @@ export class BotExecutorService {
     }
 
     /**
+     * After a run that drafted a reply in a shared notebook: the model's own words are
+     * dropped from the variables saved with the invocation (any member can read those),
+     * replaced by what the chat was shown.
+     */
+    private forgetModelOutput(ctx: ExecutionContext, notice: string): void {
+        const raw = ctx.variables.$response;
+        for (const [key, value] of Object.entries(ctx.variables))
+            if (key === '$response' || (raw !== undefined && value === raw))
+                ctx.variables[key] = notice;
+    }
+
+    /**
      * Prepare response content for posting
      */
     private async prepareResponse(ctx: ExecutionContext): Promise<PageContent> {
-        // Drafted replies are for their owner only: the card shows them, the text doesn't.
+        // Drafted replies are for their owner only. Where others read the chat, the
+        // run's text is replaced by a fixed line, and the raw output isn't kept.
         const drafts = ctx.macData?.draftedReplies ?? [];
-        const response = await withoutDraftText(String(ctx.variables.$response || ''), drafts);
-        const parsed = parseBotResponse(response);
+        const notice = draftRunNotice(ctx.macData);
+        if (notice) this.forgetModelOutput(ctx, notice);
+        const parsed = notice
+            ? { markdown: notice, ui: undefined }
+            : parseBotResponse(String(ctx.variables.$response || ''));
         // "Add to calendar" cards come from the proposals saved in this run, never from
         // what the model wrote.
         const proposals = ctx.macData?.proposedEvents ?? [];
