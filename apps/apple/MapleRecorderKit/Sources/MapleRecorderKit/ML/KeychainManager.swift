@@ -2,7 +2,9 @@ import Foundation
 import Security
 
 enum KeychainManager {
-    private static let serviceName = "com.just.maple.JapaneseMaple.recorder"
+    private static var serviceName: String {
+        RecorderHostConfiguration.keychainService(Bundle.main.infoDictionary ?? [:])
+    }
 
     enum Key: String {
         case claudeAPIKey = "claude_api_key"

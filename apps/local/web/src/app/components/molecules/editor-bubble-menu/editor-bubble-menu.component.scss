@@ -1,0 +1,127 @@
+.bubble-menu {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.bubble-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--color-text-muted);
+  transition: all 0.15s ease;
+
+  .material-symbols-rounded {
+    font-size: 18px;
+  }
+
+  &:hover {
+    background: rgba(0, 0, 0, 0.06);
+    color: var(--color-text-main);
+  }
+
+  &.active {
+    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+    color: var(--color-primary);
+  }
+}
+
+// Priority active states
+.priority-btn {
+  &.priority-high.active {
+    background: rgba(220, 38, 38, 0.1);
+    color: #dc2626;
+  }
+  &.priority-medium.active {
+    background: rgba(217, 119, 6, 0.1);
+    color: #d97706;
+  }
+  &.priority-low.active {
+    background: rgba(37, 99, 235, 0.1);
+    color: #2563eb;
+  }
+}
+
+// Color buttons
+.color-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+
+  &.active {
+    border-color: var(--color-text-main);
+  }
+}
+
+.color-dot {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+}
+
+.divider {
+  width: 1px;
+  height: 20px;
+  background: var(--color-border);
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+
+.priority-group,
+.color-group,
+.date-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.date-input {
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 12px;
+  background: var(--color-surface);
+  color: var(--color-text-main);
+  outline: none;
+
+  &:focus {
+    border-color: var(--color-primary);
+  }
+}
+
+.clear-date-btn {
+  width: 20px;
+  height: 20px;
+
+  .material-symbols-rounded {
+    font-size: 14px;
+  }
+
+  &:hover {
+    background: rgba(220, 38, 38, 0.1);
+    color: #dc2626;
+  }
+}
+
+.toggle-btn {
+  color: var(--color-text-muted);
+
+  &:hover {
+    color: var(--color-text-main);
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "lanes": [
+    {
+      "id": "lane-1",
+      "title": "To Do",
+      "color": "#E2E8F0",
+      "cardIds": ["card-1", "card-2"]
+    },
+    {
+      "id": "lane-2",
+      "title": "In Progress",
+      "color": "#FEF3C7",
+      "cardIds": ["card-3"]
+    },
+    {
+      "id": "lane-3",
+      "title": "Done",
+      "color": "#D1FAE5",
+      "cardIds": []
+    }
+  ],
+  "cards": {
+    "card-1": {
+      "id": "card-1",
+      "title": "Design the landing page",
+      "description": "Create mockups for the new landing page",
+      "priority": "high",
+      "color": "#dc2626",
+      "dueDate": "2026-03-01",
+      "tags": ["design"]
+    },
+    "card-2": {
+      "id": "card-2",
+      "title": "Set up CI/CD",
+      "description": "",
+      "priority": "medium"
+    },
+    "card-3": {
+      "id": "card-3",
+      "title": "Write API docs",
+      "description": "Document all REST endpoints",
+      "priority": "low",
+      "tags": ["docs"]
+    }
+  },
+  "settings": {
+    "showCardCount": true,
+    "defaultLaneId": "lane-1"
+  }
+}

@@ -1,0 +1,32 @@
+<div class="notebook-page">
+  @if (selectedPage(); as page) {
+    <app-note-header
+      [page]="page"
+      [canUndo]="canUndo()"
+      [canRedo]="canRedo()"
+      [isFullWidth]="isFullWidth()"
+      [pageId]="pageId() ?? ''"
+      [contentDirty]="contentDirty()"
+      (toggleFavorite)="toggleFavorite()"
+      (exportRequested)="handleExport($event)"
+      (undoRequested)="handleUndo()"
+      (redoRequested)="handleRedo()"
+      (toggleWidthRequested)="handleToggleWidth()"
+      (versionRestored)="handleVersionRestored()"
+      (deleteRequested)="handleDelete()"
+    />
+
+    <div class="notebook-content">
+      @if (pageId(); as id) {
+        @if (folderId(); as fldrId) {
+          <app-editor [pageId]="id" [folderId]="fldrId" />
+        }
+      }
+    </div>
+  } @else {
+    <div class="loading-state">
+      <div class="loading-spinner"></div>
+      <span>Loading...</span>
+    </div>
+  }
+</div>

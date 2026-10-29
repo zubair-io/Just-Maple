@@ -1,0 +1,13 @@
+<input
+  [type]="type()"
+  [id]="id()"
+  [name]="name()"
+  [placeholder]="placeholder()"
+  [disabled]="disabled()"
+  [required]="required()"
+  [autocomplete]="autocomplete()"
+  [class]="inputClasses"
+  [ngModel]="value"
+  (ngModelChange)="onValueChange($event)"
+  (blur)="onTouched()"
+/>

@@ -1,0 +1,71 @@
+@switch (viewMode()) {
+  @case ('single') {
+    @if (currentSpec(); as spec) {
+      <app-api-endpoint-form [spec]="spec" (editYaml)="onEditYaml()" />
+    }
+  }
+  @case ('multi') {
+    <div class="border border-border rounded-lg overflow-hidden text-[13px]">
+      <!-- Header bar -->
+      <div class="flex items-center gap-2 px-3 py-2 bg-bg-secondary border-b border-border">
+        <span
+          class="font-bold text-[11px] uppercase px-1.5 py-0.5 rounded text-white shrink-0 bg-method-get"
+          >API</span
+        >
+        @if (meta().title) {
+          <span class="font-semibold font-sans">{{ meta().title }}</span>
+        }
+        @if (meta().version) {
+          <span
+            class="text-[11px] px-1.5 py-0.5 rounded bg-bg border border-border text-text-muted font-mono"
+            >v{{ meta().version }}</span
+          >
+        }
+        <span class="text-text-muted text-xs font-sans"
+          >{{ specs().length }} endpoint{{ specs().length !== 1 ? 's' : '' }}</span
+        >
+        <div class="flex-1"></div>
+        <button
+          class="bg-transparent border border-border rounded px-2 py-1 cursor-pointer text-text-muted flex items-center hover:bg-bg-hover hover:text-text-main shrink-0"
+          title="Edit YAML"
+          contentEditable="false"
+          (click)="onEditYaml(); $event.preventDefault(); $event.stopPropagation()"
+        >
+          <span class="material-symbols-rounded text-base">code</span>
+        </button>
+      </div>
+
+      <!-- Endpoint selector -->
+      <div class="flex items-center gap-2 px-3 py-2 border-b border-border bg-bg">
+        <span class="text-xs text-text-muted font-sans shrink-0">Endpoint</span>
+        <select
+          class="flex-1 px-2 py-1.5 border border-border rounded text-[13px] bg-bg text-text-main font-mono cursor-pointer focus:outline-none focus:border-primary"
+          (change)="onEndpointChange(+$any($event.target).value)"
+          (keydown)="$event.stopPropagation()"
+          (keypress)="$event.stopPropagation()"
+          (keyup)="$event.stopPropagation()"
+        >
+          @for (spec of specs(); track $index) {
+            <option [value]="$index">
+              {{ spec.method | uppercase }} {{ spec.path
+              }}{{ spec.summary ? ' — ' + spec.summary : '' }}
+            </option>
+          }
+        </select>
+      </div>
+
+      <!-- Selected endpoint form -->
+      @if (currentSpec(); as spec) {
+        <app-api-endpoint-form
+          [spec]="spec"
+          [hideEditButton]="true"
+          [nested]="true"
+          (editYaml)="onEditYaml()"
+        />
+      }
+    </div>
+  }
+  @case ('error') {
+    <app-api-error-block [error]="errorMessage()" (editYaml)="onEditYaml()" />
+  }
+}

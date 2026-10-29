@@ -1,0 +1,189 @@
+<div class="toolbar-container">
+  <div class="editor-toolbar" [class.disabled]="!editor()">
+    @if (mode() === 'format') {
+      <!-- Text type buttons (Paragraph, Headings) -->
+      <div class="toolbar-group">
+        @for (btn of textTypeButtons(); track btn.label) {
+          <button
+            type="button"
+            class="toolbar-btn"
+            [class.active]="btn.isActive?.()"
+            [disabled]="btn.disabled?.()"
+            [title]="btn.label"
+            (click)="btn.action()"
+          >
+            <span class="btn-icon">{{ btn.icon }}</span>
+          </button>
+        }
+      </div>
+
+      <div class="toolbar-divider"></div>
+
+      <!-- Formatting buttons -->
+      <div class="toolbar-group">
+        @for (btn of formattingButtons(); track btn.label) {
+          <button
+            type="button"
+            class="toolbar-btn"
+            [class.active]="btn.isActive?.()"
+            [disabled]="btn.disabled?.()"
+            [title]="btn.label"
+            (click)="btn.action()"
+          >
+            <span
+              class="btn-icon"
+              [class.bold]="btn.icon === 'B'"
+              [class.italic]="btn.icon === 'I'"
+            >
+              {{ btn.icon }}
+            </span>
+          </button>
+        }
+      </div>
+    } @else {
+      <!-- Todo toolbar -->
+      @if (activeTodo(); as todo) {
+        <!-- Priority buttons -->
+        <div class="toolbar-group">
+          @for (p of priorities; track p.value) {
+            <button
+              type="button"
+              class="toolbar-btn priority-btn priority-{{ p.value }}"
+              [class.active]="todo.priority === p.value"
+              (click)="setPriority(p.value)"
+              [title]="p.title"
+            >
+              <span class="material-symbols-rounded">{{ p.icon }}</span>
+            </button>
+          }
+        </div>
+
+        <div class="toolbar-divider"></div>
+
+        <!-- Color buttons: inline on desktop -->
+        <div class="toolbar-group color-group-desktop">
+          @for (c of colors; track c.value) {
+            <button
+              type="button"
+              class="toolbar-btn color-btn"
+              [class.active]="todo.color === c.value"
+              (click)="setColor(c.value)"
+            >
+              <span class="color-dot" [style.background]="c.hex"></span>
+            </button>
+          }
+        </div>
+
+        <!-- Color button: dropdown on mobile -->
+        <div class="toolbar-group color-group-mobile">
+          <button
+            type="button"
+            class="toolbar-btn color-trigger-btn"
+            cdkOverlayOrigin
+            #colorOrigin="cdkOverlayOrigin"
+            (click)="colorPickerOpen.set(!colorPickerOpen())"
+            title="Color"
+          >
+            @if (activeColorHex()) {
+              <span class="color-dot" [style.background]="activeColorHex()"></span>
+            } @else {
+              <span class="material-symbols-rounded">palette</span>
+            }
+          </button>
+
+          <ng-template
+            cdkConnectedOverlay
+            [cdkConnectedOverlayOrigin]="colorOrigin"
+            [cdkConnectedOverlayOpen]="colorPickerOpen()"
+            [cdkConnectedOverlayHasBackdrop]="true"
+            cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+            (backdropClick)="colorPickerOpen.set(false)"
+            [cdkConnectedOverlayPositions]="[
+              {
+                originX: 'center',
+                originY: 'top',
+                overlayX: 'center',
+                overlayY: 'bottom',
+                offsetY: -8,
+              },
+            ]"
+          >
+            <div class="color-dropdown">
+              @for (c of colors; track c.value) {
+                <button
+                  type="button"
+                  class="toolbar-btn color-btn"
+                  [class.active]="todo.color === c.value"
+                  (click)="setColor(c.value)"
+                >
+                  <span class="color-dot" [style.background]="c.hex"></span>
+                </button>
+              }
+              @if (todo.color) {
+                <button
+                  type="button"
+                  class="toolbar-btn clear-color-btn"
+                  (click)="setColor(todo.color)"
+                  title="Clear color"
+                >
+                  <span class="material-symbols-rounded">close</span>
+                </button>
+              }
+            </div>
+          </ng-template>
+        </div>
+
+        <div class="toolbar-divider"></div>
+
+        <!-- Due date split button + mat-datepicker -->
+        <div class="toolbar-group date-group">
+          <div class="date-anchor">
+            <input
+              class="date-hidden-input"
+              [matDatepicker]="picker"
+              [value]="dueDateAsDate()"
+              (dateChange)="onDateSelected($event.value)"
+            />
+            <mat-datepicker #picker></mat-datepicker>
+          </div>
+
+          <button
+            type="button"
+            class="toolbar-btn date-btn"
+            [class.has-date]="todo.dueDate"
+            (click)="picker.open()"
+            title="Due date"
+          >
+            <span class="material-symbols-rounded date-icon">calendar_today</span>
+            <span class="date-label">{{ dueDateLabel() }}</span>
+          </button>
+          @if (todo.dueDate) {
+            <button
+              type="button"
+              class="toolbar-btn clear-date-btn"
+              (click)="clearDueDate($event)"
+              title="Clear date"
+            >
+              <span class="material-symbols-rounded">close</span>
+            </button>
+          }
+        </div>
+      }
+    }
+
+    <!-- Toggle button (only when in a task item) -->
+    @if (isInTaskItem()) {
+      <div class="toolbar-divider"></div>
+      <button
+        type="button"
+        class="toolbar-btn toggle-btn"
+        (click)="toggleMode()"
+        [title]="mode() === 'format' ? 'Todo settings' : 'Format text'"
+      >
+        <span class="material-symbols-rounded">
+          {{ mode() === 'format' ? 'checklist' : 'text_format' }}
+        </span>
+      </button>
+    }
+  </div>
+</div>

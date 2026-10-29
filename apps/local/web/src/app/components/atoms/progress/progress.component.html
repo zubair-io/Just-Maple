@@ -1,0 +1,32 @@
+@if (variant() === 'bar') {
+  <div class="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+    <div
+      class="h-full rounded-full transition-all duration-300"
+      [style.width.%]="percentage()"
+      [style.background-color]="barColor()"
+    ></div>
+  </div>
+} @else {
+  <svg class="w-24 h-24 -rotate-90" viewBox="0 0 100 100">
+    <circle
+      cx="50"
+      cy="50"
+      [attr.r]="ringRadius"
+      fill="none"
+      stroke="var(--color-border)"
+      stroke-width="8"
+    />
+    <circle
+      cx="50"
+      cy="50"
+      [attr.r]="ringRadius"
+      fill="none"
+      [attr.stroke]="barColor()"
+      stroke-width="8"
+      stroke-linecap="round"
+      [attr.stroke-dasharray]="ringCircumference()"
+      [attr.stroke-dashoffset]="ringOffset()"
+      class="transition-all duration-300"
+    />
+  </svg>
+}

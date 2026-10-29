@@ -272,6 +272,14 @@ struct RecordingListView: View {
             .padding(.vertical, 10)
             .padding(.horizontal, 12)
             .background(MapleTheme.surfaceAlt, in: .rect(cornerRadius: 8))
+        } else if !modelManager.isReady && modelManager.error == nil {
+            Button("Prepare on-device transcription models") {
+                Task {
+                    await modelManager.ensureModelsReady()
+                    if modelManager.isReady { await autoProcessor?.processUnprocessed() }
+                }
+            }
+            .padding(10)
         } else if let error = modelManager.error {
             HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")

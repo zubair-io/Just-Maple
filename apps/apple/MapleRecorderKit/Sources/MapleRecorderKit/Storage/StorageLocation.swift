@@ -1,7 +1,9 @@
 import Foundation
 
 enum StorageLocation {
-    private static let iCloudContainerId = "iCloud.com.just.maple.JapaneseMaple"
+    static var iCloudContainerId: String {
+        RecorderHostConfiguration.cloudContainer(Bundle.main.infoDictionary ?? [:])
+    }
 
     /// Whether iCloud Drive is available for this app.
     static var isICloudAvailable: Bool {
@@ -17,10 +19,15 @@ enum StorageLocation {
         return localRecordingsURL
     }
 
+    static var localDocumentsURL: URL {
+        RecorderHostConfiguration.localDocuments(
+            FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0],
+            info: Bundle.main.infoDictionary ?? [:])
+    }
+
     /// The sandbox-local recordings path, used when iCloud is unavailable.
     static var localRecordingsURL: URL {
-        FileManager.default
-            .urls(for: .documentDirectory, in: .userDomainMask)[0]
+        localDocumentsURL
             .appendingPathComponent("MapleRecorder").appendingPathComponent("recordings")
     }
 
