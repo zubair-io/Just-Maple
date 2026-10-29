@@ -42,3 +42,4 @@ try {
     serverSearchWorker.close();
     await closeDatabase();
 }
+process.exit(0);

@@ -177,7 +177,7 @@ Verification on October 29, 2026: **936 API tests passed** (3 existing skips),
 **139 shared tests passed**, **12 native Rust tests passed**, and **17 Chromium
 E2E tests passed** (136 existing skips). CT131 rebooted successfully with all three
 services active and no failed systemd units. The active API release is
-`sqlite-hybrid-20261029-06`; the native binary is `just-maple-search-20261029-03`.
+`sqlite-hybrid-20261029-07`; the native binary is `just-maple-search-20261029-03`.
 Four queries over 12,505 eligible imported items measured 920 ms initially and
 579–672 ms warm with partial embedding coverage. These are diagnostic samples,
 not a p95 result; the provisional 500 ms target needs further load testing. The
