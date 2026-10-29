@@ -1,3 +1,5 @@
+import process from 'node:process';
+import type { EventEmitter } from 'node:events';
 import { Elysia } from 'elysia';
 import { cors } from '@elysiajs/cors';
 import { join, resolve } from 'path';
@@ -298,8 +300,10 @@ async function main() {
             process.exit(1);
         }
     };
-    process.on('SIGTERM', () => void shutdown());
-    process.on('SIGINT', () => void shutdown());
+    // Bun's memoryPressure declaration hides Node's inherited signal overloads.
+    const lifecycle = process as EventEmitter;
+    lifecycle.on('SIGTERM', () => void shutdown());
+    lifecycle.on('SIGINT', () => void shutdown());
 
     // Check if frontend is available
     const indexFile = Bun.file(join(STATIC_DIR, 'index.html'));

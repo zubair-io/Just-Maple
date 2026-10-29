@@ -38,7 +38,7 @@ export const authInterceptor: HttpInterceptorFn = (
   ];
   if (
     skipAuthUrls.some((skipUrl) => req.url.includes(skipUrl)) ||
-    (isApi && new URL(url, window.location.origin).pathname.startsWith('/api/public/'))
+    (isApi && new URL(url, 'https://maple.invalid').pathname.startsWith('/api/public/'))
   ) {
     const updatedReq = req.clone({ url });
     return send(updatedReq);
