@@ -4,6 +4,7 @@ import { Subject, Observable } from 'rxjs';
 import { filter } from 'rxjs/operators';
 import { AuthService } from './auth.service';
 import { VisibilityService } from './visibility.service';
+import { nativeServerEndpoint, serverEndpointChanged, fallBackToPublic } from './server-endpoint';
 import { environment } from '../../environments/environment';
 import type {
   Page,
@@ -96,6 +97,11 @@ export class RealtimeWSService {
 
   constructor() {
     if (isPlatformBrowser(this.platformId)) {
+      window.addEventListener(serverEndpointChanged, () => {
+        this.disconnect();
+        this.reconnectAttempts = 0;
+        this.connect();
+      });
       // Reconnect when document becomes visible if not connected
       this.visibilityService.becameVisible$
         .pipe(filter(() => !this.connected()))
@@ -122,7 +128,8 @@ export class RealtimeWSService {
     }
 
     // Build WebSocket URL
-    let wsUrl = environment.wsUrl || '';
+    const native = nativeServerEndpoint();
+    let wsUrl = native?.apiUrl.replace(/^http/, 'ws') || environment.wsUrl || '';
     if (!wsUrl) {
       // Use relative URL with same host
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -158,6 +165,7 @@ export class RealtimeWSService {
       };
 
       this.ws.onclose = (event) => {
+        if (this.ws !== ws) return;
         this.connected.set(false);
         this.ready.set(false);
         this.ws = null;
@@ -167,7 +175,7 @@ export class RealtimeWSService {
           return;
         }
 
-        this.scheduleReconnect();
+        if (!fallBackToPublic()) this.scheduleReconnect();
       };
     } catch {
       this.scheduleReconnect();
@@ -184,11 +192,16 @@ export class RealtimeWSService {
     }
 
     if (this.ws) {
+      this.ws.onclose = null;
+      this.ws.onmessage = null;
+      this.ws.onerror = null;
+      this.ws.onopen = null;
       this.ws.close(1000, 'Client disconnect');
       this.ws = null;
     }
 
     this.connected.set(false);
+    this.ready.set(false);
   }
 
   /**

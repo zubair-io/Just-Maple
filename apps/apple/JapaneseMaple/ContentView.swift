@@ -10,6 +10,8 @@ import SwiftData
 import UniformTypeIdentifiers
 
 struct ContentView: View {
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var showServerSettings = false
     @StateObject private var webViewController = WebViewController()
 
     #if os(iOS)
@@ -22,6 +24,33 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .ignoresSafeArea(.container)
+        .overlay(alignment: .topTrailing) {
+            Button { showServerSettings = true } label: {
+                Image(systemName: "server.rack").padding(10)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityLabel("Server settings")
+            .padding(8)
+        }
+        .sheet(isPresented: $showServerSettings) { ServerSettingsView() }
+        .onAppear {
+            #if !DEBUG
+            showServerSettings = !ServerConfigService.shared.hasConfiguredServer
+                && ServerConfigService.shared.getToken() == nil
+            #endif
+        }
+        .onReceive(NotificationCenter.default.publisher(for: ServerConfigService.openSettings)) { _ in
+            showServerSettings = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: ServerConfigService.configurationDidChange)) { _ in
+            webViewController.reloadFromServer()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: ServerConfigService.connectionDidChange)) { _ in
+            webViewController.refreshConnection()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { webViewController.refreshConnection() }
+        }
         #if os(iOS)
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("FolderPickerRequested"))) { _ in
             showFolderPicker = true

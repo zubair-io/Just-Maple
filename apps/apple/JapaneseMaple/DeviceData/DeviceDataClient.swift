@@ -150,7 +150,7 @@ actor DeviceDataClient {
 
     init(
         session: URLSession = .shared,
-        baseURL: @escaping @Sendable () -> String = { ServerConfigService.shared.getAPIUrl() },
+        baseURL: @escaping @Sendable () -> String = { ServerConfigService.shared.getActiveServer().getAPIUrl() },
         token: @escaping @Sendable () -> String? = { ServerConfigService.shared.getToken() }
     ) {
         self.session = session
@@ -273,7 +273,13 @@ actor DeviceDataClient {
         _ method: String, _ path: String, _ body: Body?
     ) async throws -> Reply {
         guard let token = token() else { throw DeviceDataError.notSignedIn }
-        let base = baseURL().trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let configured = baseURL()
+        var selected = configured
+        if configured == ServerConfigService.shared.getActiveServer().getAPIUrl() {
+            await ServerConfigService.shared.resolveEndpoint()
+            selected = ServerConfigService.shared.getAPIUrl()
+        }
+        let base = selected.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         guard let url = URL(string: base + path) else { throw DeviceDataError.server(0, "Bad server URL") }
         var request = URLRequest(url: url, timeoutInterval: 60)
         request.httpMethod = method

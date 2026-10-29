@@ -1,0 +1,42 @@
+<section class="my-6 rounded-xl border border-[var(--color-border)] p-4 space-y-3">
+  <h2 class="font-semibold text-[var(--color-text-main)]">Server</h2>
+  <p class="text-sm text-[var(--color-text-muted)]">Connected to {{ currentHost }}</p>
+  @if (native.isNativeApp()) {
+    <button
+      type="button"
+      (click)="native.openServerSettings()"
+      class="text-sm text-[var(--color-primary)] hover:underline"
+    >
+      Change server or local address
+    </button>
+  } @else {
+    <form (ngSubmit)="connect()" class="space-y-3">
+      <label class="block text-sm text-[var(--color-text-main)]" for="serverAddress"
+        >Server address</label
+      >
+      <input
+        id="serverAddress"
+        name="serverAddress"
+        [(ngModel)]="address"
+        placeholder="phoebe.justmaple.app"
+        autocomplete="url"
+        autocapitalize="none"
+        spellcheck="false"
+        class="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-input-bg)] p-3 text-[var(--color-text-main)]"
+      />
+      <button
+        type="submit"
+        [disabled]="!address().trim()"
+        class="text-sm text-[var(--color-primary)] hover:underline disabled:opacity-50"
+      >
+        Open server
+      </button>
+      @if (error()) {
+        <p role="alert" class="text-sm text-[var(--color-error)]">{{ error() }}</p>
+      }
+    </form>
+    <p class="text-xs text-[var(--color-text-muted)]">
+      In the Apple app, server settings also let you choose a preferred local address.
+    </p>
+  }
+</section>

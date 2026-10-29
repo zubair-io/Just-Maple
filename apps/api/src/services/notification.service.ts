@@ -22,7 +22,7 @@ interface PaperbarkPushRequest {
 
 /**
  * How this server sends push notifications, and what is missing when it can't.
- * Direct APNs is used only on https://justmaple.app; every other server relays
+ * A production server with APNs credentials sends directly; other servers relay
  * through Paperbark, which needs PAPERBARK_API_KEY.
  */
 export function describePushSetup(): { method: 'direct APNs' | 'Paperbark'; missing: string[] } {

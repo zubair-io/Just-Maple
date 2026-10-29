@@ -54,6 +54,10 @@ export class NativeBridgeService {
     }
   }
 
+  openServerSettings(): void {
+    this.sendMessage({ type: 'openServerSettings' });
+  }
+
   // MARK: - Detection
 
   private detectNativeApp(): void {

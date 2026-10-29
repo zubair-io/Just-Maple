@@ -38,3 +38,62 @@ describe('authInterceptor', () => {
     backend.verify({ ignoreCancelled: true });
   });
 });
+
+describe('native LAN fallback', () => {
+  const primary = 'https://phoebe.justmaple.app';
+  const local = 'https://local.phoebe.justmaple.app';
+  const browser = window as Window & {
+    __mapleServerIdentity?: {
+      serverUrl: string;
+      publicApiUrl: string;
+      apiUrl: string;
+      localUrl: string;
+    };
+  };
+  beforeEach(() => {
+    browser.__mapleServerIdentity = {
+      serverUrl: primary,
+      publicApiUrl: primary,
+      apiUrl: local,
+      localUrl: local,
+    };
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(withInterceptors([authInterceptor])),
+        provideHttpClientTesting(),
+        {
+          provide: AuthService,
+          useValue: { accessToken: () => 'account-token', initReady$: of(true) },
+        },
+        { provide: Router, useValue: { navigate: vi.fn() } },
+      ],
+    });
+  });
+  afterEach(() => {
+    delete browser.__mapleServerIdentity;
+  });
+  it('retries a failed LAN read over the public endpoint with the same account token', () => {
+    const http = TestBed.inject(HttpClient);
+    const backend = TestBed.inject(HttpTestingController);
+    let result: unknown;
+    http.get('/api/notebooks').subscribe((value) => (result = value));
+    backend.expectOne(`${local}/api/notebooks`).error(new ProgressEvent('error'));
+    const retry = backend.expectOne(`${primary}/api/notebooks`);
+    expect(retry.request.headers.get('Authorization')).toBe('Bearer account-token');
+    retry.flush({ notebooks: [] });
+    expect(result).toEqual({ notebooks: [] });
+    backend.verify();
+  });
+  it('does not replay an uncertain write and uses the public endpoint for the next request', () => {
+    const http = TestBed.inject(HttpClient);
+    const backend = TestBed.inject(HttpTestingController);
+    const error = vi.fn();
+    http.post('/api/messages', { body: 'once' }).subscribe({ error });
+    backend.expectOne(`${local}/api/messages`).error(new ProgressEvent('error'));
+    backend.expectNone(`${primary}/api/messages`);
+    expect(error).toHaveBeenCalledTimes(1);
+    http.get('/api/notebooks').subscribe();
+    backend.expectOne(`${primary}/api/notebooks`).flush({ notebooks: [] });
+    backend.verify();
+  });
+});

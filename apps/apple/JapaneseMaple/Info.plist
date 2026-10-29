@@ -25,7 +25,7 @@
 		<true/>
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Just Maple connects to Home Assistant on your home network to read the devices you exposed to assistants, and to change one only when you tap to confirm.</string>
+	<string>Just Maple connects to your local Just Maple server and to Home Assistant on your network. Home Assistant changes require your confirmation.</string>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>Just Maple records system audio when you enable system audio recording.</string>
 	<key>NSContactsUsageDescription</key>

@@ -108,6 +108,7 @@ export type WebToNativeMessageType =
   | { type: 'clearToken'; payload?: ClearTokenPayload }
   | { type: 'requestPushPermission' }
   | { type: 'getPushStatus' }
+  | { type: 'openServerSettings' }
   | { type: 'unregisterPushNotifications' }
   | { type: 'setBadge'; payload: SetBadgePayload }
   | { type: 'openFolderPicker' }

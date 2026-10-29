@@ -21,6 +21,13 @@ import secrets
 with open('/etc/just-maple/api.env','a') as target: target.write('JWT_SECRET='+secrets.token_hex(48)+'\n')
 PY
 fi
+# A stable public instance identity lets clients verify a preferred LAN endpoint.
+python3 - <<'PY_IDENTITY'
+import pathlib, uuid
+path = pathlib.Path('/etc/just-maple/api.env')
+if not any(line.startswith('INSTANCE_ID=') for line in path.read_text().splitlines()):
+    with path.open('a') as target: target.write('INSTANCE_ID=' + str(uuid.uuid4()) + '\n')
+PY_IDENTITY
 chmod 600 /etc/just-maple/api.env
 chown just-maple:just-maple /var/lib/just-maple /var/lib/just-maple/media /var/lib/just-maple/backups
 if [ -e /var/lib/just-maple/staging.sqlite ]; then
