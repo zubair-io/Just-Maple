@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Combine
 import SwiftData
 import UniformTypeIdentifiers
 
@@ -39,13 +40,13 @@ struct ContentView: View {
                 && ServerConfigService.shared.getToken() == nil
             #endif
         }
-        .onReceive(NotificationCenter.default.publisher(for: ServerConfigService.openSettings)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: ServerConfigService.openSettings).receive(on: RunLoop.main)) { _ in
             showServerSettings = true
         }
-        .onReceive(NotificationCenter.default.publisher(for: ServerConfigService.configurationDidChange)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: ServerConfigService.configurationDidChange).receive(on: RunLoop.main)) { _ in
             webViewController.reloadFromServer()
         }
-        .onReceive(NotificationCenter.default.publisher(for: ServerConfigService.connectionDidChange)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: ServerConfigService.connectionDidChange).receive(on: RunLoop.main)) { _ in
             webViewController.refreshConnection()
         }
         .onChange(of: scenePhase) { _, phase in

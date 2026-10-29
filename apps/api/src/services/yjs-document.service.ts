@@ -182,7 +182,7 @@ class YJSDocumentService {
     /**
      * Save document to database
      */
-    private async saveDocument(noteId: string): Promise<void> {
+    private async saveDocument(noteId: string, strict = false): Promise<void> {
         const ydoc = this.documents.get(noteId);
         if (!ydoc) return;
 
@@ -206,6 +206,7 @@ class YJSDocumentService {
             );
         } catch (error) {
             console.error(`[YJS] Failed to save document ${noteId}:`, error);
+            if (strict) throw error;
         } finally {
             this.saveTimers.delete(noteId);
         }
@@ -223,12 +224,12 @@ class YJSDocumentService {
      * Force save all pending documents
      * Used during graceful shutdown
      */
-    async flushAll(): Promise<void> {
+    async flushAll(strict = false): Promise<void> {
         const savePromises: Promise<void>[] = [];
 
         for (const [noteId, timer] of this.saveTimers) {
             clearTimeout(timer);
-            savePromises.push(this.saveDocument(noteId));
+            savePromises.push(this.saveDocument(noteId, strict));
         }
 
         await Promise.all(savePromises);
@@ -331,7 +332,7 @@ class YJSDocumentService {
      */
     async shutdown(): Promise<void> {
         clearInterval(this.cleanupInterval);
-        await this.flushAll();
+        await this.flushAll(true);
 
         // Destroy all Y.Docs
         for (const ydoc of this.documents.values()) {
