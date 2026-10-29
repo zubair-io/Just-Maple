@@ -1,5 +1,5 @@
 [Unit]
-Description=Just Maple API and web (SQLite staging)
+Description=Just Maple API and web (SQLite)
 After=network-online.target just-maple-search.service
 Wants=network-online.target just-maple-search.service
 
@@ -13,6 +13,8 @@ ExecStart=/usr/local/bin/bun /opt/just-maple/current/index.js
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=30
+# Let the API flush through its SQLite child before stopping the whole cgroup.
+KillMode=mixed
 MemoryHigh=1500M
 MemoryMax=2G
 CPUQuota=200%
