@@ -1,3 +1,4 @@
+import { SqliteDatabase } from '../../db/sqlite/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ObjectId } from 'mongodb';
 import { createTestApp } from '../../__tests__/helpers/app';
@@ -971,7 +972,9 @@ describe.runIf(mongoAvailable)('Bot action log and autonomy', () => {
     it('creates the indexes its queries need', async () => {
         const { createIndexes } =
             await vi.importActual<typeof import('../../db/client')>('../../db/client');
-        const scratch = testDb!.client.db('bot-action-indexes');
+        const storage = new SqliteDatabase(':memory:');
+        await storage.ready;
+        const scratch = storage.asRepositoryDatabase();
         try {
             await createIndexes(scratch);
             const keys = (await scratch.collection('bot_actions').indexes()).map((i) => i.key);
@@ -986,7 +989,7 @@ describe.runIf(mongoAvailable)('Bot action log and autonomy', () => {
                 ]),
             );
         } finally {
-            await scratch.dropDatabase();
+            await storage.close();
         }
     });
 });

@@ -1,7 +1,5 @@
 import type { Db } from 'mongodb';
-import { beforeAll, afterAll, afterEach, vi } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { beforeAll, afterAll, afterEach, inject, vi } from 'vitest';
 import { SqliteDatabase } from '../db/sqlite/client';
 
 let testDb: Db;
@@ -17,10 +15,7 @@ vi.mock('../db/client', () => ({
 }));
 
 beforeAll(async () => {
-    const metadata = JSON.parse(
-        readFileSync(join(process.cwd(), '.test-tmp', 'database.json'), 'utf8'),
-    ) as { path: string };
-    sqlite = new SqliteDatabase(metadata.path);
+    sqlite = new SqliteDatabase(inject('sqliteDatabasePath'));
     await sqlite.ready;
     testDb = sqlite.asRepositoryDatabase();
     const { createIndexes } = await vi.importActual<typeof import('../db/client')>('../db/client');
