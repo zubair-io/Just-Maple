@@ -1,6 +1,7 @@
 # Just Maple on Phoebe
 
-This branch implements an isolated SQLite deployment and server-side hybrid search.
+This branch implements an isolated SQLite deployment and server-side hybrid search,
+based on main revision `ca1110ba` including its graph, follow-up and bot workflows.
 Production remains on its existing service. Do not merge, change DNS, activate a
 public application route, or redirect existing clients as part of this rehearsal.
 
@@ -172,17 +173,17 @@ of the existing frontend type/format checks. Shared tests, production frontend b
 Chromium E2E, binary/hash migration checks, live authenticated API, native search,
 worker-crash recovery, and backup restore were exercised.
 
-Verification on October 29, 2026: **562 API tests passed** (3 existing skips),
-**131 shared tests passed**, **12 native Rust tests passed**, and **17 Chromium
+Verification on October 29, 2026: **936 API tests passed** (3 existing skips),
+**139 shared tests passed**, **12 native Rust tests passed**, and **17 Chromium
 E2E tests passed** (136 existing skips). CT131 rebooted successfully with all three
 services active and no failed systemd units. The active API release is
-`sqlite-hybrid-20261029-05`; the native binary is `just-maple-search-20261029-03`.
+`sqlite-hybrid-20261029-06`; the native binary is `just-maple-search-20261029-03`.
 Four queries over 12,505 eligible imported items measured 920 ms initially and
 579–672 ms warm with partial embedding coverage. These are diagnostic samples,
 not a p95 result; the provisional 500 ms target needs further load testing. The
 synthetic paraphrase/isolation/revocation smoke measured 107 ms.
 
-The existing frontend suite reports 248 failures/41 errors; the clean base revision
+The existing frontend suite reports 248 failures/45 errors; the clean base revision
 produced the same counts. API typecheck also has existing diagnostics (including
 shared sources outside its rootDir); it is not green. Do not confuse successful
 bundling/API tests with a clean whole-repository typecheck.

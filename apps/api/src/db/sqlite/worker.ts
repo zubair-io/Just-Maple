@@ -400,26 +400,32 @@ function updateRows(
             )
                 setPath(upserted, key, val);
         }
-        if (upserted._id === undefined) upserted._id = new ObjectId();
+        if (upserted._id === undefined)
+            upserted._id = (modifier.$setOnInsert as Doc | undefined)?._id ?? new ObjectId();
         matched = [upserted];
     }
     for (const doc of matched) {
         const original = encode(doc);
         if (operation === 'replaceOne') {
+            if (modifier._id !== undefined && idKey(modifier._id) !== idKey(doc._id))
+                throw new Error('Cannot change immutable _id');
             const replacement = { ...modifier, _id: doc._id };
             persist(name, replacement, !!upserted);
             modifiedCount += Number(encode(replacement) !== original);
             continue;
         }
         const { $setOnInsert, ...updates } = modifier;
-        if (upserted && $setOnInsert)
-            applyUpdate(
-                doc,
-                { $set: $setOnInsert as Doc },
-                [],
-                {},
-                { cloneMode: 'none', queryOptions },
-            );
+        if (upserted && $setOnInsert) {
+            const { _id: insertId, ...insertFields } = $setOnInsert as Doc;
+            if (insertId !== undefined && idKey(insertId) !== idKey(doc._id))
+                throw new Error('Cannot change immutable _id');
+            applyUpdate(doc, { $set: insertFields }, [], {}, { cloneMode: 'none', queryOptions });
+        }
+        if (updates.$set && Object.hasOwn(updates.$set as Doc, '_id')) {
+            const { _id: setId, ...fields } = updates.$set as Doc;
+            if (idKey(setId) !== idKey(doc._id)) throw new Error('Cannot change immutable _id');
+            updates.$set = fields;
+        }
         const resolved = resolvePositional(doc, filter, updates);
         applyUpdate(
             doc,
