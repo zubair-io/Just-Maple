@@ -142,6 +142,7 @@ class WebViewController: NSObject, ObservableObject, WKNavigationDelegate, WKUID
     }
 
     func refreshConnection() {
+        guard ServerConfigService.shared.hasConfiguredServer else { return }
         Task { @MainActor [weak self] in
             guard let self else { return }
             await ServerConfigService.shared.resolveEndpoint()
@@ -157,6 +158,8 @@ class WebViewController: NSObject, ObservableObject, WKNavigationDelegate, WKUID
     }
 
     private func loadWebApp() {
+        // First launch stays in native setup until a server is saved.
+        guard ServerConfigService.shared.hasConfiguredServer else { return }
         Task { @MainActor [weak self] in
             await ServerConfigService.shared.resolveEndpoint()
             self?.loadResolvedWebApp()
