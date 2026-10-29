@@ -175,11 +175,18 @@ of the existing frontend type/format checks. Shared tests, production frontend b
 Chromium E2E, binary/hash migration checks, live authenticated API, native search,
 worker-crash recovery, and backup restore were exercised.
 
-Verification on October 29, 2026: **936 API tests passed** (3 existing skips),
+Verification on October 29, 2026: **940 API tests passed** (3 existing skips),
 **139 shared tests passed**, **12 native Rust tests passed**, and **17 Chromium
 E2E tests passed** (136 existing skips). CT131 rebooted successfully with all three
 services active and no failed systemd units. The active API release is
-`sqlite-hybrid-20261029-07`; the native binary is `just-maple-search-20261029-03`.
+`sqlite-hybrid-20261029-10`, built from `030c15e21f19b45b3ba140fe350b853f52ebc8c6`; the native binary is `just-maple-search-20261029-03`.
+The current release manifest verifies 210 runtime/model/frontend artifacts. Five
+focused web routing/fallback tests and two isolated Swift server-selection tests
+pass; macOS test-build and iOS build pass. Full Apple test execution is blocked by
+development signing on this Mac. The built API's identity endpoint, production auth
+gate and graceful SIGTERM were exercised. The latest staging HTTP smoke and NAS
+snapshot `just-maple-20261029T174817Z.sqlite` passed.
+
 Four queries over 12,505 eligible imported items measured 920 ms initially and
 579–672 ms warm with partial embedding coverage. These are diagnostic samples,
 not a p95 result; the provisional 500 ms target needs further load testing. The
@@ -190,12 +197,12 @@ produced the same counts. API typecheck also has existing diagnostics (including
 shared sources outside its rootDir); it is not green. Do not confuse successful
 bundling/API tests with a clean whole-repository typecheck.
 
-Before production: choose/authorize the hostname and DNS, configure its RP/origins,
-test Apple and collector selection/replay, re-enroll/link staging identities as
-appropriate, test two-client Yjs/realtime/media/scheduled-send workflows, complete
-embedding coverage and relevance/load tests, define TTL/backup retention, rehearse
-a quiesced export and fresh-guest restore, then agree the cutover window. No old
-service, data, device embedding path or DNS record has been retired here.
+Before production: obtain the scoped Cloudflare zone credential, activate and verify
+both authorized hostnames with trusted HTTPS and correct RP/origins, test real Apple
+and collector selection/replay and two-client Yjs/realtime/media/scheduled-send
+workflows, complete embedding coverage and relevance/load acceptance, define
+TTL/backup retention, and perform the final quiesced export and fresh-guest restore.
+The Azure app and source database remain intact and running pending these steps.
 
 ## Public and preferred local server settings
 
