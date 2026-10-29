@@ -39,6 +39,7 @@ class WebViewController: NSObject, ObservableObject, WKNavigationDelegate, WKUID
     let webView: WKWebView
     private var bridge: NativeBridge?
     private var hasInitialized = false
+    private var loadingOrigin: String?
 
     override init() {
         // Configure WKWebView
@@ -64,7 +65,8 @@ class WebViewController: NSObject, ObservableObject, WKNavigationDelegate, WKUID
         // Enable App-Bound Domains for service worker support in WKWebView (iOS 14+)
         // Requires WKAppBoundDomains in Info.plist
         #if os(iOS)
-        config.limitsNavigationsToAppBoundDomains = true
+        // A user-selected self-hosted server cannot be listed in a static domain allowlist.
+        config.limitsNavigationsToAppBoundDomains = false
         #endif
 
         print("[WebViewController] Initializing WebView (service worker will handle offline)")
@@ -139,10 +141,42 @@ class WebViewController: NSObject, ObservableObject, WKNavigationDelegate, WKUID
         NotificationCenter.default.removeObserver(self)
     }
 
+    func refreshConnection() {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await ServerConfigService.shared.resolveEndpoint()
+            let config = ServerConfigService.shared
+            let endpoints = [config.getActiveServer().url, config.localURL].compactMap { $0 }
+            if let current = self.webView.url, endpoints.contains(where: { URL(string: $0)?.host == current.host }) {
+                // Keep the current page, editor state and offline database while changing transport.
+                _ = try? await self.webView.callAsyncJavaScript(
+                    "if (window.__mapleServerIdentity && window.__mapleServerIdentity.apiUrl !== apiUrl) { window.__mapleServerIdentity.apiUrl = apiUrl; window.dispatchEvent(new Event('maple:server-endpoint')); }",
+                    arguments: ["apiUrl": config.getAPIUrl()], in: nil, contentWorld: .page)
+            } else { self.reloadFromServer() }
+        }
+    }
+
     private func loadWebApp() {
+        Task { @MainActor [weak self] in
+            await ServerConfigService.shared.resolveEndpoint()
+            self?.loadResolvedWebApp()
+        }
+    }
+
+    private func loadResolvedWebApp() {
         // Get active server URL from ServerConfigService
         let activeServer = ServerConfigService.shared.getActiveServer()
-        let serverURLString = activeServer.url
+        let serverURLString = ServerConfigService.shared.getEffectiveWebURL()
+        loadingOrigin = serverURLString
+        // Install identity before Angular starts, including when loading the LAN origin.
+        let identityData = try! JSONSerialization.data(withJSONObject: ["serverUrl": activeServer.url,
+            "publicApiUrl": activeServer.getAPIUrl(), "apiUrl": ServerConfigService.shared.getAPIUrl(),
+            "localUrl": ServerConfigService.shared.localURL ?? ""])
+        let identityJSON = String(decoding: identityData, as: UTF8.self)
+        webView.configuration.userContentController.removeAllUserScripts()
+        webView.configuration.userContentController.addUserScript(WKUserScript(
+            source: "window.__mapleServerIdentity = \(identityJSON);",
+            injectionTime: .atDocumentStart, forMainFrameOnly: true))
 
         print("[WebViewController] Active server: \(activeServer.name) - \(serverURLString)")
 
@@ -348,19 +382,29 @@ class WebViewController: NSObject, ObservableObject, WKNavigationDelegate, WKUID
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        if (error as NSError).code == NSURLErrorCancelled { return }
+        if let local = ServerConfigService.shared.localURL, loadingOrigin == local,
+           let primary = URL(string: ServerConfigService.shared.getActiveServer().url) {
+            hasInitialized = false
+            loadingOrigin = primary.absoluteString
+            webView.load(URLRequest(url: primary, timeoutInterval: 10))
+            return
+        }
         print("[WebViewController] Provisional navigation failed: \(error.localizedDescription)")
         loadOfflinePage()
     }
 
     func webView(_ webView: WKWebView, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
-        // Allow self-signed certificates for localhost
-        if challenge.protectionSpace.host.contains("localhost") {
+        #if DEBUG
+        // Development exception is restricted to loopback hosts.
+        if ["localhost", "127.0.0.1", "::1"].contains(challenge.protectionSpace.host) {
             if let serverTrust = challenge.protectionSpace.serverTrust {
                 print("[WebViewController] Accepting localhost self-signed certificate")
                 completionHandler(.useCredential, URLCredential(trust: serverTrust))
                 return
             }
         }
+        #endif
         completionHandler(.performDefaultHandling, nil)
     }
 

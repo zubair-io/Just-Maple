@@ -69,7 +69,9 @@ export class AuthService {
    */
   private getNativeServerId(): string {
     const initialState = this.nativeBridge.getInitialState();
-    return initialState?.serverUrl || window.location.origin;
+    const bootstrap = (window as Window & { __mapleServerIdentity?: { serverUrl: string } })
+      .__mapleServerIdentity;
+    return bootstrap?.serverUrl || initialState?.serverUrl || window.location.origin;
   }
 
   private readonly _accessToken = signal<string | null>(null);
@@ -137,7 +139,8 @@ export class AuthService {
 
           // Set token and fetch user from server
           this._accessToken.set(response.token);
-          await this.fetchCurrentUser();
+          this.markInitReady();
+          await firstValueFrom(this.fetchCurrentUser());
         }
       } catch {
         // No token in native keychain

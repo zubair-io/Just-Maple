@@ -516,9 +516,24 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
 
     func userContentController(_ userContentController: WKUserContentController,
                                didReceive message: WKScriptMessage) {
+        let allowedOrigins = [ServerConfigService.shared.getActiveServer().url,
+                              ServerConfigService.shared.localURL ?? ServerConfigService.shared.getEffectiveWebURL()]
+        guard message.frameInfo.isMainFrame,
+              let frameURL = message.frameInfo.request.url,
+              allowedOrigins.contains(where: { origin in
+                  guard let allowed = URL(string: origin) else { return false }
+                  return frameURL.scheme == allowed.scheme && frameURL.host == allowed.host
+                      && frameURL.port == allowed.port
+              }) else { return }
         guard let body = message.body as? String,
               let data = body.data(using: .utf8) else {
             print("[Bridge] Invalid message format")
+            return
+        }
+
+        if let envelope = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           envelope["type"] as? String == "openServerSettings", message.frameInfo.isMainFrame {
+            NotificationCenter.default.post(name: ServerConfigService.openSettings, object: nil)
             return
         }
 
@@ -795,7 +810,7 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
             send(.recordingCancelled)
 
         case .saveToken(let payload):
-            let success = ServerConfigService.shared.saveToken(payload.token, serverId: payload.serverId)
+            let success = ServerConfigService.shared.saveToken(payload.token, serverId: ServerConfigService.shared.getActiveServer().id)
             if success {
                 // Sync token to Apple Watch
                 #if os(iOS)
@@ -805,11 +820,11 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
             send(.tokenSaved(NativeToWebMessage.TokenSavedResponse(success: success)))
 
         case .getToken(let payload):
-            let token = ServerConfigService.shared.getToken(serverId: payload?.serverId)
+            let token = ServerConfigService.shared.getToken(serverId: ServerConfigService.shared.getActiveServer().id)
             send(.currentToken(NativeToWebMessage.CurrentTokenResponse(token: token)))
 
         case .clearToken(let payload):
-            let success = ServerConfigService.shared.clearToken(serverId: payload?.serverId)
+            let success = ServerConfigService.shared.clearToken(serverId: ServerConfigService.shared.getActiveServer().id)
             if success {
                 // Clear token from Apple Watch
                 #if os(iOS)
@@ -1041,7 +1056,7 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
             send(.recordingCancelled)
 
         case .saveToken(let payload):
-            let success = ServerConfigService.shared.saveToken(payload.token, serverId: payload.serverId)
+            let success = ServerConfigService.shared.saveToken(payload.token, serverId: ServerConfigService.shared.getActiveServer().id)
             if success {
                 // Sync token to Apple Watch
                 #if os(iOS)
@@ -1051,11 +1066,11 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
             send(.tokenSaved(NativeToWebMessage.TokenSavedResponse(success: success)))
 
         case .getToken(let payload):
-            let token = ServerConfigService.shared.getToken(serverId: payload?.serverId)
+            let token = ServerConfigService.shared.getToken(serverId: ServerConfigService.shared.getActiveServer().id)
             send(.currentToken(NativeToWebMessage.CurrentTokenResponse(token: token)))
 
         case .clearToken(let payload):
-            let success = ServerConfigService.shared.clearToken(serverId: payload?.serverId)
+            let success = ServerConfigService.shared.clearToken(serverId: ServerConfigService.shared.getActiveServer().id)
             if success {
                 // Clear token from Apple Watch
                 #if os(iOS)

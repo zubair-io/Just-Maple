@@ -49,7 +49,7 @@ class WatchConnectivityService: NSObject, ObservableObject {
             return
         }
 
-        let apiUrl = ServerConfigService.shared.getAPIUrl()
+        let apiUrl = ServerConfigService.shared.getActiveServer().getAPIUrl()
 
         // Use application context for persistent data
         let context: [String: Any] = [
@@ -174,7 +174,7 @@ extension WatchConnectivityService: WCSessionDelegate {
         // Handle sync request
         if message["request"] as? String == "syncAuth" {
             if let token = ServerConfigService.shared.getToken() {
-                let apiUrl = ServerConfigService.shared.getAPIUrl()
+                let apiUrl = ServerConfigService.shared.getActiveServer().getAPIUrl()
                 replyHandler([
                     "token": token,
                     "apiUrl": apiUrl,

@@ -1,7 +1,7 @@
 import { Elysia } from 'elysia';
 import { cors } from '@elysiajs/cors';
 import { join, resolve } from 'path';
-import { connectToDatabase, getDb } from './db/client';
+import { connectToDatabase, getDb, closeDatabase } from './db/client';
 import { authRoutes } from './routes/auth';
 import { notebookRoutes } from './routes/notebooks';
 import { pageRoutes } from './routes/pages';
@@ -54,6 +54,9 @@ import { createSsrRoutes } from './routes/ssr';
 import { config } from './config';
 import { startServerEmbedding } from './services/server-embedding.service';
 import { serverSearchWorker } from './services/server-search-worker.service';
+import { yjsDocumentService } from './services/yjs-document.service';
+import { yjsWhiteboardService } from './services/yjs-whiteboard.service';
+import { yjsKanbanService } from './services/yjs-kanban.service';
 import { describePushSetup } from './services/notification.service';
 
 function getStaticDir(): string {
@@ -78,7 +81,10 @@ async function main() {
 
     // Connect to the configured durable database before accepting traffic.
     await connectToDatabase();
-    if (config.serverSearchEnabled && config.databaseDriver === 'sqlite') startServerEmbedding();
+    const stopEmbedding =
+        config.serverSearchEnabled && config.databaseDriver === 'sqlite'
+            ? startServerEmbedding()
+            : undefined;
     // Hourly: drop device data older than the retention window
     if (config.backgroundJobsEnabled) {
         startDeviceDataRetention();
@@ -152,6 +158,19 @@ async function main() {
     // App version for client version checking
     const APP_VERSION = process.env.APP_VERSION || '0.9.0';
     const BUILD_TIME = process.env.BUILD_TIME || new Date().toISOString();
+
+    app.get('/api/server-info', ({ set }) => {
+        set.headers['cache-control'] = 'no-store';
+        if (!config.instanceId) {
+            set.status = 503;
+            return { error: 'Server identity is not configured' };
+        }
+        return {
+            instanceId: config.instanceId,
+            publicUrl: config.publicUrl,
+            localUrl: config.localUrl || null,
+        };
+    });
 
     app.get('/api/health', async ({ set }) => {
         try {
@@ -247,6 +266,40 @@ async function main() {
                 process.exit(1);
             },
         });
+
+    // Drain requests before flushing the debounced collaborative documents.
+    let stopping = false;
+    const shutdown = async () => {
+        if (stopping) return;
+        stopping = true;
+        const deadline = setTimeout(() => process.exit(1), 25_000);
+        try {
+            stopEmbedding?.();
+            const server = app.server;
+            let drainTimer: ReturnType<typeof setTimeout> | undefined;
+            await Promise.race([
+                Promise.resolve(server?.stop(false)),
+                new Promise<void>((resolve) => {
+                    drainTimer = setTimeout(resolve, 10_000);
+                }),
+            ]);
+            clearTimeout(drainTimer);
+            await server?.stop(true);
+            await Promise.all([
+                yjsDocumentService.shutdown(),
+                yjsWhiteboardService.shutdown(),
+                yjsKanbanService.shutdown(),
+            ]);
+            await closeDatabase();
+            clearTimeout(deadline);
+            process.exit(0);
+        } catch {
+            console.error('[Shutdown] Could not flush durable state');
+            process.exit(1);
+        }
+    };
+    process.on('SIGTERM', () => void shutdown());
+    process.on('SIGINT', () => void shutdown());
 
     // Check if frontend is available
     const indexFile = Bun.file(join(STATIC_DIR, 'index.html'));

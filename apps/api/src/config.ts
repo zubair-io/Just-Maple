@@ -1,6 +1,9 @@
 export const config = {
     port: parseInt(process.env.PORT || '7071'),
     host: process.env.HOST || '127.0.0.1',
+    instanceId: process.env.INSTANCE_ID || '',
+    publicUrl: process.env.PUBLIC_URL || process.env.ORIGIN || 'https://justmaple.app',
+    localUrl: process.env.LOCAL_URL || '',
     databaseDriver: process.env.DATABASE_DRIVER || (process.env.MONGODB_URI ? 'mongodb' : 'sqlite'),
     databasePath: process.env.DATABASE_PATH || './storage/just-maple.sqlite',
     backgroundJobsEnabled: process.env.DISABLE_BACKGROUND_JOBS !== 'true',
@@ -51,7 +54,7 @@ export const config = {
 
     // Use direct APNs if origin is production
     get useDirectApns() {
-        return this.origin === 'https://justmaple.app' && !!this.apnsKeyId && !!this.apnsTeamId;
+        return !this.isDev && !!this.apnsKeyId && !!this.apnsTeamId;
     },
 
     // Gravatar config

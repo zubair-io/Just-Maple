@@ -5,6 +5,7 @@ import { AuthService } from '../services/auth.service';
 import { environment } from '../../environments/environment';
 import { isLocalNotebook } from '../providers/data-provider.interface';
 import { catchError, EMPTY, switchMap, throwError } from 'rxjs';
+import { routeApiRequest, fallBackToPublic } from '../services/server-endpoint';
 
 export const authInterceptor: HttpInterceptorFn = (
   req: HttpRequest<unknown>,
@@ -13,12 +14,21 @@ export const authInterceptor: HttpInterceptorFn = (
   const authService = inject(AuthService);
   const router = inject(Router);
 
-  let url = req.url;
-
-  // Prepend API URL for /api requests in production
-  if (environment.apiUrl && url.startsWith('/api')) {
-    url = `${environment.apiUrl}${url}`;
-  }
+  const { url, isApi } = routeApiRequest(req.url, environment.apiUrl || '');
+  const send = (request: HttpRequest<unknown>) =>
+    next(request).pipe(
+      catchError((error) => {
+        if (isApi && error.status === 0 && fallBackToPublic()) {
+          // Never replay an uncertain mutation. Reads may safely retry on the public route.
+          if (request.method === 'GET' || request.method === 'HEAD') {
+            return next(
+              request.clone({ url: routeApiRequest(req.url, environment.apiUrl || '').url }),
+            );
+          }
+        }
+        return throwError(() => error);
+      }),
+    );
 
   // Skip auth header for certain endpoints
   const skipAuthUrls = [
@@ -28,16 +38,16 @@ export const authInterceptor: HttpInterceptorFn = (
   ];
   if (
     skipAuthUrls.some((skipUrl) => req.url.includes(skipUrl)) ||
-    req.url.startsWith('/api/public/')
+    (isApi && new URL(url, window.location.origin).pathname.startsWith('/api/public/'))
   ) {
     const updatedReq = req.clone({ url });
-    return next(updatedReq);
+    return send(updatedReq);
   }
 
   // Skip auth for non-API requests (local file operations, etc.)
-  if (!req.url.startsWith('/api')) {
+  if (!isApi) {
     const updatedReq = req.clone({ url });
-    return next(updatedReq);
+    return send(updatedReq);
   }
 
   // Wait for auth to initialize before reading the token.
@@ -54,7 +64,7 @@ export const authInterceptor: HttpInterceptorFn = (
             Authorization: `Bearer ${token}`,
           },
         });
-        return next(authReq).pipe(
+        return send(authReq).pipe(
           catchError((error) => {
             if (error.status === 401) {
               console.log('[Auth] 401 Unauthorized - clearing token and redirecting to login');
