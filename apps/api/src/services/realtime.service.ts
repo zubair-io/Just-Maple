@@ -1,6 +1,7 @@
 import type { ChatEvent } from '@maple/shared';
 import { realtimeWSService } from './realtime-ws.service';
 import { redisPubSub } from './redis.service';
+import { createHash } from 'node:crypto';
 
 // Track which notebooks we're subscribed to in Redis
 const subscribedNotebooks = new Set<string>();
@@ -20,8 +21,13 @@ function handleRedisChat(notebookId: string, event: ChatEvent): void {
 async function broadcastToLocalConnections(notebookId: string, event: ChatEvent): Promise<void> {
     // Deduplicate using Redis - prevents double delivery from local + Redis echo
     const messageId = (event.data as any)?._id;
-    if (messageId && redisPubSub.connected) {
-        const isNew = await redisPubSub.checkAndSetDedup(`chat:dedup:${messageId}`, 5);
+    if (messageId) {
+        // Distinct edits to one message must still be delivered within the TTL.
+        const fingerprint = createHash('sha256').update(JSON.stringify(event)).digest('hex');
+        const isNew = await redisPubSub.checkAndSetDedup(
+            `chat:dedup:${notebookId}:${messageId}:${fingerprint}`,
+            5,
+        );
         if (!isNew) {
             return; // Already broadcast to local connections
         }

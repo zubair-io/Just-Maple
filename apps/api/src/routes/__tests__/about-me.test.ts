@@ -7,7 +7,7 @@ import {
     createUserFixture,
 } from '../../__tests__/helpers/fixtures';
 import { mongoAvailable, testDb } from '../../__tests__/setup';
-import { ObjectId, type MongoClient } from 'mongodb';
+import { ObjectId } from 'mongodb';
 import type { AboutMe, MacDataItem } from '@maple/shared';
 
 vi.mock('../../services/bot-executor.service', () => ({ botExecutor: { invoke: vi.fn() } }));
@@ -556,7 +556,10 @@ describe.runIf(mongoAvailable)('About me', () => {
         const { createIndexes } =
             await vi.importActual<typeof import('../../db/client')>('../../db/client');
         // A database of its own, so the other tests' database keeps its indexes as they were.
-        const db = (testDb as unknown as { client: MongoClient }).client.db('about-me-indexes');
+        const { SqliteDatabase } = await import('../../db/sqlite/client');
+        const storage = new SqliteDatabase(':memory:');
+        await storage.ready;
+        const db = storage.asRepositoryDatabase();
         try {
             await createIndexes(db);
             const keys = async (collection: string) =>
@@ -565,7 +568,7 @@ describe.runIf(mongoAvailable)('About me', () => {
             expect(await keys('profile_facts')).toContainEqual({ notebookId: 1 });
             expect(await keys('profile_facts')).toContainEqual({ userId: 1, notebookId: 1 });
         } finally {
-            await db.dropDatabase();
+            await storage.close();
         }
     });
 
