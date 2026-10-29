@@ -1,0 +1,18 @@
+<div class="border-t border-border">
+  <div class="flex items-center gap-2 px-3 py-2 bg-bg-secondary">
+    <span
+      class="font-bold text-xs px-2 py-0.5 rounded"
+      [class.bg-status-success-bg]="isSuccess()"
+      [class.text-status-success-text]="isSuccess()"
+      [class.bg-status-error-bg]="!isSuccess()"
+      [class.text-status-error-text]="!isSuccess()"
+    >
+      {{ statusLabel() }}
+    </span>
+    <span class="text-text-muted text-xs ml-auto">{{ response().durationMs }}ms</span>
+  </div>
+  <pre
+    class="p-3 m-0 max-h-[300px] overflow-auto text-xs leading-relaxed whitespace-pre-wrap bg-code-bg text-code-text font-mono"
+    >{{ formattedBody() }}</pre
+  >
+</div>

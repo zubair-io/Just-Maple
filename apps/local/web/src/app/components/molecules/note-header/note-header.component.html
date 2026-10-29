@@ -1,0 +1,124 @@
+@if (page()) {
+  <header
+    class="h-14 flex items-center justify-between px-4 md:px-6 py-4 flex-shrink-0 bg-[var(--color-bg)]/95 backdrop-blur-sm sticky top-0 z-10 border-b border-[var(--color-border)]"
+  >
+    <!-- Left side: Menu + Page name -->
+    <div class="flex items-center gap-2 text-sm text-[var(--color-text-main)] min-w-0">
+      <!-- Menu button (mobile only) -->
+      <button
+        (click)="openSidebarOnMobile()"
+        class="md:hidden flex items-center justify-center w-8 h-8 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors flex-shrink-0"
+        title="Open menu"
+      >
+        <span class="material-symbols-rounded text-xl">menu</span>
+      </button>
+
+      <!-- Page name -->
+      <div class="flex items-center gap-1.5 font-medium truncate">
+        <span
+          class="material-symbols-rounded text-base text-[var(--color-primary)] flex-shrink-0 !hidden md:!block"
+          >article</span
+        >
+        @if (isEditingTitle()) {
+          <input
+            type="text"
+            class="truncate bg-transparent border border-[var(--color-primary)] rounded px-1.5 py-0.5 outline-none text-sm font-medium text-[var(--color-text-main)]"
+            [(ngModel)]="editTitleValue"
+            (blur)="saveTitle()"
+            (keydown.enter)="saveTitle()"
+            (keydown.escape)="cancelEditingTitle()"
+            autofocus
+          />
+        } @else {
+          <span class="truncate cursor-default" (dblclick)="startEditingTitle()">{{
+            page()!.title
+          }}</span>
+        }
+      </div>
+    </div>
+
+    <!-- Right side: Actions -->
+    <div class="flex items-center gap-1">
+      <!-- Undo/Redo -->
+      <div class="flex items-center">
+        <button
+          (click)="undoRequested.emit()"
+          [disabled]="!canUndo()"
+          class="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          title="Undo"
+        >
+          <span class="material-symbols-rounded text-lg">undo</span>
+        </button>
+        <button
+          (click)="redoRequested.emit()"
+          [disabled]="!canRedo()"
+          class="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          title="Redo"
+        >
+          <span class="material-symbols-rounded text-lg">redo</span>
+        </button>
+      </div>
+
+      <!-- Width toggle (hidden on mobile) -->
+      <button
+        (click)="toggleWidthRequested.emit()"
+        class="hidden md:flex w-8 h-8 items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
+        [title]="isFullWidth() ? 'Narrow width' : 'Full width'"
+      >
+        @if (isFullWidth()) {
+          <span class="material-symbols-rounded text-lg">width_normal</span>
+        } @else {
+          <span class="material-symbols-rounded text-lg">width_wide</span>
+        }
+      </button>
+
+      <!-- Divider -->
+      <div class="w-px h-5 bg-[var(--color-border)] mx-1"></div>
+
+      <!-- Export button with dropdown -->
+      <div class="relative">
+        <button
+          (click)="toggleExportMenu()"
+          class="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
+          title="Export"
+        >
+          <span class="material-symbols-rounded text-lg">download</span>
+        </button>
+        @if (showExportMenu()) {
+          <!-- Backdrop to close menu on outside click -->
+          <div class="fixed inset-0 z-40" (click)="closeExportMenu()"></div>
+          <div
+            class="absolute right-0 top-full mt-1 bg-[var(--color-bg)] rounded-lg shadow-lg border border-[var(--color-border)] py-1 min-w-[140px] z-50"
+          >
+            <button
+              (click)="exportAs('markdown')"
+              class="w-full px-3 py-2 text-left text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] flex items-center gap-2"
+            >
+              <span class="material-symbols-rounded text-base">description</span>
+              Markdown
+            </button>
+            <button
+              (click)="exportAs('html')"
+              class="w-full px-3 py-2 text-left text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] flex items-center gap-2"
+            >
+              <span class="material-symbols-rounded text-base">code</span>
+              HTML
+            </button>
+          </div>
+        }
+      </div>
+
+      <!-- Divider -->
+      <div class="w-px h-5 bg-[var(--color-border)] mx-1"></div>
+
+      <!-- Delete button -->
+      <button
+        (click)="deleteRequested.emit()"
+        class="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+        title="Delete page"
+      >
+        <span class="material-symbols-rounded text-lg">delete</span>
+      </button>
+    </div>
+  </header>
+}

@@ -1,0 +1,46 @@
+<div class="reader-pill" [class.is-active]="status() !== 'idle'">
+  @switch (status()) {
+    @case ('idle') {
+      <button
+        type="button"
+        class="pill-btn primary"
+        [disabled]="!editor()"
+        (click)="play()"
+        title="Read aloud"
+      >
+        <span class="material-symbols-rounded">headphones</span>
+        <span class="pill-label">{{ label() }}</span>
+      </button>
+    }
+    @case ('loading') {
+      <div class="pill-status">
+        <span class="spinner" aria-hidden="true"></span>
+        <span class="pill-label">{{ label() }}</span>
+        <button type="button" class="pill-btn ghost" (click)="stop()" title="Cancel">
+          <span class="material-symbols-rounded">close</span>
+        </button>
+      </div>
+    }
+    @case ('playing') {
+      <div class="pill-status">
+        <span class="equalizer" aria-hidden="true"> <span></span><span></span><span></span> </span>
+        <button type="button" class="pill-btn" (click)="pause()" title="Pause">
+          <span class="material-symbols-rounded">pause</span>
+        </button>
+        <button type="button" class="pill-btn ghost" (click)="stop()" title="Stop">
+          <span class="material-symbols-rounded">stop</span>
+        </button>
+      </div>
+    }
+    @case ('paused') {
+      <div class="pill-status">
+        <button type="button" class="pill-btn primary" (click)="resume()" title="Resume">
+          <span class="material-symbols-rounded">play_arrow</span>
+        </button>
+        <button type="button" class="pill-btn ghost" (click)="stop()" title="Stop">
+          <span class="material-symbols-rounded">stop</span>
+        </button>
+      </div>
+    }
+  }
+</div>

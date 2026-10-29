@@ -1,0 +1,25 @@
+<div class="suggestion-menu">
+  @if (filteredItems().length === 0) {
+    <div class="no-results">{{ emptyMessage() }}</div>
+  } @else {
+    @for (item of filteredItems(); track item.id; let i = $index) {
+      <button
+        #menuItem
+        class="menu-item"
+        [class.selected]="i === selectedIndex()"
+        (mousedown)="$event.preventDefault()"
+        (click)="selectItem(item)"
+        (mouseenter)="selectedIndex.set(i)"
+        type="button"
+      >
+        <span class="menu-icon">{{ item.icon }}</span>
+        <div class="menu-content">
+          <span class="menu-title">{{ item.title }}</span>
+          @if (item.description) {
+            <span class="menu-description">{{ item.description }}</span>
+          }
+        </div>
+      </button>
+    }
+  }
+</div>

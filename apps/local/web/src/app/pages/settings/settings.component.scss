@@ -1,0 +1,13 @@
+.page-wrapper {
+  height: 100vh;
+  overflow-y: auto;
+  background: var(--color-bg);
+  padding-top: env(safe-area-inset-top);
+}
+
+.page-content {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 24px;
+  padding-bottom: calc(6rem + env(safe-area-inset-bottom));
+}

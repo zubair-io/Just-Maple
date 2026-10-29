@@ -1,0 +1,37 @@
+{
+  "/sse": {
+    "target": "http://127.0.0.1:8081",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug",
+    "onProxyReq": "(proxyReq, req, res) => { proxyReq.setHeader('Connection', 'keep-alive'); }",
+    "onProxyRes": "(proxyRes, req, res) => { proxyRes.headers['Cache-Control'] = 'no-cache'; proxyRes.headers['Content-Type'] = 'text/event-stream'; proxyRes.headers['Connection'] = 'keep-alive'; }"
+  },
+  "/api/events/stream": {
+    "target": "http://127.0.0.1:8081",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug",
+    "onProxyReq": "(proxyReq, req, res) => { proxyReq.setHeader('Connection', 'keep-alive'); }",
+    "onProxyRes": "(proxyRes, req, res) => { proxyRes.headers['Cache-Control'] = 'no-cache'; proxyRes.headers['Content-Type'] = 'text/event-stream'; proxyRes.headers['Connection'] = 'keep-alive'; }"
+  },
+  "/api": {
+    "target": "http://127.0.0.1:8081",
+    "secure": false,
+    "changeOrigin": true
+  },
+  "/ws": {
+    "target": "http://127.0.0.1:8081",
+    "secure": false,
+    "changeOrigin": true,
+    "ws": true
+  },
+  "/azure": {
+    "target": "http://127.0.0.1:7071",
+    "secure": false,
+    "changeOrigin": true,
+    "pathRewrite": {
+      "^/azure": ""
+    }
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "viewport": { "x": 0, "y": 0, "zoom": 1 },
+  "elements": [
+    {
+      "id": "el-001",
+      "type": "rectangle",
+      "x": 100,
+      "y": 200,
+      "width": 300,
+      "height": 150,
+      "fill": "#FFE4B5",
+      "stroke": "#D94E3B",
+      "text": "Idea A"
+    },
+    {
+      "id": "el-002",
+      "type": "arrow",
+      "startId": "el-001",
+      "endId": "el-003",
+      "stroke": "#333"
+    },
+    {
+      "id": "el-003",
+      "type": "text",
+      "x": 500,
+      "y": 250,
+      "content": "Connected thought",
+      "fontSize": 16
+    }
+  ],
+  "layers": [
+    {
+      "id": "layer-1",
+      "name": "Default",
+      "visible": true,
+      "elementIds": ["el-001", "el-002", "el-003"]
+    }
+  ]
+}

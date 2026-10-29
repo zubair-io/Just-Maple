@@ -1,0 +1,17 @@
+<div class="space-y-2">
+  @if (label()) {
+    <label [for]="for()" class="block text-sm font-semibold text-[var(--color-charcoal)]">
+      {{ label() }}
+      @if (required()) {
+        <span class="text-[var(--color-maple)]">*</span>
+      }
+    </label>
+  }
+  <ng-content />
+  @if (error()) {
+    <p class="text-sm text-[var(--color-error)]">{{ error() }}</p>
+  }
+  @if (hint() && !error()) {
+    <p class="text-sm text-[var(--color-mist)]">{{ hint() }}</p>
+  }
+</div>

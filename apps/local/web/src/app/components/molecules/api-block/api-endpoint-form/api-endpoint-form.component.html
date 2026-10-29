@@ -1,0 +1,200 @@
+<div
+  class="border border-border rounded-lg overflow-hidden font-mono text-[13px] border-l-[3px]"
+  [class]="methodBorder()"
+  [class.!border-0]="nested()"
+  [class.!rounded-none]="nested()"
+>
+  <!-- Header -->
+  <div class="flex items-center gap-2 px-3 py-2 bg-bg-secondary border-b border-border">
+    <select
+      class="font-bold text-[11px] uppercase px-1.5 py-0.5 rounded text-white shrink-0 cursor-pointer border-none outline-none appearance-none"
+      [class]="methodBg()"
+      [value]="currentMethod()"
+      (change)="onMethodChange($any($event.target).value)"
+      (keydown)="$event.stopPropagation()"
+      (keypress)="$event.stopPropagation()"
+      (keyup)="$event.stopPropagation()"
+    >
+      @for (m of methods; track m) {
+        <option [value]="m" class="text-text-main bg-bg">{{ m | uppercase }}</option>
+      }
+    </select>
+
+    <span class="font-semibold break-all">{{ spec().path }}</span>
+
+    @if (spec().summary) {
+      <span class="text-text-muted text-xs ml-auto shrink-0">{{ spec().summary }}</span>
+    }
+
+    @if (!hideEditButton()) {
+      <div class="flex items-center ml-auto shrink-0">
+        <button
+          class="bg-transparent border border-border rounded px-2 py-1 cursor-pointer text-text-muted flex items-center hover:bg-bg-hover hover:text-text-main"
+          title="Edit YAML"
+          contentEditable="false"
+          (click)="editYaml.emit(); $event.preventDefault(); $event.stopPropagation()"
+        >
+          <span class="material-symbols-rounded text-base">code</span>
+        </button>
+      </div>
+    }
+  </div>
+
+  <!-- Form -->
+  <div class="p-3 flex flex-col gap-2" contentEditable="false">
+    <!-- Server URL -->
+    <div class="grid grid-cols-[120px_1fr] items-center gap-2">
+      <label class="text-xs text-text-muted text-right font-sans">Server</label>
+      <input
+        type="text"
+        class="px-2 py-1.5 border border-border rounded font-[inherit] text-[13px] bg-bg text-text-main focus:outline-none focus:border-primary"
+        [class.!border-error]="serverUrlInvalid()"
+        placeholder="https://api.example.com"
+        [value]="serverUrl()"
+        (input)="onServerUrlChange($any($event.target).value)"
+        (keydown)="$event.stopPropagation()"
+        (keypress)="$event.stopPropagation()"
+        (keyup)="$event.stopPropagation()"
+      />
+      @if (serverUrlInvalid()) {
+        <span class="col-start-2 text-[11px] text-error font-sans"
+          >Must be a full URL (http:// or https://)</span
+        >
+      }
+    </div>
+
+    <!-- Path params -->
+    @for (param of pathParams(); track param.name) {
+      <div class="grid grid-cols-[120px_1fr] items-center gap-2">
+        <label class="text-xs text-text-muted text-right font-sans">
+          :{{ param.name }}
+          @if (param.required) {
+            <span class="text-error"> *</span>
+          }
+        </label>
+        <input
+          type="text"
+          class="px-2 py-1.5 border border-border rounded font-[inherit] text-[13px] bg-bg text-text-main focus:outline-none focus:border-primary"
+          [placeholder]="getParamPlaceholder(param)"
+          [value]="getParamValue(param.name)"
+          (input)="onParamChange(param.name, $any($event.target).value)"
+          (keydown)="$event.stopPropagation()"
+          (keypress)="$event.stopPropagation()"
+          (keyup)="$event.stopPropagation()"
+        />
+      </div>
+    }
+
+    <!-- Query params -->
+    @for (param of queryParams(); track param.name) {
+      <div class="grid grid-cols-[120px_1fr] items-center gap-2">
+        <label class="text-xs text-text-muted text-right font-sans">
+          {{ param.name }}
+          @if (param.required) {
+            <span class="text-error"> *</span>
+          }
+        </label>
+        <input
+          [type]="getParamInputType(param)"
+          class="px-2 py-1.5 border border-border rounded font-[inherit] text-[13px] bg-bg text-text-main focus:outline-none focus:border-primary"
+          [placeholder]="getParamPlaceholder(param)"
+          [value]="getParamValue(param.name)"
+          (input)="onParamChange(param.name, $any($event.target).value)"
+          (keydown)="$event.stopPropagation()"
+          (keypress)="$event.stopPropagation()"
+          (keyup)="$event.stopPropagation()"
+        />
+      </div>
+    }
+
+    <!-- Header params -->
+    @for (param of headerParams(); track param.name) {
+      <div class="grid grid-cols-[120px_1fr] items-center gap-2">
+        <label class="text-xs text-text-muted text-right font-sans">{{ param.name }}</label>
+        <input
+          type="text"
+          class="px-2 py-1.5 border border-border rounded font-[inherit] text-[13px] bg-bg text-text-main focus:outline-none focus:border-primary"
+          [placeholder]="getParamPlaceholder(param)"
+          [value]="getParamValue('header:' + param.name)"
+          (input)="onParamChange('header:' + param.name, $any($event.target).value)"
+          (keydown)="$event.stopPropagation()"
+          (keypress)="$event.stopPropagation()"
+          (keyup)="$event.stopPropagation()"
+        />
+      </div>
+    }
+
+    <!-- Request body -->
+    @if (hasBody()) {
+      <div class="flex flex-col gap-1">
+        <label class="text-xs text-text-muted font-sans">Body</label>
+        <textarea
+          rows="6"
+          class="w-full p-2 border border-border rounded font-mono text-[13px] resize-y bg-bg text-text-main focus:outline-none focus:border-primary"
+          placeholder="{}"
+          [value]="requestBody()"
+          (input)="onBodyChange($any($event.target).value)"
+          (keydown)="$event.stopPropagation()"
+          (keypress)="$event.stopPropagation()"
+          (keyup)="$event.stopPropagation()"
+        ></textarea>
+      </div>
+    }
+
+    <!-- Auth -->
+    @if (requiresAuth()) {
+      <div class="grid grid-cols-[120px_1fr] items-center gap-2">
+        <label class="text-xs text-text-muted text-right font-sans">Auth</label>
+        <input
+          type="password"
+          class="px-2 py-1.5 border border-border rounded font-[inherit] text-[13px] bg-bg text-text-main focus:outline-none focus:border-primary"
+          placeholder="Bearer token or API key"
+          [value]="authToken()"
+          (input)="onAuthChange($any($event.target).value)"
+          (keydown)="$event.stopPropagation()"
+          (keypress)="$event.stopPropagation()"
+          (keyup)="$event.stopPropagation()"
+        />
+        <span class="col-start-2 text-[11px] text-text-muted font-sans"
+          >Stored on this device only</span
+        >
+      </div>
+    }
+
+    <!-- Actions -->
+    <div class="flex gap-2 items-center">
+      @if (canSend()) {
+        <button
+          class="flex items-center gap-1.5 px-4 py-2 bg-primary text-white border-none rounded-md cursor-pointer font-semibold text-[13px] font-sans hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+          [disabled]="sending()"
+          (click)="onSend($event)"
+        >
+          <span class="material-symbols-rounded text-base" [class.animate-spin]="sending()">{{
+            sending() ? 'progress_activity' : 'send'
+          }}</span>
+          {{ sending() ? 'Sending...' : 'Send' }}
+        </button>
+      }
+      @if (sendHintText()) {
+        <div
+          class="flex items-center gap-1.5 px-3 py-2 bg-bg-secondary border border-border rounded-md text-xs text-text-muted font-sans"
+        >
+          <span class="material-symbols-rounded text-base">info</span>
+          <span>{{ sendHintText() }}</span>
+        </div>
+      }
+      <button
+        class="bg-transparent border border-border rounded px-2 py-1 cursor-pointer text-text-muted flex items-center hover:bg-bg-hover hover:text-text-main"
+        title="Copy as cURL"
+        (click)="onCopyCurl($event)"
+      >
+        <span class="material-symbols-rounded text-base">content_copy</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Response -->
+  @if (response(); as resp) {
+    <app-api-response-viewer [response]="resp" />
+  }
+</div>

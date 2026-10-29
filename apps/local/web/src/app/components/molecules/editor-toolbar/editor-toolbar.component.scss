@@ -1,0 +1,253 @@
+:host {
+  position: fixed;
+  bottom: calc(1rem + env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  transition: bottom 0.15s ease-out;
+}
+
+.toolbar-container {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 16px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  flex-wrap: nowrap;
+
+  &.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+  }
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-main);
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  &:hover:not(:disabled) {
+    background: var(--color-bg-hover, rgba(0, 0, 0, 0.08));
+  }
+
+  &:active:not(:disabled) {
+    background: var(--color-bg-active, rgba(0, 0, 0, 0.12));
+  }
+
+  &.active {
+    background: var(--color-primary-light, rgba(217, 78, 59, 0.15));
+    color: var(--color-primary);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}
+
+.btn-icon {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+
+  &.bold {
+    font-weight: 700;
+  }
+
+  &.italic {
+    font-style: italic;
+  }
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--color-border);
+  margin: 0 8px;
+}
+
+.toolbar-spacer {
+  flex: 1;
+}
+
+// ── Todo mode styles ──
+
+.priority-btn {
+  .material-symbols-rounded {
+    font-size: 18px;
+  }
+
+  &.priority-high.active {
+    background: rgba(220, 38, 38, 0.15);
+    color: #dc2626;
+  }
+  &.priority-medium.active {
+    background: rgba(217, 119, 6, 0.15);
+    color: #d97706;
+  }
+  &.priority-low.active {
+    background: rgba(37, 99, 235, 0.15);
+    color: #2563eb;
+  }
+}
+
+.color-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+
+  &.active {
+    border-color: var(--color-text-main);
+  }
+}
+
+.color-dot {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+}
+
+.date-group {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  position: relative;
+}
+
+.date-anchor {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+.date-hidden-input {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.date-btn {
+  width: auto;
+  gap: 4px;
+  padding: 0 8px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  border-radius: 6px 0 0 6px;
+
+  .date-icon {
+    font-size: 16px;
+  }
+
+  .date-label {
+    white-space: nowrap;
+  }
+
+  &.has-date {
+    color: var(--color-text-main);
+
+    // No right border radius when clear button is adjacent
+    border-radius: 6px 0 0 6px;
+  }
+
+  &:not(.has-date) {
+    border-radius: 6px;
+  }
+}
+
+.clear-date-btn {
+  width: 24px;
+  height: 32px;
+  border-radius: 0 6px 6px 0;
+  border-left: 1px solid var(--color-border);
+
+  .material-symbols-rounded {
+    font-size: 14px;
+  }
+
+  &:hover:not(:disabled) {
+    background: rgba(220, 38, 38, 0.1);
+    color: #dc2626;
+  }
+}
+
+// Color group responsive: inline on desktop, dropdown trigger on mobile
+.color-group-mobile {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .color-group-desktop {
+    display: none;
+  }
+  .color-group-mobile {
+    display: flex;
+  }
+}
+
+.color-trigger-btn {
+  .material-symbols-rounded {
+    font-size: 18px;
+  }
+}
+
+.color-dropdown {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.clear-color-btn {
+  width: 24px;
+  height: 24px;
+
+  .material-symbols-rounded {
+    font-size: 14px;
+  }
+
+  &:hover:not(:disabled) {
+    background: rgba(220, 38, 38, 0.1);
+    color: #dc2626;
+  }
+}
+
+.toggle-btn {
+  .material-symbols-rounded {
+    font-size: 18px;
+  }
+}

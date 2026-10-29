@@ -29,14 +29,12 @@ final class PromptStore {
         if let url = overrideURL { return url }
         // Store in iCloud Documents (syncs across devices) or local fallback
         if let iCloudURL = fileManager
-            .url(forUbiquityContainerIdentifier: nil)?
+            .url(forUbiquityContainerIdentifier: StorageLocation.iCloudContainerId)?
             .appendingPathComponent("Documents")
             .appendingPathComponent("prompts.json") {
             return iCloudURL
         }
-        return fileManager
-            .urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("prompts.json")
+        return StorageLocation.localDocumentsURL.appendingPathComponent("prompts.json")
     }
 
     func loadPrompts() {

@@ -1,0 +1,28 @@
+// Minimal SCSS for color-coded left borders on todo items
+// These use data attributes which Tailwind can't target directly
+
+:host {
+  display: block;
+  height: 100%;
+}
+
+// Color-coded left borders for todo items
+[data-color='red'] {
+  border-left: 3px solid #ef4444;
+}
+
+[data-color='orange'] {
+  border-left: 3px solid #f97316;
+}
+
+[data-color='yellow'] {
+  border-left: 3px solid #eab308;
+}
+
+[data-color='green'] {
+  border-left: 3px solid #22c55e;
+}
+
+[data-color='blue'] {
+  border-left: 3px solid #3b82f6;
+}

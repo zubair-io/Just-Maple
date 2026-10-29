@@ -1,0 +1,1534 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.editor-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0; // Important for flex children to scroll
+  position: relative;
+  overflow: hidden;
+}
+
+.editor-wrapper {
+  flex: 1;
+  min-height: 0; // Important for flex children to scroll
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 1.5rem;
+  padding-bottom: 6rem;
+  cursor: text;
+
+  // Mobile: reduce left/right padding
+  @media (max-width: 640px) {
+    padding: 1rem 0.5rem;
+    padding-bottom: 6rem;
+  }
+
+  &:not(.full-width) {
+    .editor-content {
+      max-width: 800px;
+      margin: 0 auto;
+      width: 100%;
+    }
+  }
+}
+
+::ng-deep.editor-content {
+  flex: 1 0 auto; // Allow content to grow but not shrink
+  position: relative;
+
+  &.loading {
+    opacity: 0.5;
+    pointer-events: none;
+  }
+
+  &.focused {
+    outline: none;
+  }
+
+  // TipTap ProseMirror styles
+  // Using ::ng-deep to style dynamically generated ProseMirror content
+  .ProseMirror {
+    outline: none;
+    min-height: 100%;
+
+    > * + * {
+      margin-top: 0.75em;
+    }
+
+    p {
+      margin: 0;
+      line-height: 1.6;
+    }
+
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6 {
+      line-height: 1.3;
+      font-weight: 600;
+    }
+
+    h1 {
+      font-size: 2em;
+    }
+
+    h2 {
+      font-size: 1.5em;
+    }
+
+    h3 {
+      font-size: 1.25em;
+    }
+
+    ul,
+    ol {
+      padding-left: 1.5em;
+    }
+
+    li {
+      margin: 0.25em 0;
+      &:focus {
+        outline: red solid 2px;
+      }
+    }
+
+    blockquote {
+      border-left: 3px solid var(--color-border);
+      padding-left: 1rem;
+      margin-left: 0;
+      color: var(--color-text-muted);
+    }
+
+    code {
+      background: var(--color-bg-secondary);
+      padding: 0.2em 0.4em;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 0.9em;
+    }
+
+    // Code block container with language selector
+    .code-block-container {
+      position: relative;
+      margin: 0.75rem 0;
+
+      .code-block-language {
+        position: absolute;
+        top: 0.5rem;
+        right: 0.5rem;
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 4px;
+        padding: 0.25rem 0.5rem;
+        font-size: 0.7rem;
+        color: #808080;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        font-family: var(--font-sans);
+        z-index: 1;
+        appearance: none;
+        -webkit-appearance: none;
+
+        &:hover,
+        &:focus {
+          background: rgba(255, 255, 255, 0.2);
+          color: #d4d4d4;
+          outline: none;
+        }
+
+        option {
+          background: #1e1e1e;
+          color: #d4d4d4;
+        }
+      }
+
+      pre {
+        background: #1e1e1e;
+        color: #d4d4d4;
+        padding: 1rem;
+        padding-top: 2.5rem;
+        border-radius: 8px;
+        overflow-x: auto;
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        font-size: 0.875rem;
+        line-height: 1.5;
+        margin: 0;
+
+        code {
+          background: none;
+          padding: 0;
+          color: inherit;
+          font-family: inherit;
+          font-size: inherit;
+        }
+
+        // Lowlight/Highlight.js syntax highlighting (VS Code Dark+ theme)
+        .hljs-comment,
+        .hljs-quote {
+          color: #6a9955;
+          font-style: italic;
+        }
+
+        .hljs-keyword,
+        .hljs-selector-tag,
+        .hljs-addition {
+          color: #569cd6;
+        }
+
+        .hljs-number,
+        .hljs-string,
+        .hljs-meta .hljs-meta-string,
+        .hljs-literal,
+        .hljs-doctag,
+        .hljs-regexp {
+          color: #ce9178;
+        }
+
+        .hljs-title,
+        .hljs-section,
+        .hljs-name,
+        .hljs-selector-id,
+        .hljs-selector-class {
+          color: #dcdcaa;
+        }
+
+        .hljs-attribute,
+        .hljs-attr,
+        .hljs-variable,
+        .hljs-template-variable,
+        .hljs-class .hljs-title,
+        .hljs-type {
+          color: #4ec9b0;
+        }
+
+        .hljs-symbol,
+        .hljs-bullet,
+        .hljs-subst,
+        .hljs-meta,
+        .hljs-meta .hljs-keyword,
+        .hljs-selector-attr,
+        .hljs-selector-pseudo,
+        .hljs-link {
+          color: #d7ba7d;
+        }
+
+        .hljs-built_in,
+        .hljs-deletion {
+          color: #c586c0;
+        }
+
+        .hljs-formula {
+          color: #c586c0;
+        }
+
+        .hljs-emphasis {
+          font-style: italic;
+        }
+
+        .hljs-strong {
+          font-weight: bold;
+        }
+      }
+    }
+
+    // Standalone pre (fallback)
+    pre:not(.code-block-container pre) {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 1rem;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 0.875rem;
+      line-height: 1.5;
+
+      code {
+        background: none;
+        padding: 0;
+        color: inherit;
+        font-family: inherit;
+        font-size: inherit;
+      }
+    }
+
+    // Placeholder
+    p.is-editor-empty:first-child::before {
+      content: attr(data-placeholder);
+      float: left;
+      color: var(--color-text-muted);
+      pointer-events: none;
+      height: 0;
+    }
+
+    // Heading placeholder
+    h1.is-empty:first-child::before,
+    h2.is-empty::before,
+    h3.is-empty::before {
+      content: attr(data-placeholder);
+      float: left;
+      color: var(--color-text-muted);
+      pointer-events: none;
+      height: 0;
+    }
+
+    // Enhanced Task list styles
+    ul[data-type='taskList'] {
+      list-style: none;
+      padding-left: 0;
+
+      li[data-type='taskItem'] {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin: 0;
+        padding: 0;
+
+        transition: background 0.15s ease;
+        position: relative;
+
+        // Mobile: reduce padding
+        @media (max-width: 640px) {
+          padding: 0.5rem 0.25rem;
+        }
+
+        &:hover {
+          background: var(--color-bg-hover, rgba(0, 0, 0, 0.03));
+
+          .todo-drag-handle {
+            opacity: 1;
+          }
+        }
+
+        // Drag handle
+        .todo-drag-handle {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 20px;
+          height: 20px;
+          flex-shrink: 0;
+          cursor: grab;
+          opacity: 0;
+          transition: opacity 0.15s ease;
+          color: var(--color-text-muted);
+
+          .material-symbols-rounded {
+            font-size: 18px;
+          }
+
+          &:active {
+            cursor: grabbing;
+          }
+
+          // Always show on mobile/touch devices
+          @media (max-width: 768px), (pointer: coarse) {
+            opacity: 0.5;
+          }
+        }
+
+        // Dragging state
+        &.dragging {
+          opacity: 0.5;
+          background: var(--color-bg-secondary);
+        }
+
+        // Checkbox wrapper
+        .todo-checkbox-wrapper {
+          flex-shrink: 0;
+        }
+
+        // Round checkbox (32px touch-friendly)
+        .todo-checkbox {
+          appearance: none;
+          -webkit-appearance: none;
+          width: 32px;
+          height: 32px;
+          min-width: 32px;
+          border: 2px solid var(--todo-color, #374151);
+          border-radius: 50%;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          background: transparent;
+          position: relative;
+
+          &:hover {
+            background-color: rgba(0, 0, 0, 0.05);
+          }
+
+          &:checked {
+            background-color: var(--todo-color, #374151);
+            border-color: var(--todo-color, #374151);
+          }
+
+          &:checked::after {
+            content: '✓';
+            color: white;
+            font-size: 18px;
+            line-height: 1;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+          }
+
+          &:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.1);
+          }
+        }
+
+        // Default color (dark gray)
+        --todo-color: #374151;
+
+        // Color variants for checkbox
+        &[data-color='red'] {
+          --todo-color: #ef4444;
+        }
+        &[data-color='orange'] {
+          --todo-color: #f97316;
+        }
+        &[data-color='yellow'] {
+          --todo-color: #eab308;
+        }
+        &[data-color='green'] {
+          --todo-color: #22c55e;
+        }
+        &[data-color='blue'] {
+          --todo-color: #3b82f6;
+        }
+
+        // Content area
+        .todo-content {
+          flex: 1;
+          min-width: 0;
+
+          p {
+            margin: 0;
+            min-height: 32px;
+            line-height: 32px;
+          }
+        }
+
+        // Metadata wrapper
+        .todo-meta {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          flex-shrink: 0;
+        }
+
+        // Priority badge
+        .todo-priority {
+          font-size: 11px;
+          font-weight: 600;
+          padding: 2px 6px;
+          border-radius: 4px;
+          text-transform: uppercase;
+          letter-spacing: 0.03em;
+
+          &.priority-high {
+            background: #fee2e2;
+            color: #dc2626;
+          }
+
+          &.priority-medium {
+            background: #fef3c7;
+            color: #d97706;
+          }
+
+          &.priority-low {
+            background: #dbeafe;
+            color: #2563eb;
+          }
+        }
+
+        // Due date chip
+        .todo-due-date {
+          font-size: 12px;
+          color: var(--color-text-muted);
+          padding: 2px 6px;
+          background: var(--color-bg-secondary, rgba(0, 0, 0, 0.05));
+          border-radius: 4px;
+
+          &.overdue {
+            background: #fee2e2;
+            color: #dc2626;
+          }
+        }
+
+        // Completed state
+        &[data-checked='true'] {
+          .todo-content {
+            text-decoration: line-through;
+            opacity: 0.6;
+          }
+        }
+
+        // // Color variants - left border indicator
+        // &[data-color='red'] {
+        //   border-left: 3px solid #ef4444;
+        // }
+
+        // &[data-color='orange'] {
+        //   border-left: 3px solid #f97316;
+        // }
+
+        // &[data-color='yellow'] {
+        //   border-left: 3px solid #eab308;
+        // }
+
+        // &[data-color='green'] {
+        //   border-left: 3px solid #22c55e;
+        // }
+
+        // &[data-color='blue'] {
+        //   border-left: 3px solid #3b82f6;
+        // }
+
+        // Highlight animation for deep linking
+        &.todo-highlight {
+          animation: todoHighlight 1.5s ease-out;
+        }
+
+        @keyframes todoHighlight {
+          0% {
+            background: rgba(217, 78, 59, 0.3);
+          }
+          100% {
+            background: transparent;
+          }
+        }
+      }
+
+      // Nested task lists
+      ul[data-type='taskList'] {
+        margin-left: 1.5rem;
+      }
+    }
+
+    // Enhanced Task List wrapper styles
+    .task-list-wrapper {
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      margin: 1rem 0;
+      background: var(--color-bg);
+
+      .task-list-header {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid var(--color-border);
+        background: var(--color-bg-secondary, rgba(0, 0, 0, 0.03));
+        border-radius: 8px 8px 0 0;
+      }
+
+      .task-list-name {
+        flex: 1;
+        border: none;
+        background: transparent;
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--color-text-main);
+        outline: none;
+        padding: 4px 8px;
+        margin: -4px -8px;
+        border-radius: 4px;
+        transition: background 0.15s ease;
+
+        &:hover {
+          background: var(--color-bg-hover, rgba(0, 0, 0, 0.05));
+        }
+
+        &:focus {
+          background: var(--color-bg-hover, rgba(0, 0, 0, 0.05));
+        }
+
+        &::placeholder {
+          color: var(--color-text-muted);
+          font-weight: 400;
+        }
+      }
+
+      .task-list-status {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 4px 8px;
+        margin: -4px 0;
+        border: none;
+        border-radius: 4px;
+        background: transparent;
+        font-size: 0.875rem;
+        color: var(--color-text-muted);
+        white-space: nowrap;
+        cursor: pointer;
+        transition: background 0.15s ease;
+
+        &:hover {
+          background: var(--color-bg-hover, rgba(0, 0, 0, 0.05));
+        }
+
+        .status-chevron {
+          font-size: 18px;
+          transition: transform 0.15s ease;
+        }
+
+        &.all-done {
+          color: #22c55e;
+
+          .status-text {
+            font-weight: 500;
+          }
+        }
+
+        &.has-remaining {
+          color: var(--color-text-muted);
+        }
+      }
+
+      .task-list-content {
+        padding: 0.5rem;
+        margin: 0;
+        list-style: none;
+      }
+
+      // Hide completed items when showCompleted is false
+      &[data-show-completed='false'] {
+        .task-list-content {
+          li[data-type='taskItem'][data-checked='true'] {
+            display: none;
+          }
+        }
+      }
+    }
+
+    // Dark mode adjustments for enhanced task list wrapper
+    :host-context(.dark-mode) & {
+      .task-list-wrapper {
+        background: rgba(255, 255, 255, 0.02);
+        border-color: rgba(255, 255, 255, 0.1);
+
+        .task-list-header {
+          background: rgba(255, 255, 255, 0.03);
+          border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .task-list-name {
+          &:hover,
+          &:focus {
+            background: rgba(255, 255, 255, 0.05);
+          }
+        }
+
+        .task-list-status {
+          &:hover {
+            background: rgba(255, 255, 255, 0.05);
+          }
+        }
+      }
+    }
+
+    // Dark mode adjustments for todos
+    :host-context(.dark-mode) & {
+      li[data-type='taskItem'] {
+        .todo-priority {
+          &.priority-high {
+            background: rgba(220, 38, 38, 0.2);
+            color: #f87171;
+          }
+
+          &.priority-medium {
+            background: rgba(217, 119, 6, 0.2);
+            color: #fbbf24;
+          }
+
+          &.priority-low {
+            background: rgba(37, 99, 235, 0.2);
+            color: #60a5fa;
+          }
+        }
+
+        .todo-due-date.overdue {
+          background: rgba(220, 38, 38, 0.2);
+          color: #f87171;
+        }
+      }
+    }
+
+    // Table styles
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 1rem 0;
+      table-layout: fixed;
+      overflow: hidden;
+
+      td,
+      th {
+        border: 1px solid var(--color-border);
+        padding: 0.5rem 0.75rem;
+        vertical-align: top;
+        min-width: 100px;
+        box-sizing: border-box;
+        position: relative;
+
+        > * {
+          margin: 0;
+        }
+      }
+
+      th {
+        background: var(--color-bg-secondary, rgba(0, 0, 0, 0.03));
+        font-weight: 600;
+        text-align: left;
+      }
+
+      .selectedCell::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: var(--color-primary);
+        opacity: 0.1;
+        pointer-events: none;
+      }
+
+      .column-resize-handle {
+        position: absolute;
+        right: -2px;
+        top: 0;
+        bottom: -2px;
+        width: 4px;
+        background: var(--color-primary);
+        cursor: col-resize;
+      }
+
+      &.resize-cursor {
+        cursor: col-resize;
+      }
+    }
+
+    // Table of Contents styles
+    .toc-container {
+      background: var(--color-bg-secondary, rgba(0, 0, 0, 0.03));
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      padding: 1rem;
+      margin: 1rem 0;
+
+      .toc-title {
+        font-weight: 600;
+        font-size: 0.875rem;
+        color: var(--color-text-muted);
+        margin-bottom: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .toc-items {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+      }
+
+      .toc-item {
+        display: block;
+        color: var(--color-text-main);
+        text-decoration: none;
+        padding: 0.25rem 0;
+        font-size: 0.9rem;
+        border-radius: 4px;
+        transition: background-color 0.15s;
+
+        &:hover {
+          background: var(--color-bg-hover, rgba(0, 0, 0, 0.05));
+          padding-left: 0.5rem;
+        }
+
+        &.toc-level-1 {
+          font-weight: 600;
+        }
+
+        &.toc-level-2 {
+          padding-left: 1rem;
+        }
+
+        &.toc-level-3 {
+          padding-left: 2rem;
+          font-size: 0.85rem;
+        }
+      }
+
+      .toc-empty {
+        color: var(--color-text-muted);
+        font-style: italic;
+        font-size: 0.875rem;
+      }
+    }
+
+    // Horizontal rule
+    hr {
+      border: none;
+      border-top: 2px solid var(--color-border);
+      margin: 1.5rem 0;
+    }
+
+    // Page Link styles (inline [[Page Name]] links)
+    .page-link {
+      display: inline-flex;
+      align-items: center;
+      vertical-align: middle;
+      gap: 4px;
+      padding: 1px 6px;
+      background: rgba(217, 78, 59, 0.1);
+      border: 1px solid rgba(217, 78, 59, 0.3);
+      border-radius: 4px;
+      font-size: 0.9em;
+      color: var(--color-primary, #d94e3b);
+      font-weight: 500;
+      white-space: nowrap;
+      cursor: pointer;
+      text-decoration: none;
+      transition:
+        background 0.15s ease,
+        border-color 0.15s ease,
+        box-shadow 0.15s ease;
+
+      &:hover {
+        background: rgba(217, 78, 59, 0.18);
+        border-color: rgba(217, 78, 59, 0.5);
+        box-shadow: 0 1px 3px rgba(217, 78, 59, 0.15);
+      }
+
+      .page-link-icon {
+        font-size: 12px;
+        opacity: 0.8;
+      }
+
+      .page-link-title {
+        color: inherit;
+      }
+    }
+
+    // Page Link Block styles (embed-style preview blocks)
+    .page-link-block {
+      display: block;
+      margin: 1rem 0;
+      padding: 0.75rem 1rem;
+      background: var(--color-bg-secondary, rgba(0, 0, 0, 0.03));
+      border: 1px solid var(--color-border);
+      border-left: 3px solid var(--color-primary, #d94e3b);
+      border-radius: 6px;
+      cursor: pointer;
+      transition:
+        background 0.15s ease,
+        border-color 0.15s ease,
+        box-shadow 0.15s ease;
+
+      &:hover {
+        background: var(--color-bg-hover, rgba(0, 0, 0, 0.06));
+        border-color: var(--color-text-muted);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      }
+
+      .page-link-block-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 4px;
+      }
+
+      .page-link-block-icon {
+        font-size: 16px;
+        opacity: 0.8;
+      }
+
+      .page-link-block-title {
+        font-weight: 600;
+        color: var(--color-primary, #d94e3b);
+        font-size: 1rem;
+      }
+
+      .page-link-block-preview {
+        font-size: 0.875rem;
+        color: var(--color-text-muted);
+        line-height: 1.5;
+        max-height: 4.5em;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      &.loading {
+        opacity: 0.6;
+        pointer-events: none;
+      }
+    }
+
+    // Dark mode adjustments for page links
+    :host-context(.dark-mode) & {
+      .page-link {
+        background: rgba(217, 78, 59, 0.15);
+        border-color: rgba(217, 78, 59, 0.35);
+
+        &:hover {
+          background: rgba(217, 78, 59, 0.25);
+          border-color: rgba(217, 78, 59, 0.5);
+        }
+      }
+
+      .page-link-block {
+        background: rgba(255, 255, 255, 0.03);
+        border-color: rgba(255, 255, 255, 0.1);
+
+        &:hover {
+          background: rgba(255, 255, 255, 0.06);
+          border-color: rgba(255, 255, 255, 0.2);
+        }
+      }
+    }
+
+    // Todo Box styles
+    .todo-box {
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      margin: 1rem 0;
+      background: var(--color-bg);
+
+      .todo-box-header {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid var(--color-border);
+        background: var(--color-bg-secondary, rgba(0, 0, 0, 0.03));
+        border-radius: 8px 8px 0 0;
+      }
+
+      .todo-box-name {
+        flex: 1;
+        border: none;
+        background: transparent;
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--color-text-main);
+        outline: none;
+        padding: 4px 8px;
+        margin: -4px -8px;
+        border-radius: 4px;
+        transition: background 0.15s ease;
+
+        &:hover {
+          background: var(--color-bg-hover, rgba(0, 0, 0, 0.05));
+        }
+
+        &:focus {
+          background: var(--color-bg-hover, rgba(0, 0, 0, 0.05));
+        }
+
+        &::placeholder {
+          color: var(--color-text-muted);
+          font-weight: 400;
+        }
+      }
+
+      .todo-box-status {
+        font-size: 0.875rem;
+        color: var(--color-text-muted);
+        white-space: nowrap;
+
+        &.all-done {
+          color: #22c55e;
+          font-weight: 500;
+        }
+
+        &.has-remaining {
+          color: var(--color-text-muted);
+        }
+      }
+
+      .todo-box-content {
+        padding: 0.5rem;
+
+        // Style the task list inside
+        ul[data-type='taskList'] {
+          margin: 0;
+        }
+      }
+
+      // Hide completed items when showCompleted is false
+      &[data-show-completed='false'] {
+        .todo-box-content {
+          li[data-type='taskItem'][data-checked='true'] {
+            display: none;
+          }
+        }
+      }
+
+      .todo-box-completed-toggle {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+        border-top: 1px solid var(--color-border);
+        cursor: pointer;
+        user-select: none;
+        font-size: 0.875rem;
+        color: var(--color-text-muted);
+        transition: background 0.15s ease;
+
+        &:hover {
+          background: var(--color-bg-hover, rgba(0, 0, 0, 0.03));
+        }
+
+        .material-symbols-rounded {
+          font-size: 18px;
+          transition: transform 0.15s ease;
+        }
+
+        .completed-count {
+          margin-left: auto;
+          font-size: 0.75rem;
+          background: var(--color-bg-secondary, rgba(0, 0, 0, 0.05));
+          padding: 2px 6px;
+          border-radius: 10px;
+        }
+      }
+    }
+
+    // Dark mode adjustments for todo box
+    :host-context(.dark-mode) & {
+      .todo-box {
+        background: rgba(255, 255, 255, 0.02);
+        border-color: rgba(255, 255, 255, 0.1);
+
+        .todo-box-header {
+          background: rgba(255, 255, 255, 0.03);
+          border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .todo-box-name {
+          &:hover,
+          &:focus {
+            background: rgba(255, 255, 255, 0.05);
+          }
+        }
+
+        .todo-box-completed-toggle {
+          border-color: rgba(255, 255, 255, 0.1);
+
+          &:hover {
+            background: rgba(255, 255, 255, 0.05);
+          }
+
+          .completed-count {
+            background: rgba(255, 255, 255, 0.08);
+          }
+        }
+      }
+    }
+
+    // Memo image block styles
+    .memo-image-block {
+      margin: 1.5rem 0;
+      user-select: none;
+      position: relative;
+      transition: box-shadow 0.15s ease;
+
+      &.selected {
+        .memo-image-wrapper {
+          box-shadow: 0 0 0 2px var(--color-primary);
+        }
+
+        .memo-image-toolbar {
+          opacity: 1;
+          visibility: visible;
+        }
+      }
+
+      .memo-image-wrapper {
+        overflow: hidden;
+        border-radius: 8px;
+        margin: 0 auto; // Center the wrapper
+
+        img {
+          display: block;
+          height: auto;
+          border-radius: 8px;
+        }
+      }
+
+      // Size: Small (200px)
+      &.size-small .memo-image-wrapper {
+        width: 200px;
+        max-width: 100%;
+
+        img {
+          width: 100%;
+        }
+      }
+
+      // Size: Medium (400px)
+      &.size-medium .memo-image-wrapper {
+        width: 400px;
+        max-width: 100%;
+
+        img {
+          width: 100%;
+        }
+      }
+
+      // Size: Large (100%, max 800px)
+      &.size-large .memo-image-wrapper {
+        width: 100%;
+        max-width: 800px;
+
+        img {
+          width: 100%;
+        }
+      }
+
+      // Size: Cover (full viewport width minus sidebar)
+      // Sidebar is w-72 = 288px
+      &.size-cover .memo-image-wrapper {
+        width: calc(100vw - 300px);
+        max-width: none;
+        margin: 0; // Remove auto margin for cover
+        position: relative;
+        left: 50%;
+        transform: translateX(-50%);
+        border-radius: 0;
+
+        img {
+          width: 100%;
+          height: 300px;
+          object-fit: cover;
+          object-position: center;
+          border-radius: 0;
+        }
+      }
+
+      // Mobile adjustments for cover
+      @media (max-width: 768px) {
+        &.size-cover .memo-image-wrapper {
+          width: 100vw;
+        }
+      }
+
+      // Loading state
+      &.loading {
+        .memo-image-wrapper {
+          position: relative;
+
+          img {
+            opacity: 0.5;
+          }
+        }
+      }
+
+      // Loading overlay
+      .memo-image-loading {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        background: rgba(255, 255, 255, 0.7);
+        border-radius: 8px;
+
+        .loading-spinner {
+          width: 24px;
+          height: 24px;
+          border: 3px solid var(--color-border);
+          border-top-color: var(--color-primary);
+          border-radius: 50%;
+          animation: spin 1s linear infinite;
+        }
+
+        span {
+          font-size: 12px;
+          color: var(--color-text-muted);
+          font-weight: 500;
+        }
+      }
+
+      // Toolbar styles
+      .memo-image-toolbar {
+        position: absolute;
+        top: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 4px;
+        padding: 4px;
+        background: var(--color-bg);
+        border: 1px solid var(--color-border);
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        opacity: 0;
+        visibility: hidden;
+        transition:
+          opacity 0.15s ease,
+          visibility 0.15s ease;
+        z-index: 10;
+
+        button {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 28px;
+          height: 28px;
+          padding: 0;
+          border: none;
+          border-radius: 4px;
+          background: transparent;
+          color: var(--color-text-muted);
+          cursor: pointer;
+          transition: all 0.15s ease;
+
+          &:hover {
+            background: var(--color-bg-hover, rgba(0, 0, 0, 0.08));
+            color: var(--color-text-main);
+          }
+
+          &.active {
+            background: var(--color-primary);
+            color: white;
+          }
+        }
+      }
+    }
+  }
+}
+
+.error-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 2rem;
+  color: var(--color-error, #dc3545);
+}
+
+.error-icon {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-error, #dc3545);
+  color: white;
+  border-radius: 50%;
+  font-weight: bold;
+}
+
+.loading-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  background: var(--color-bg);
+  opacity: 0.9;
+}
+
+.loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+// Page Link Suggestion Popup (appears when typing [[)
+// Matches slash-command-menu design
+.page-link-suggestion-popup {
+  position: fixed;
+  z-index: 1000;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 280px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 4px;
+
+  .page-link-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 12px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    cursor: pointer;
+    text-align: left;
+    transition: background-color 0.15s ease;
+
+    &:hover,
+    &.selected {
+      background: var(--color-bg-hover, rgba(0, 0, 0, 0.05));
+    }
+
+    .page-link-item-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 6px;
+      background: var(--color-bg-secondary, rgba(0, 0, 0, 0.05));
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+
+    .page-link-item-content {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .page-link-item-title {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--color-text-main);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .page-link-item-folder {
+      font-size: 12px;
+      color: var(--color-text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+
+  .no-results {
+    padding: 12px 16px;
+    color: var(--color-text-muted);
+    font-size: 14px;
+    text-align: center;
+  }
+}
+
+// Dark mode adjustments for page link suggestion popup
+:host-context(.dark-mode) .page-link-suggestion-popup,
+.dark-mode .page-link-suggestion-popup {
+  background: var(--color-bg);
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+
+  .page-link-item {
+    &:hover,
+    &.selected {
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .page-link-item-icon {
+      background: rgba(255, 255, 255, 0.1);
+    }
+  }
+}
+
+// ============================================
+// HashTag styles
+// ============================================
+
+::ng-deep .hashtag {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  padding: 1px 6px;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 4px;
+  font-size: 0.9em;
+  color: #3b82f6;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+
+  &:hover {
+    background: rgba(59, 130, 246, 0.18);
+    border-color: rgba(59, 130, 246, 0.5);
+    box-shadow: 0 1px 3px rgba(59, 130, 246, 0.15);
+  }
+
+  .hashtag-text {
+    color: inherit;
+  }
+
+  // Colored hashtag variant - uses CSS variable for custom color
+  &.hashtag-colored {
+    --hashtag-color: #3b82f6;
+    background: color-mix(in srgb, var(--hashtag-color) 15%, transparent);
+    border-color: color-mix(in srgb, var(--hashtag-color) 40%, transparent);
+    color: var(--hashtag-color);
+
+    &:hover {
+      background: color-mix(in srgb, var(--hashtag-color) 25%, transparent);
+      border-color: color-mix(in srgb, var(--hashtag-color) 60%, transparent);
+      box-shadow: 0 1px 3px color-mix(in srgb, var(--hashtag-color) 20%, transparent);
+    }
+  }
+}
+
+// Dark mode adjustments for hashtags
+:host-context(.dark-mode) ::ng-deep .hashtag,
+.dark-mode ::ng-deep .hashtag {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: rgba(59, 130, 246, 0.4);
+
+  &:hover {
+    background: rgba(59, 130, 246, 0.3);
+    border-color: rgba(59, 130, 246, 0.6);
+  }
+
+  &.hashtag-colored {
+    background: color-mix(in srgb, var(--hashtag-color) 20%, transparent);
+    border-color: color-mix(in srgb, var(--hashtag-color) 45%, transparent);
+
+    &:hover {
+      background: color-mix(in srgb, var(--hashtag-color) 30%, transparent);
+      border-color: color-mix(in srgb, var(--hashtag-color) 60%, transparent);
+    }
+  }
+}
+
+// HashTag Suggestion Popup (appears when typing #)
+// Matches slash-command-menu design
+.hashtag-suggestion-popup {
+  position: fixed;
+  z-index: 1000;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 280px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 4px;
+
+  .hashtag-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 12px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    cursor: pointer;
+    text-align: left;
+    transition: background-color 0.15s ease;
+
+    &:hover,
+    &.selected {
+      background: var(--color-bg-hover, rgba(0, 0, 0, 0.05));
+    }
+
+    .hashtag-item-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 6px;
+      background: var(--color-bg-secondary, rgba(0, 0, 0, 0.05));
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--color-text-muted);
+      flex-shrink: 0;
+    }
+
+    .hashtag-item-content {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .hashtag-item-name {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--color-text-main);
+    }
+
+    .hashtag-item-desc {
+      font-size: 12px;
+      color: var(--color-text-muted);
+    }
+
+    .hashtag-item-color {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .hashtag-item-count {
+      font-size: 12px;
+      color: var(--color-text-muted);
+    }
+  }
+
+  .no-results {
+    padding: 12px 16px;
+    color: var(--color-text-muted);
+    font-size: 14px;
+    text-align: center;
+  }
+}
+
+// Dark mode adjustments for hashtag suggestion popup
+:host-context(.dark-mode) .hashtag-suggestion-popup,
+.dark-mode .hashtag-suggestion-popup {
+  background: var(--color-bg);
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+
+  .hashtag-item {
+    &:hover,
+    &.selected {
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .hashtag-item-icon {
+      background: rgba(255, 255, 255, 0.1);
+    }
+  }
+}

@@ -6,7 +6,12 @@ import SwiftUI
 public struct MapleRecorderView: View {
     @State private var session = RecorderSession.shared
 
-    public init() {}
+    private let prepareModelsAutomatically: Bool
+    private let registerGlobalHotkeys: Bool
+    public init(prepareModelsAutomatically: Bool = true, registerGlobalHotkeys: Bool = true) {
+        self.prepareModelsAutomatically = prepareModelsAutomatically
+        self.registerGlobalHotkeys = registerGlobalHotkeys
+    }
 
     public var body: some View {
         Group {
@@ -31,7 +36,7 @@ public struct MapleRecorderView: View {
             )
             #endif
         }
-        .task { await session.start() }
+        .task { await session.start(prepareModelsAutomatically: prepareModelsAutomatically, registerGlobalHotkeys: registerGlobalHotkeys) }
     }
 }
 
@@ -60,7 +65,7 @@ final class RecorderSession {
         syncMonitor = monitor
     }
 
-    func start() async {
+    func start(prepareModelsAutomatically: Bool = true, registerGlobalHotkeys: Bool = true) async {
         guard !started else { return }
         started = true
         connectLibrary()
@@ -69,12 +74,12 @@ final class RecorderSession {
         quickRecorder.modelManager = models
         quickRecorder.settingsManager = settings
         quickRecorder.calendarManager = calendar
-        quickRecorder.registerGlobalHotkey()
+        if registerGlobalHotkeys { quickRecorder.registerGlobalHotkey() }
         miniRecorder.startMonitoring()
         #endif
-        await models.ensureModelsReady()
+        if prepareModelsAutomatically { await models.ensureModelsReady() }
         let processor = AutoProcessor(store: store, modelManager: models, settingsManager: settings)
         self.processor = processor
-        processor.startWatching()
+        if prepareModelsAutomatically { processor.startWatching() }
     }
 }
