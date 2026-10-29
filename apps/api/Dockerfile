@@ -2,7 +2,7 @@
 FROM node:24.15.0-bookworm-slim AS node-runtime
 
 # Build stage
-FROM oven/bun:latest AS builder
+FROM oven/bun:1.4.3 AS builder
 COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
 
 WORKDIR /app
@@ -29,14 +29,14 @@ RUN bun run build
 
 # Build API (mark sharp as external since it requires native binaries at runtime)
 WORKDIR /app/apps/api
-RUN bun build src/index.ts --outdir dist --target bun --minify --external sharp
+RUN bun run build
 
 # Build Web (paperbark config outputs to apps/api/dist/web/paperbark)
 WORKDIR /app/apps/web
 RUN bun run build:paperbark
 
 # Production stage
-FROM oven/bun:latest
+FROM oven/bun:1.4.3
 
 WORKDIR /app
 
@@ -53,6 +53,8 @@ RUN bun add sharp@0.34.5
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:7071/api/health || exit 1
+
+ENV HOST=0.0.0.0
 
 EXPOSE 7071
 

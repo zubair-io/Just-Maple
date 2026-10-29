@@ -9,6 +9,29 @@ on:
     pull_request:
 
 jobs:
+    sqlite-and-search:
+        name: SQLite integration and native search
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version-file: .node-version
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: 1.4.3
+            - run: bun install --frozen-lockfile
+            - run: bun run build:shared
+            # The real Bun database child is mandatory; no Mongo download or skip fallback.
+            - run: bun run test:api
+            - run: bun run build:api
+            - uses: dtolnay/rust-toolchain@stable
+              with:
+                  toolchain: 1.98.1
+                  components: rustfmt
+            - run: cargo fmt --manifest-path apps/search-worker/Cargo.toml --check
+            - run: cargo test --manifest-path apps/search-worker/Cargo.toml --locked
+
     build-and-test:
         runs-on: ubuntu-latest
 
@@ -24,7 +47,7 @@ jobs:
             - name: Setup Bun
               uses: oven-sh/setup-bun@v2
               with:
-                  bun-version: 1.2.14
+                  bun-version: 1.4.3
 
             - name: Install dependencies
               run: bun install
@@ -70,7 +93,7 @@ jobs:
             - name: Setup Bun
               uses: oven-sh/setup-bun@v2
               with:
-                  bun-version: 1.2.14
+                  bun-version: 1.4.3
 
             - name: Install dependencies
               run: bun install

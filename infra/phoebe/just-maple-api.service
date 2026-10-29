@@ -1,0 +1,28 @@
+[Unit]
+Description=Just Maple API and web (SQLite staging)
+After=network-online.target just-maple-search.service
+Wants=network-online.target just-maple-search.service
+
+[Service]
+Type=simple
+User=just-maple
+Group=just-maple
+WorkingDirectory=/opt/just-maple/current
+EnvironmentFile=/etc/just-maple/api.env
+ExecStart=/usr/local/bin/bun /opt/just-maple/current/index.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+MemoryHigh=1500M
+MemoryMax=2G
+CPUQuota=200%
+TasksMax=128
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/just-maple
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

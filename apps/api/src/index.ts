@@ -52,6 +52,8 @@ import { customDomainRoutes } from './routes/custom-domains';
 import { redisPubSub } from './services/redis.service';
 import { createSsrRoutes } from './routes/ssr';
 import { config } from './config';
+import { startServerEmbedding } from './services/server-embedding.service';
+import { serverSearchWorker } from './services/server-search-worker.service';
 import { describePushSetup } from './services/notification.service';
 
 function getStaticDir(): string {
@@ -74,16 +76,19 @@ async function main() {
 
     console.log(`[Boot] NODE_ENV=${process.env.NODE_ENV}, isDev=${config.isDev}`);
 
-    // Connect to MongoDB
+    // Connect to the configured durable database before accepting traffic.
     await connectToDatabase();
+    if (config.serverSearchEnabled && config.databaseDriver === 'sqlite') startServerEmbedding();
     // Hourly: drop device data older than the retention window
-    startDeviceDataRetention();
-    // Every 5 minutes: link the data in notebooks that have a Graph page
-    startGraphLinking();
-    // Every 10 minutes: find promises and replies owed, for notebooks with a Follow-ups page
-    startFollowUpScanning();
+    if (config.backgroundJobsEnabled) {
+        startDeviceDataRetention();
+        // Every 5 minutes: link the data in notebooks that have a Graph page
+        startGraphLinking();
+        // Every 10 minutes: find promises and replies owed, for notebooks with a Follow-ups page
+        startFollowUpScanning();
+    }
     // Every minute: daily briefs and leave-now reminders
-    startProactiveScheduler();
+    if (config.backgroundJobsEnabled) startProactiveScheduler();
 
     // Connect to Redis for cross-replica pub/sub
     try {
@@ -157,6 +162,8 @@ async function main() {
                 status: 'healthy',
                 timestamp: new Date().toISOString(),
                 database: 'connected',
+                databaseEngine: config.databaseDriver,
+                search: config.serverSearchEnabled ? serverSearchWorker.state : 'legacy',
                 version: APP_VERSION,
                 buildTime: BUILD_TIME,
             };
@@ -228,6 +235,7 @@ async function main() {
         })
         .listen({
             port: config.port,
+            hostname: config.host,
             error(error) {
                 if ((error as any).code === 'EADDRINUSE') {
                     console.error(`\n❌ ERROR: Port ${config.port} is already in use!`);

@@ -3,14 +3,39 @@ import { MongoClient, Db } from 'mongodb';
 import { config } from '../config';
 import { seedBotTemplates } from './seed-bots';
 import { seedSystemTemplates } from './seed-templates';
+import { SqliteDatabase } from './sqlite/client';
 
 let client: MongoClient | null = null;
 let db: Db | null = null;
+let sqlite: SqliteDatabase | null = null;
+
+export function getSqliteDatabase(): SqliteDatabase | null {
+    return sqlite;
+}
 
 export async function connectToDatabase(): Promise<Db> {
     if (db) {
         return db;
     }
+    if (config.databaseDriver === 'sqlite') {
+        sqlite = new SqliteDatabase(config.databasePath);
+        try {
+            await sqlite.ready;
+            db = sqlite.asRepositoryDatabase();
+            await createIndexes(db);
+            await seedBotTemplates();
+            await seedSystemTemplates();
+            console.log('SQLite connected successfully');
+            return db;
+        } catch (error) {
+            await sqlite.close().catch(() => {});
+            sqlite = null;
+            db = null;
+            throw error;
+        }
+    }
+    if (config.databaseDriver !== 'mongodb')
+        throw new Error('DATABASE_DRIVER must be sqlite or mongodb');
     console.log('Connecting to MongoDB...');
     try {
         client = new MongoClient(config.mongodbUri + '', {
@@ -54,6 +79,7 @@ async function createUniqueIndex(
     try {
         await database.collection(collection).createIndex(indexSpec, { unique: true, ...options });
     } catch (e: any) {
+        if (config.databaseDriver === 'sqlite') throw e;
         // 67 = CannotCreateIndex (duplicate data prevents unique index)
         // 85 = IndexOptionsConflict (index exists with different options, e.g. non-unique)
         if (e.code === 67 || e.code === 85) {
@@ -293,6 +319,11 @@ export function getDb(): Db {
 }
 
 export async function closeDatabase(): Promise<void> {
+    if (sqlite) {
+        await sqlite.close();
+        sqlite = null;
+        db = null;
+    }
     if (client) {
         await client.close();
         client = null;

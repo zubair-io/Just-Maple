@@ -1,0 +1,31 @@
+[Unit]
+Description=Just Maple local bge-m3 search worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=just-maple
+Group=just-maple
+RuntimeDirectory=just-maple-search
+RuntimeDirectoryMode=0700
+Environment=SEARCH_MODEL_CACHE=/var/lib/just-maple/models
+Environment=ORT_DYLIB_PATH=/opt/onnxruntime/lib/libonnxruntime.so.1.23.2
+Environment=SEARCH_THREADS=2
+Environment=SEARCH_WORKER_SOCKET=/run/just-maple-search/worker.sock
+ExecStart=/opt/just-maple/bin/just-maple-search
+Restart=on-failure
+RestartSec=5
+MemoryHigh=4500M
+MemoryMax=5G
+CPUQuota=200%
+TasksMax=128
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/just-maple/models /run/just-maple-search
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -139,7 +139,7 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
                 const verification = await verifyRegistrationResponse({
                     response: body,
                     expectedChallenge: challenge._id,
-                    expectedOrigin: config.origin,
+                    expectedOrigin: config.passkeyOrigins,
                     expectedRPID: config.rpID,
                     requireUserVerification: true,
                 });
@@ -313,7 +313,7 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
                 const verification = await verifyRegistrationResponse({
                     response: body,
                     expectedChallenge,
-                    expectedOrigin: config.origin,
+                    expectedOrigin: config.passkeyOrigins,
                     expectedRPID: config.rpID,
                     requireUserVerification: true,
                 });
@@ -421,7 +421,7 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
                 const verification = await verifyAuthenticationResponse({
                     response: body,
                     expectedChallenge,
-                    expectedOrigin: config.origin,
+                    expectedOrigin: config.passkeyOrigins,
                     expectedRPID: config.rpID,
                     credential: {
                         id: passkey.credentialId,

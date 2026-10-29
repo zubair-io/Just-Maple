@@ -1,0 +1,8 @@
+[Unit]
+Description=Consistent Just Maple CT131 snapshot to off-host storage
+RequiresMountsFor=/mnt/pve/nas-vms
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/just-maple-staging-backup
+UMask=0077

@@ -1,6 +1,7 @@
 import Redis from 'ioredis';
 import { config } from '../config';
 import type { ChatEvent, MemoSSEEvent } from '@maple/shared';
+import { LocalDedup } from './local-dedup';
 
 // Channel prefixes
 const CHANNELS = {
@@ -16,6 +17,7 @@ type MessageHandler = (message: any) => void;
  * Enables cross-replica real-time messaging
  */
 class RedisPubSubService {
+    private readonly localDedup = new LocalDedup();
     private publisher: Redis | null = null;
     private subscriber: Redis | null = null;
     private isConnected = false;
@@ -271,7 +273,7 @@ class RedisPubSubService {
      * @returns true if this is a new message (should be processed), false if duplicate
      */
     async checkAndSetDedup(key: string, ttlSeconds: number = 5): Promise<boolean> {
-        if (!this.publisher) return true; // No Redis, allow all
+        if (!this.isConnected || !this.publisher) return this.localDedup.accept(key, ttlSeconds);
         const result = await this.publisher.set(key, '1', 'EX', ttlSeconds, 'NX');
         return result === 'OK';
     }

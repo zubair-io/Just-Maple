@@ -17,6 +17,8 @@ import { searchDeviceData } from './device-search.service';
 import { linkedForBot } from './graph.service';
 import { findOverlapsForBot } from './calendar-overlap.service';
 import { executeFollowUpTool, followUpToolDefinitions } from './follow-up.service';
+import { config } from '../config';
+import { searchServerDataPages, decodeItemReference } from './server-hybrid-search.service';
 import { formatInZone, toEpochSeconds } from '../utils/time-zone';
 import {
     canProposeEvents,
@@ -187,6 +189,7 @@ async function notebookAboutMe(
  * then ranks by keywords alone.
  */
 async function embedQuery(userId: string, query: string): Promise<number[] | null> {
+    if (config.serverSearchEnabled && config.databaseDriver === 'sqlite') return null;
     if (!query.trim() || !(await macDataRelay.isOnline(userId))) return null;
     try {
         const vector = await macDataRelay.request<number[] | null>(
@@ -239,7 +242,7 @@ export function macDataToolDefinitions(ctx: MacDataToolContext): ToolDefinition[
             {
                 name: 'get_local_item',
                 description:
-                    'Read one item in full (up to 6,000 characters) by the id a search returned.',
+                    'Read one item in full (up to 6,000 characters). Use the search result reference as id when present; otherwise use its id.',
                 parameters: {
                     type: 'object',
                     properties: { id: { type: 'string' } },
@@ -535,6 +538,27 @@ async function searchDataPages(
     pages: DataPageSlice[],
     input: Record<string, unknown>,
 ): Promise<string> {
+    if (config.serverSearchEnabled && config.databaseDriver === 'sqlite') {
+        const response = await searchServerDataPages(ctx, {
+            query: typeof input.query === 'string' ? input.query.slice(0, 500) : '',
+            sources: Array.isArray(input.sources)
+                ? (input.sources as MacDataSource[]).filter((source) =>
+                      ctx.sources.includes(source),
+                  )
+                : undefined,
+            from: toEpochSeconds(input.from, ctx.timeZone, 'start'),
+            to: toEpochSeconds(input.to, ctx.timeZone, 'end'),
+            limit: typeof input.limit === 'number' ? input.limit : undefined,
+        });
+        ctx.readThirdPartyText = true;
+        // Keep metadata and JSON intact when many long snippets reach the tool budget.
+        let serialized = JSON.stringify({ search: response.search, results: response.results });
+        while (serialized.length > MAX_TOOL_RESULT_CHARS && response.results.length) {
+            response.results.pop();
+            serialized = JSON.stringify({ search: response.search, results: response.results });
+        }
+        return serialized;
+    }
     const wanted = Array.isArray(input.sources)
         ? (input.sources as string[]).filter((s): s is MacDataSource =>
               ctx.sources.includes(s as MacDataSource),
@@ -578,6 +602,16 @@ async function getDataPageItem(
     pages: DataPageSlice[],
     id: string,
 ): Promise<string> {
+    const reference = decodeItemReference(id);
+    if (id.startsWith('maple:item:') && !reference) return 'No item with that id.';
+    if (config.serverSearchEnabled && config.databaseDriver === 'sqlite')
+        pages = await dataPageSlicesFor(ctx.userId, ctx.notebookId);
+    if (reference) {
+        pages = pages.filter(
+            (slice) => slice.ownerId === reference[0] && slice.source === reference[1],
+        );
+        id = reference[2];
+    }
     for (const slice of pages) {
         if (!id.startsWith(`${slice.source}:`)) continue;
         const item = await findDeviceItem(slice.ownerId, id);

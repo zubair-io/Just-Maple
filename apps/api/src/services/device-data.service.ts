@@ -24,6 +24,7 @@ import {
 } from '../repositories/device-item.repo';
 import { findProactivePages } from '../repositories/page.repo';
 import { dataPageSlicesFor } from './device-data-access.service';
+import { config } from '../config';
 import { bumpDeviceDataVersion, hit, snippet } from './device-search.service';
 import { handleDeviceDataChanges } from './proactive-bot.service';
 import { markGraphDirty } from './graph.service';
@@ -88,7 +89,7 @@ export async function applyDeviceUpload(
     await touchCollector(userId, input.deviceId, true);
     if (stored || removed || vectors) await bumpDeviceDataVersion(userId);
     // New items get linked in the graphs of notebooks that show them.
-    if (stored) markGraphDirty(userId);
+    if (stored && config.backgroundJobsEnabled) markGraphDirty(userId);
     const news: NewsEntry[] = [];
     for (const item of changed) {
         const kind = previous.has(item.id) ? 'changed' : 'added';
@@ -98,7 +99,7 @@ export async function applyDeviceUpload(
         if (!since || now - since.getTime() < BACKFILL_MS) continue;
         news.push({ kind, item });
     }
-    if (news.length) queueNews(userId, news);
+    if (news.length && config.backgroundJobsEnabled) queueNews(userId, news);
 
     return { stored, removed, vectors, skipped, ...(input.cursor ? { cursor: input.cursor } : {}) };
 }

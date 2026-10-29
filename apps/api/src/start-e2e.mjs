@@ -1,14 +1,17 @@
-// Keep MongoMemoryServer on Node: its child-process lifecycle requires Node APIs.
-import { MongoMemoryServer } from 'mongodb-memory-server';
 import { spawn } from 'node:child_process';
-import { resolve } from 'node:path';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 
-const mongo = await MongoMemoryServer.create({ instance: { dbName: 'justmaple-e2e' } });
+const directory = mkdtempSync(join(tmpdir(), 'just-maple-e2e-'));
 const server = spawn('bun', ['run', 'src/index.ts'], {
     stdio: 'inherit',
     env: {
         ...process.env,
-        MONGODB_URI: mongo.getUri(),
+        DATABASE_DRIVER: 'sqlite',
+        DATABASE_PATH: join(directory, 'test.sqlite'),
+        DISABLE_BACKGROUND_JOBS: 'true',
+        HOST: '127.0.0.1',
         PORT: '7072',
         RP_ID: 'localhost',
         ORIGIN: 'http://localhost:7072',
@@ -22,7 +25,7 @@ async function stop(code = 0) {
     if (stopping) return;
     stopping = true;
     server.kill('SIGTERM');
-    await mongo.stop();
+    rmSync(directory, { recursive: true, force: true });
     process.exit(code);
 }
 process.on('SIGINT', () => stop());

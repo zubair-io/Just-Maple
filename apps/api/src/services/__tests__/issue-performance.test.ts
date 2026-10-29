@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Binary, Collection, ObjectId } from 'mongodb';
+import { Binary, type Collection, ObjectId } from 'mongodb';
 import * as Y from 'yjs';
 import { testDb, mongoAvailable } from '../../__tests__/setup';
 import { getConnectionGraph, reindexAllLinks } from '../link.service';
@@ -78,8 +78,8 @@ describe.runIf(mongoAvailable)('issue performance regressions', () => {
             }),
             page('outsider', { userId: new ObjectId(), content: content(['target']) }),
         ]);
-        const findOne = vi.spyOn(Collection.prototype, 'findOne');
-        const bulk = vi.spyOn(Collection.prototype, 'bulkWrite');
+        const findOne = vi.spyOn(testDb.collection('pages'), 'findOne');
+        const bulk = vi.spyOn(testDb.collection('pages'), 'bulkWrite');
         expect(await reindexAllLinks(owner.toString(), notebook.toString())).toBe(23);
         expect(findOne).not.toHaveBeenCalled();
         expect(bulk).toHaveBeenCalledTimes(1);
@@ -101,8 +101,8 @@ describe.runIf(mongoAvailable)('issue performance regressions', () => {
         await testDb!
             .collection('pages')
             .insertMany(Array.from({ length: 25 }, (_, i) => page('publish-' + i)));
-        const findOne = vi.spyOn(Collection.prototype, 'findOne');
-        const bulk = vi.spyOn(Collection.prototype, 'bulkWrite');
+        const findOne = vi.spyOn(testDb.collection('pages'), 'findOne');
+        const bulk = vi.spyOn(testDb.collection('pages'), 'bulkWrite');
         expect(await bulkPublishPagesForNotebook(notebook.toString())).toBe(25);
         expect(findOne).not.toHaveBeenCalled();
         expect(bulk).toHaveBeenCalledTimes(1);
@@ -177,8 +177,8 @@ describe.runIf(mongoAvailable)('issue performance regressions', () => {
             updatedAt: new Date(1),
             state: memoState('target'),
         });
-        const original = Collection.prototype.bulkWrite;
-        vi.spyOn(Collection.prototype, 'bulkWrite').mockImplementationOnce(async function (
+        const original = testDb.collection('memos').bulkWrite;
+        vi.spyOn(testDb.collection('memos'), 'bulkWrite').mockImplementationOnce(async function (
             this: Collection,
             operations,
             options,
@@ -203,7 +203,7 @@ describe.runIf(mongoAvailable)('issue performance regressions', () => {
         await testDb!
             .collection('pages')
             .insertMany(Array.from({ length: 1001 }, (_, i) => page('batch-' + i)));
-        const bulk = vi.spyOn(Collection.prototype, 'bulkWrite');
+        const bulk = vi.spyOn(testDb.collection('pages'), 'bulkWrite');
         expect(await reindexAllLinks(owner.toString())).toBe(1001);
         expect(bulk).toHaveBeenCalledTimes(3);
         expect(bulk.mock.calls.every(([operations]) => operations.length <= 500)).toBe(true);

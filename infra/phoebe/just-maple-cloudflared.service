@@ -1,0 +1,23 @@
+[Unit]
+Description=Just Maple Cloudflare connector (requires an explicitly supplied tunnel token)
+After=network-online.target just-maple-api.service
+Wants=network-online.target
+ConditionPathExists=/etc/just-maple/cloudflared-token
+
+[Service]
+Type=simple
+User=just-maple
+Group=just-maple
+LoadCredential=tunnel-token:/etc/just-maple/cloudflared-token
+ExecStart=/usr/bin/cloudflared --no-autoupdate tunnel run --token-file %d/tunnel-token
+Restart=on-failure
+RestartSec=5
+MemoryMax=128M
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

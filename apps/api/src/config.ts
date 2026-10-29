@@ -1,5 +1,10 @@
 export const config = {
     port: parseInt(process.env.PORT || '7071'),
+    host: process.env.HOST || '127.0.0.1',
+    databaseDriver: process.env.DATABASE_DRIVER || (process.env.MONGODB_URI ? 'mongodb' : 'sqlite'),
+    databasePath: process.env.DATABASE_PATH || './storage/just-maple.sqlite',
+    backgroundJobsEnabled: process.env.DISABLE_BACKGROUND_JOBS !== 'true',
+    serverSearchEnabled: process.env.SERVER_SEARCH_ENABLED === 'true',
     mongodbUri: process.env.MONGODB_URI || 'mongodb://192.168.0.244:27017/justmaple',
     redisUrl: process.env.REDIS_URL,
     jwtSecret: process.env.JWT_SECRET || 'dev-secret-change-in-production',
@@ -21,6 +26,11 @@ export const config = {
     rpName: process.env.RP_NAME || 'Just Maple',
     rpID: process.env.RP_ID || 'justmaple.app',
     origin: process.env.ORIGIN || 'https://justmaple.app',
+    get passkeyOrigins() {
+        return (
+            process.env.PASSKEY_ORIGINS?.split(',').map((origin) => origin.trim()) || [this.origin]
+        );
+    },
 
     // Paperbark config (push notification relay service)
     // Supports both PAPERBARK_API_KEY and paperbark-api-key formats for Azure compatibility
