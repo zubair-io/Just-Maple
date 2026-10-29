@@ -180,3 +180,6 @@ try {
     serverSearchWorker.close();
     await closeDatabase();
 }
+// Imported application services own housekeeping intervals. All smoke resources
+// and fixture writes are closed above; this one-shot operator command is finished.
+process.exit(0);
