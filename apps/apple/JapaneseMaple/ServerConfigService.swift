@@ -7,11 +7,12 @@
 
 import Foundation
 import Security
+import Network
 
-class ServerConfigService {
+nonisolated final class ServerConfigService: @unchecked Sendable {
     static let shared = ServerConfigService()
 
-    private let server: ServerConfig = {
+    private static let defaultServer: ServerConfig = {
         #if DEBUG
         #if os(macOS)
         // MAPLE_DEV_SERVER_URL lets a worktree's dev server run beside the main one,
@@ -38,7 +39,134 @@ class ServerConfigService {
         #endif
     }()
 
-    private init() {}
+    private let lock = NSLock()
+    private let defaults: UserDefaults
+    private var effectiveURL: String?
+    private var lastProbe: Date?
+    private var monitor: NWPathMonitor?
+    static let configurationDidChange = Notification.Name("MapleServerConfigurationDidChange")
+    static let connectionDidChange = Notification.Name("MapleServerConnectionDidChange")
+    static let openSettings = Notification.Name("MapleOpenServerSettings")
+
+    init(defaults: UserDefaults = .standard, monitorNetwork: Bool = true) {
+        self.defaults = defaults
+        if monitorNetwork {
+            let monitor = NWPathMonitor()
+            monitor.pathUpdateHandler = { [weak self] _ in
+                guard let self else { return }
+                self.lock.withLock { self.effectiveURL = nil; self.lastProbe = nil }
+                Task {
+                    await self.resolveEndpoint()
+                    NotificationCenter.default.post(name: Self.connectionDidChange, object: nil)
+                }
+            }
+            monitor.start(queue: DispatchQueue(label: "maple.server-network"))
+            self.monitor = monitor
+        }
+    }
+
+    var hasConfiguredServer: Bool {
+        guard let address = defaults.string(forKey: "maple.server.publicURL") else { return false }
+        return (try? Self.normalizeAddress(address)) == address
+    }
+    var localURL: String? { defaults.string(forKey: "maple.server.localURL") }
+
+    /// Only origins are accepted: no credentials, paths, query strings or fragments.
+    static func normalizeAddress(_ input: String) throws -> String {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = trimmed.contains("://") ? trimmed : "https://" + trimmed
+        guard !trimmed.isEmpty, let url = URL(string: text), let host = url.host, !host.isEmpty,
+              url.user == nil, url.password == nil, url.query == nil, url.fragment == nil,
+              url.path.isEmpty || url.path == "/",
+              url.scheme == "https" || (url.scheme == "http" && ["localhost", "127.0.0.1", "::1"].contains(host))
+        else { throw ConfigurationError.invalidAddress }
+        var parts = URLComponents(url: url, resolvingAgainstBaseURL: false)!
+        parts.host = host.lowercased()
+        parts.path = ""
+        if parts.port == 443 && parts.scheme == "https" { parts.port = nil }
+        return parts.string!
+    }
+
+    enum ConfigurationError: LocalizedError {
+        case invalidAddress, unavailable, differentServer
+        var errorDescription: String? {
+            switch self {
+            case .invalidAddress: return "Enter a server hostname or HTTPS origin, without a path."
+            case .unavailable: return "Could not reach that Just Maple server over a trusted HTTPS connection."
+            case .differentServer: return "The local address belongs to a different Just Maple server."
+            }
+        }
+    }
+
+    struct ServerIdentity: Decodable, Sendable {
+        let instanceId: String
+        let publicUrl: String
+    }
+
+    static func identity(at origin: String, session: URLSession = .shared) async throws -> ServerIdentity {
+        var request = URLRequest(url: URL(string: origin + "/api/server-info")!)
+        request.timeoutInterval = 2
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+              http.url?.scheme == URL(string: origin)?.scheme,
+              http.url?.host == URL(string: origin)?.host,
+              http.url?.port == URL(string: origin)?.port else { throw ConfigurationError.unavailable }
+        let identity = try JSONDecoder().decode(ServerIdentity.self, from: data)
+        guard !identity.instanceId.isEmpty else { throw ConfigurationError.unavailable }
+        return identity
+    }
+
+    func configure(publicAddress: String, localAddress: String, session: URLSession = .shared) async throws {
+        let primary = try Self.normalizeAddress(publicAddress)
+        let local = localAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? nil : try Self.normalizeAddress(localAddress)
+        let identity = try await Self.identity(at: primary, session: session)
+        guard try Self.normalizeAddress(identity.publicUrl) == primary else { throw ConfigurationError.differentServer }
+        // A local server may be unreachable while away from home. It is never used until verified.
+        if let local, let candidate = try? await Self.identity(at: local, session: session),
+           candidate.instanceId != identity.instanceId || candidate.publicUrl != identity.publicUrl {
+            throw ConfigurationError.differentServer
+        }
+        lock.withLock {
+            defaults.set(primary, forKey: "maple.server.publicURL")
+            defaults.set(local, forKey: "maple.server.localURL")
+            defaults.set(identity.instanceId, forKey: "maple.server.instanceId")
+            effectiveURL = nil
+            lastProbe = nil
+        }
+        await resolveEndpoint(session: session)
+        NotificationCenter.default.post(name: Self.configurationDidChange, object: nil)
+    }
+
+    /// Anonymous probe first; bearer tokens stay keyed to the public identity.
+    @discardableResult
+    func resolveEndpoint(session: URLSession = .shared) async -> String {
+        let primary = getActiveServer().url
+        let local = localURL
+        if let cached = lock.withLock({ () -> String? in
+            guard let lastProbe, Date().timeIntervalSince(lastProbe) < 30 else { return nil }
+            return effectiveURL ?? primary
+        }) { return cached }
+        var resolved: String?
+        if let local, let expected = defaults.string(forKey: "maple.server.instanceId"),
+           let identity = try? await Self.identity(at: local, session: session),
+           identity.instanceId == expected, identity.publicUrl == primary {
+            resolved = local
+        }
+        lock.withLock {
+            if getConfiguredURL() == primary && localURL == local {
+                effectiveURL = resolved
+                lastProbe = Date()
+            }
+        }
+        return resolved ?? primary
+    }
+
+    private func getConfiguredURL() -> String { defaults.string(forKey: "maple.server.publicURL") ?? Self.defaultServer.url }
+
+    func getEffectiveWebURL() -> String { lock.withLock { effectiveURL ?? getConfiguredURL() } }
+
 
     // MARK: - Server Configuration
 
@@ -62,11 +190,14 @@ class ServerConfigService {
     }
 
     func getActiveServer() -> ServerConfig {
-        return server
+        if let configured = defaults.string(forKey: "maple.server.publicURL") {
+            return ServerConfig(name: URL(string: configured)?.host ?? "Server", url: configured)
+        }
+        return Self.defaultServer
     }
 
     func getAPIUrl() -> String {
-        return server.getAPIUrl()
+        lock.withLock { effectiveURL ?? getActiveServer().getAPIUrl() }
     }
 
     // MARK: - Token Management (Keychain)
@@ -88,7 +219,7 @@ class ServerConfigService {
         if let serverId = serverId, !serverId.isEmpty {
             return "\(tokenKeyPrefix):\(serverId)"
         }
-        return "\(tokenKeyPrefix):\(server.url)"
+        return "\(tokenKeyPrefix):\(getActiveServer().url)"
     }
 
     /// Build a keychain query dictionary, conditionally including the access group.
@@ -138,6 +269,8 @@ class ServerConfigService {
     }
 
     func getToken(serverId: String? = nil) -> String? {
+        // A legacy keychain session does not select a server for a new installation.
+        guard serverId != nil || hasConfiguredServer else { return nil }
         let account = tokenKey(for: serverId)
 
         let query = keychainQuery(account: account, extras: [

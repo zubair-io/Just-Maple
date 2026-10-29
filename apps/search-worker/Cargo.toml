@@ -1,0 +1,19 @@
+[package]
+name = "just-maple-search"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.98"
+license = "LicenseRef-Proprietary"
+
+[dependencies]
+fastembed = { version = "=5.8.0", default-features = false, features = ["hf-hub-rustls-tls", "ort-load-dynamic"] }
+ort = { version = "=2.0.0-rc.10", default-features = false, features = ["load-dynamic"] }
+libloading = "0.8"
+rayon = "1.11"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+base64 = "0.22"
+
+[patch.crates-io]
+fastembed = { path = "vendor/fastembed" }

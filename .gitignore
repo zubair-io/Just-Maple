@@ -219,3 +219,12 @@ apps/api/.env
 # Python release tooling
 __pycache__/
 *.pyc
+
+# SQLite runtime data and native search build output
+apps/search-worker/target/
+apps/api/.test-tmp/
+storage/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal

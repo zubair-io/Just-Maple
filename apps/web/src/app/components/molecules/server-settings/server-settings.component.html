@@ -1,0 +1,13 @@
+@if (native.isNativeApp()) {
+  <section class="my-6 rounded-xl border border-[var(--color-border)] p-4 space-y-3">
+    <h2 class="font-semibold text-[var(--color-text-main)]">Server</h2>
+    <p class="text-sm text-[var(--color-text-muted)]">Connected to {{ currentHost }}</p>
+    <button
+      type="button"
+      (click)="native.openServerSettings()"
+      class="text-sm text-[var(--color-primary)] hover:underline"
+    >
+      Change server or local address
+    </button>
+  </section>
+}

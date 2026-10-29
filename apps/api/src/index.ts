@@ -1,7 +1,9 @@
+import process from 'node:process';
+import type { EventEmitter } from 'node:events';
 import { Elysia } from 'elysia';
 import { cors } from '@elysiajs/cors';
 import { join, resolve } from 'path';
-import { connectToDatabase, getDb } from './db/client';
+import { connectToDatabase, getDb, closeDatabase } from './db/client';
 import { authRoutes } from './routes/auth';
 import { notebookRoutes } from './routes/notebooks';
 import { pageRoutes } from './routes/pages';
@@ -52,6 +54,11 @@ import { customDomainRoutes } from './routes/custom-domains';
 import { redisPubSub } from './services/redis.service';
 import { createSsrRoutes } from './routes/ssr';
 import { config } from './config';
+import { startServerEmbedding } from './services/server-embedding.service';
+import { serverSearchWorker } from './services/server-search-worker.service';
+import { yjsDocumentService } from './services/yjs-document.service';
+import { yjsWhiteboardService } from './services/yjs-whiteboard.service';
+import { yjsKanbanService } from './services/yjs-kanban.service';
 import { describePushSetup } from './services/notification.service';
 
 function getStaticDir(): string {
@@ -74,16 +81,22 @@ async function main() {
 
     console.log(`[Boot] NODE_ENV=${process.env.NODE_ENV}, isDev=${config.isDev}`);
 
-    // Connect to MongoDB
+    // Connect to the configured durable database before accepting traffic.
     await connectToDatabase();
+    const stopEmbedding =
+        config.serverSearchEnabled && config.databaseDriver === 'sqlite'
+            ? startServerEmbedding()
+            : undefined;
     // Hourly: drop device data older than the retention window
-    startDeviceDataRetention();
-    // Every 5 minutes: link the data in notebooks that have a Graph page
-    startGraphLinking();
-    // Every 10 minutes: find promises and replies owed, for notebooks with a Follow-ups page
-    startFollowUpScanning();
+    if (config.backgroundJobsEnabled) {
+        startDeviceDataRetention();
+        // Every 5 minutes: link the data in notebooks that have a Graph page
+        startGraphLinking();
+        // Every 10 minutes: find promises and replies owed, for notebooks with a Follow-ups page
+        startFollowUpScanning();
+    }
     // Every minute: daily briefs and leave-now reminders
-    startProactiveScheduler();
+    if (config.backgroundJobsEnabled) startProactiveScheduler();
 
     // Connect to Redis for cross-replica pub/sub
     try {
@@ -148,6 +161,19 @@ async function main() {
     const APP_VERSION = process.env.APP_VERSION || '0.9.0';
     const BUILD_TIME = process.env.BUILD_TIME || new Date().toISOString();
 
+    app.get('/api/server-info', ({ set }) => {
+        set.headers['cache-control'] = 'no-store';
+        if (!config.instanceId) {
+            set.status = 503;
+            return { error: 'Server identity is not configured' };
+        }
+        return {
+            instanceId: config.instanceId,
+            publicUrl: config.publicUrl,
+            localUrl: config.localUrl || null,
+        };
+    });
+
     app.get('/api/health', async ({ set }) => {
         try {
             // Check database connection
@@ -157,6 +183,8 @@ async function main() {
                 status: 'healthy',
                 timestamp: new Date().toISOString(),
                 database: 'connected',
+                databaseEngine: config.databaseDriver,
+                search: config.serverSearchEnabled ? serverSearchWorker.state : 'legacy',
                 version: APP_VERSION,
                 buildTime: BUILD_TIME,
             };
@@ -228,6 +256,7 @@ async function main() {
         })
         .listen({
             port: config.port,
+            hostname: config.host,
             error(error) {
                 if ((error as any).code === 'EADDRINUSE') {
                     console.error(`\n❌ ERROR: Port ${config.port} is already in use!`);
@@ -239,6 +268,42 @@ async function main() {
                 process.exit(1);
             },
         });
+
+    // Drain requests before flushing the debounced collaborative documents.
+    let stopping = false;
+    const shutdown = async () => {
+        if (stopping) return;
+        stopping = true;
+        const deadline = setTimeout(() => process.exit(1), 25_000);
+        try {
+            stopEmbedding?.();
+            const server = app.server;
+            let drainTimer: ReturnType<typeof setTimeout> | undefined;
+            await Promise.race([
+                Promise.resolve(server?.stop(false)),
+                new Promise<void>((resolve) => {
+                    drainTimer = setTimeout(resolve, 10_000);
+                }),
+            ]);
+            clearTimeout(drainTimer);
+            await server?.stop(true);
+            await Promise.all([
+                yjsDocumentService.shutdown(),
+                yjsWhiteboardService.shutdown(),
+                yjsKanbanService.shutdown(),
+            ]);
+            await closeDatabase();
+            clearTimeout(deadline);
+            process.exit(0);
+        } catch {
+            console.error('[Shutdown] Could not flush durable state');
+            process.exit(1);
+        }
+    };
+    // Bun's memoryPressure declaration hides Node's inherited signal overloads.
+    const lifecycle = process as EventEmitter;
+    lifecycle.on('SIGTERM', () => void shutdown());
+    lifecycle.on('SIGINT', () => void shutdown());
 
     // Check if frontend is available
     const indexFile = Bun.file(join(STATIC_DIR, 'index.html'));

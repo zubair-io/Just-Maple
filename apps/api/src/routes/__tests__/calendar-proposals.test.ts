@@ -1,3 +1,4 @@
+import { SqliteDatabase } from '../../db/sqlite/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestApp } from '../../__tests__/helpers/app';
 import {
@@ -390,7 +391,9 @@ describe.runIf(mongoAvailable)('Add to calendar', () => {
         const { createIndexes } =
             await vi.importActual<typeof import('../../db/client')>('../../db/client');
         // A separate database: these indexes would outlive the other suites' cleanup.
-        const scratch = testDb!.client.db('calendar-proposal-indexes');
+        const storage = new SqliteDatabase(':memory:');
+        await storage.ready;
+        const scratch = storage.asRepositoryDatabase();
         try {
             await createIndexes(scratch);
             const keys = (await scratch.collection('calendar_proposals').indexes()).map(
@@ -403,7 +406,7 @@ describe.runIf(mongoAvailable)('Add to calendar', () => {
                 ]),
             );
         } finally {
-            await scratch.dropDatabase();
+            await storage.close();
         }
 
         // Two taps in order; the Mac gets the older one first.

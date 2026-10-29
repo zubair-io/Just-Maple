@@ -1,4 +1,3 @@
-import { Collection } from 'mongodb';
 import { describe, expect, it, vi } from 'vitest';
 import { getDb } from '../../db/client';
 import { mongoAvailable } from '../../__tests__/setup';
@@ -33,14 +32,15 @@ describe.runIf(mongoAvailable)('web search usage', () => {
     });
 
     it('retries when a racing first upsert hits a duplicate key', async () => {
-        const original = Collection.prototype.findOneAndUpdate;
+        const collection = getDb().collection('web_search_usage');
+        const original = collection.findOneAndUpdate;
         const spy = vi
-            .spyOn(Collection.prototype, 'findOneAndUpdate')
+            .spyOn(getDb().collection('web_search_usage'), 'findOneAndUpdate')
             .mockImplementationOnce(() =>
                 Promise.reject(Object.assign(new Error('E11000 duplicate key'), { code: 11000 })),
             )
-            .mockImplementation(function (this: Collection, ...args: unknown[]) {
-                return (original as (...a: unknown[]) => unknown).apply(this, args) as never;
+            .mockImplementation(function (...args: unknown[]) {
+                return (original as (...a: unknown[]) => unknown).apply(collection, args) as never;
             });
         try {
             expect(await incrementWebSearchUsage('owner-e', new Date('2026-10-28T08:00:00Z'))).toBe(
@@ -54,7 +54,7 @@ describe.runIf(mongoAvailable)('web search usage', () => {
 
     it('gives up on other errors', async () => {
         const spy = vi
-            .spyOn(Collection.prototype, 'findOneAndUpdate')
+            .spyOn(getDb().collection('web_search_usage'), 'findOneAndUpdate')
             .mockRejectedValue(new Error('network'));
         try {
             await expect(incrementWebSearchUsage('owner-f')).rejects.toThrow('network');

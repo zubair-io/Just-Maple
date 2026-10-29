@@ -10,7 +10,8 @@ import {
 describe.runIf(mongoAvailable)('Passkey storage', () => {
     it('migrates the existing unique email index idempotently without losing existing users', async () => {
         const users = testDb!.collection('users');
-        await users.dropIndex('email_1');
+        if ((await users.indexes()).some((index) => index.name === 'email_1'))
+            await users.dropIndex('email_1');
         await users.createIndex({ email: 1 }, { unique: true });
         const existing = await users.insertOne({ email: 'legacy@example.com' });
         await ensurePasskeyIndexes(testDb!);

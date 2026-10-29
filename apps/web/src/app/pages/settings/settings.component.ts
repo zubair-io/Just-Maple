@@ -1,3 +1,4 @@
+import { ServerSettingsComponent } from '../../components/molecules/server-settings/server-settings.component';
 import {
   Component,
   inject,
@@ -27,7 +28,13 @@ interface PasskeyInfo {
 @Component({
   selector: 'app-settings',
   standalone: true,
-  imports: [CommonModule, FormsModule, ProfileAvatarComponent, SettingsHeaderComponent],
+  imports: [
+    ServerSettingsComponent,
+    CommonModule,
+    FormsModule,
+    ProfileAvatarComponent,
+    SettingsHeaderComponent,
+  ],
   templateUrl: './settings.component.html',
   changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './settings.component.scss',
