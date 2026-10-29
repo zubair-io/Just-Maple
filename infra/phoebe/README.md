@@ -1,104 +1,199 @@
 # Just Maple on Phoebe
 
-This branch implements an isolated SQLite deployment and server-side hybrid search,
-based on main revision `ca1110ba` including its graph, follow-up and bot workflows.
-Production currently remains on Azure. The user has now authorized the final
-migration, stopping the Azure app, and DNS for `phoebe.justmaple.app` and
-`local.phoebe.justmaple.app`. **Do not merge to main.** Hostname activation and the
-final write freeze are pending Cloudflare access for the `justmaple.app` zone.
+Phoebe is now the authoritative Just Maple server, using SQLite and server-side
+hybrid search. The previous Azure API is stopped with ingress disabled. The
+migration and hostnames were explicitly authorized; **do not merge to main**.
 
 ## Running deployment
 
-| Resource       | Configuration                                                             |
-| -------------- | ------------------------------------------------------------------------- |
-| Proxmox        | `ssh phoebe`, CT **131**, `just-maple`                                    |
-| Guest          | Debian 13, unprivileged, nesting enabled for systemd mounts               |
-| Limits         | 4 vCPU, 8 GiB RAM, no swap                                                |
-| Storage        | `local`: 16 GiB root + 64 GiB managed data mount; `backup=1`              |
-| Network        | DHCP `192.168.1.179/23`, vmbr0; no DNS record                             |
-| Application    | `/opt/just-maple/current`, non-root `just-maple-api.service`              |
-| Data           | `/var/lib/just-maple/staging.sqlite`, WAL/FULL, local disk                |
-| Media          | Existing absolute Azure URLs retained; new staging uploads stored locally |
-| Native search  | `just-maple-search.service`, private Unix socket, 2 inference threads     |
-| Cloudflare     | `just-maple-phoebe-staging`, ID `54b3d343-950f-4257-b057-85af3ff3e128`    |
-| Tunnel ingress | Only `http_status:404`; no published application or private network route |
-| Secrets        | Root-only `/etc/just-maple/api.env` and `cloudflared-token`; never commit |
+| Resource              | Configuration                                                                                   |
+| --------------------- | ----------------------------------------------------------------------------------------------- |
+| Public app/API        | https://phoebe.justmaple.app                                                                    |
+| Preferred LAN app/API | https://local.phoebe.justmaple.app                                                              |
+| Proxmox               | `ssh phoebe`, unprivileged Debian 13 CT **131**, `just-maple`, onboot enabled                   |
+| Limits                | 4 vCPU, 8 GiB RAM, no swap; nesting required for systemd mounts                                 |
+| Storage               | `local`: 16 GiB root + 64 GiB managed `/var/lib/just-maple`, backup enabled                     |
+| LAN                   | DHCP `192.168.1.179/23`, gateway `192.168.1.1`; reserve this lease for permanent use            |
+| API                   | Non-root `just-maple-api`, bound to `127.0.0.1:7071`                                            |
+| Application release   | `/opt/just-maple/current` → `sqlite-hybrid-20261029-10`                                         |
+| Runtime source        | `030c15e21f19b45b3ba140fe350b853f52ebc8c6`, based on main `ca1110ba`                            |
+| Database              | `/var/lib/just-maple/production-20261029.sqlite`, WAL/FULL                                      |
+| Local files           | `/var/lib/just-maple/media`; existing Azure media storage/URLs retained                         |
+| Native search         | `just-maple-search`, private `/run/just-maple-search/worker.sock`                               |
+| Cloudflare tunnel     | `just-maple-phoebe-staging`, ID `54b3d343-950f-4257-b057-85af3ff3e128` (original name retained) |
+| Public ingress        | `phoebe.justmaple.app` → loopback API; catch-all 404; no LAN-host tunnel route                  |
+| LAN HTTPS             | Nginx 443, trusted certificate, permits `192.168.0.0/23` and loopback only                      |
+| Background jobs       | Enabled; server embedding backfill is also active                                               |
 
-Open the application with a localhost origin so WebAuthn has a secure context:
+The public DNS record is a proxied CNAME to the dedicated tunnel. The local DNS
+record is an unproxied A to the private LAN address. Existing root, legacy API,
+media and mail DNS records were not changed. The old `paperbark.justmaple.app`
+address no longer has a running Azure API behind it; clients need the new address.
 
-```sh
-ssh -N -L 127.0.0.1:7073:192.168.1.179:7071 phoebe
-# Open http://localhost:7073
-```
+## Authoritative cutover — October 29, 2026
 
-The staging RP is `localhost`; CORS and passkey origins allow `http://localhost:7073`.
-Enroll a fresh staging passkey. Production passkeys, session/device/bot tokens,
-integration secrets and production JWT signing keys were excluded from this copy.
-Copied bots, connectors, collector subscriptions, proactive jobs and retention jobs
-are disabled. No production AI-provider, push or Azure storage credentials were
-installed. Testing a real provider conversation requires a separate staging setup.
+Stopped `ca-justmaple-api` in `rg-justmaple-prod` using Azure's stop REST action
+through `az`, after disabling old ingress and draining activity. Verified state
+`Stopped` and zero replicas. Its Mongo URI exactly matched the original local API
+`.env`. The other Azure app named `paperbark-maple` was an unrelated quickstart and
+was left alone. Cosmos, Azure media and the old app/configuration remain retained.
+Do not start any legacy Mongo writer against this retained database.
 
-The source export is a **live rehearsal**, not an authoritative point-in-time
-production migration. All 62 collections (47,447 documents before sanitization)
-passed counts and canonical content hashes in the lossless import; BLOB bytes are
-included in those hashes. The sanitized copy was independently verified. Original
-exports and reports remain in private local rehearsal directories; they are not
-repository artifacts. No source database writes or production cutover occurred.
+A **fresh quiesced export** contained **47,407 documents in 62 collections**. The
+full unsanitized SQLite import preserved accounts, passkeys, tokens, IDs, sharing,
+provider settings and binary data. Every collection passed count and canonical
+content/BLOB checks; SQLite integrity and foreign-key checks passed. Transfer
+SHA-256 matched. This replaced neither the original export nor the earlier sanitized
+`staging.sqlite`; both remain retained. Normal application writes and retention can
+change live counts after activation.
 
-## Persistence and search
+Reused 31,944 derived vector rows for 9,912 items only when owner, item revision,
+content hash, model generation, dimensions and BLOB length matched the fresh import.
+The initial production corpus had 12,440 searchable items and 2,528 pending jobs.
+Backfill continues automatically; subsequent collection/retention changes adjust
+these counts. Partial coverage is reported and lexical fallback remains available.
 
-`DATABASE_DRIVER=sqlite` selects a dedicated Bun SQLite child process. Existing
-repository signatures use a bounded compatibility surface backed by per-collection
-SQLite tables, native indexes, canonical EJSON and separate binary BLOB storage.
-Mingo evaluates the existing typed query/update/aggregation operators. Mongo types
-and the optional `mongodb` provider remain during this transition. Unsupported
-operations fail explicitly. Atomic mutations, positional array updates, version
-checks and one-use challenges run in SQLite transactions.
+The production environment retains the existing JWT secret, `RP_ID=justmaple.app`,
+APNs, OAuth/provider and Azure media credentials. It omits the source Mongo
+credential and remote Redis. Both new origins are explicitly allowed for CORS and
+passkeys. Outbound/background jobs were gated until verification, then restored.
 
-The compatibility layer deliberately makes a whole `bulkWrite`/`insertMany` batch
-atomic; it does not emulate Mongo's partial unordered failure results. Existing
-expiry predicates still reject expired credentials, but Mongo TTL index metadata
-does not schedule SQLite deletion. Decide periodic expiry cleanup and audit new
-repository operators before production acceptance. Native SQL repositories can
+The old automatic Azure deploy workflow (ID **215918883**) is **disabled manually**
+in GitHub. This branch also makes it manual recovery-only with an explicit
+confirmation input, so a future merge does not automatically deploy to the retired
+Azure target. Do not enable it or resume Azure without reconciling Phoebe writes.
+
+## Clients
+
+Apple clients can enter a public server address and an optional preferred local
+address. Bare hostnames become HTTPS. Anonymous `/api/server-info` probes verify the
+stable `INSTANCE_ID` and public URL before choosing LAN access. Network changes
+switch API and WebSocket transport without reloading an open editor. Failed reads
+can retry publicly; uncertain mutations are not replayed by the interceptor.
+
+Keychain and collector account identity stays on the public URL. Watch receives the
+public API address because it may be on another network. Native settings are
+reachable before sign-in and even when the web app cannot load. **Existing installed
+Apple builds require an update to get these settings.** No App Store/TestFlight
+release was made. Browser server selection navigates without transferring tokens.
+Existing passkeys keep their original RP identity and can be used at the new origin.
+
+A live run of the actual Swift resolver verified public/local trusted HTTPS identity,
+LAN preference and fallback to the public address when the local endpoint fails.
+
+**Google OAuth follow-up:** an anonymous preflight returned `redirect_uri_mismatch`
+for the new native callback. Add these authorized redirect URIs to the existing
+Gmail/Calendar OAuth client:
+
+- `https://phoebe.justmaple.app/api/oauth/callback` (native)
+- `https://phoebe.justmaple.app/gmail/oauth/callback` (public web)
+- `https://local.phoebe.justmaple.app/gmail/oauth/callback` (LAN web)
+
+Existing stored connections were migrated; new authorization/reauthorization needs
+these additions.
+
+## Secrets and TLS
+
+`/etc/just-maple/api.env` is root-only, read by systemd. Keep `JWT_SECRET`,
+`INSTANCE_ID` and RP identity stable across deployments and restores.
+`production.env.prepared` is the retained, gated preparation copy, not the active
+configuration. Never copy an example environment over a configured deployment.
+
+The Mac's refreshed `~/.cloudflared/cert.pem` authorizes `justmaple.app` in the same
+account as the existing tunnel. The LXC's non-root tunnel service receives only its
+run token through systemd credentials. The login certificate file stays on the Mac.
+
+Certbot's root-only `/etc/just-maple/cloudflare-certbot.ini` currently reuses the
+refreshed login token for DNS-01 renewal. That token also has tunnel-management
+permissions; replace it with a DNS-only token for this zone when convenient. It is
+not accessible to the API user and is never stored in Git.
+
+The LAN certificate expires **January 27, 2027**. `certbot.timer` renews it and
+`/etc/letsencrypt/renewal-hooks/deploy/just-maple-nginx` validates/reloads Nginx. A
+simulated renewal and deploy hook passed. TLS validation is never disabled for the
+LAN hostname. `nginx-lan.conf` is the production LAN configuration.
+
+## Persistence and retrieval
+
+`DATABASE_DRIVER=sqlite` selects a separate Bun SQLite process. Each collection has
+its own table, canonical EJSON, normalized native indexes and separate binary BLOBs.
+Mingo evaluates the existing audited typed query/update/aggregation operators.
+Atomic mutations, positional array updates, optimistic versions, leases and one-use
+challenges run in transactions. Unsupported operators fail explicitly. The optional
+Mongo provider and its types remain transitional; specialized SQL repositories can
 replace this boundary incrementally.
 
-AI `search_local_data` calls on device-data pages use:
+Bulk batches are deliberately atomic and do not emulate Mongo partial unordered
+failure results. Expiry predicates reject expired credentials, but TTL metadata does
+not schedule SQLite deletion; an expiry cleanup policy remains future work.
 
-1. Current notebook membership and page filters, derived by the server.
-2. SQLite FTS5 BM25 with English Porter stemming and safely parsed phrases/exclusions.
-3. Server-generated bge-m3 query vectors and exact, scoped vector search.
-4. Reciprocal rank fusion (`k=60`), deduplicated by source item across chunks.
-5. Fresh permission, source revision and content-hash checks before hydration.
+AI `search_local_data` calls on synced device-data pages use fresh sharing/page
+filters, FTS5 BM25 with Porter stemming, server bge-m3 query embeddings, scoped exact
+vector search, reciprocal rank fusion (`k=60`), deduplicated chunks and fresh
+revision/content-hash/permission checks before hydration. `get_local_item` rechecks
+opaque owner/source/item references. Phrases/exclusions constrain both ranking legs.
+Loading, crashes, overload, two-second semantic timeout and pending vectors yield
+lexical fallback with explicit mode/coverage metadata. Queries do not need the Mac
+for embeddings. Collecting new Mac data and relaying actions still need the device;
+retiring the legacy Apple embedding upload path is later work.
 
-`get_local_item` accepts an opaque owner/source/item reference and rechecks access.
-Required phrases and exclusions constrain both ranking legs. If the worker is
-loading, restarting, overloaded, times out after two seconds, or vectors are
-pending, lexical results include the fallback reason. Embedding coverage is reported.
-The application continues serving while systemd restarts the search process.
-
-Backfill is durable, revision/hash guarded, leased and retryable. Foreground work
-has priority between embedding chunks. It remains in progress on the imported
-corpus; partial hybrid coverage is enabled only for this isolated staging copy.
-Production activation requires complete initial coverage and a relevance review.
-Device collection and action relays remain; Apple embedding retirement is later work.
+Backfill is durable, generation/revision/hash guarded, leased and retryable. Live
+search has priority between embedding chunks. One shared model serves all owners,
+with owner-scoped caches capped at 1 GiB and isolated retrieval permissions.
 
 Runtime pins: Bun **1.4.3**, Rust **1.98.1**, ONNX Runtime **1.23.2**, fastembed
-**5.8.0** with the retained thread patch. Model revision:
-`BAAI/bge-m3@5617a9f61b028005a4858fdac845db406aefb181`.
-Generation: `bge-m3-5617a9f-cls-l2-512-v1`, 1024 f32 dimensions, CLS/L2, 512 tokens.
-Body chunks use 384 tokens with 64 overlap and a reserved 96-token header budget.
-See `apps/search-worker/NOTICE.md` for source provenance and licenses.
+**5.8.0** with retained thread patch. Model:
+`BAAI/bge-m3@5617a9f61b028005a4858fdac845db406aefb181`, generation
+`bge-m3-5617a9f-cls-l2-512-v1`, 1024 f32 dimensions, CLS/L2, 512 tokens. Body chunks
+are 384 tokens with 64 overlap and a 96-token header budget. Native worker limit is
+5 GiB/2 CPU threads; API/database limit is 2 GiB. See `apps/search-worker/NOTICE.md`.
+The release manifest hashes 210 runtime/model/frontend artifacts.
 
-The Linux ONNX archive SHA-256 is
-`1fa4dcaef22f6f7d5cd81b28c2800414350c10116f5fdd46a2160082551c5f9b`;
-the installed library SHA-256 is
-`13ab8084954fa4a47c777880180b90810d6020f021441395712b48a75b74c68b`.
-The model warm-up peaked at 3.8 GiB. The worker has a 5 GiB limit, the API/database
-service 2 GiB, and the vector cache a 1 GiB budget. These are single-instance limits.
+## Operations, backups and recovery
+
+```sh
+ssh phoebe 'pct exec 131 -- systemctl status just-maple-api just-maple-search just-maple-cloudflared nginx --no-pager'
+ssh phoebe 'pct exec 131 -- curl -fsS http://127.0.0.1:7071/api/health'
+curl -fsS https://phoebe.justmaple.app/api/health
+curl -fsS https://local.phoebe.justmaple.app/api/health
+ssh phoebe 'systemctl start just-maple-staging-backup.service'
+```
+
+The API service uses **KillMode=mixed**: systemd signals the API first so it can
+drain requests and flush Yjs documents through the still-running SQLite child.
+The API closes the child itself; systemd bounds final cleanup. A real service stop
+returned success/status 0. Pending-editor persistence and failed-save propagation
+are also covered by tests. Do not restore the default cgroup-wide initial SIGTERM.
+
+The legacy-named `just-maple-staging-backup.timer` runs hourly at :15 with jitter.
+Its script selects the active database from `api.env`, uses a separate connection's
+`VACUUM INTO`, checks integrity, copies to NAS and verifies SHA-256. Production
+archives go to `/mnt/pve/nas-vms/dump/just-maple-production/`, with restrictive
+permissions. Latest cutover snapshot: `just-maple-20261029T190951Z.sqlite`.
+The script refuses missing NAS/stopped guest and caps an archive at **168 snapshots**;
+it fails for retention review rather than silently deleting backups. Set a long-term
+retention policy before this cap is reached. Daily Proxmox backups remain unchanged.
+
+Restored that NAS snapshot to `production-restore-check-20261029.sqlite`, verified
+its checksum and started an isolated API on loopback 7074 without providers,
+background jobs or native search. Authenticated reads, passkey challenge creation,
+CORS, hidden development auth and WebSocket readiness passed. The temporary API is
+stopped; the restored file remains. This was an isolated API restore on CT131;
+a fresh-guest/host rebuild drill remains outstanding.
+
+Root-only config/TLS recovery archive:
+`/mnt/pve/nas-vms/dump/just-maple-production/production-config-20261029T1914Z.tar.gz`.
+Operator-side export, verification reports and pre-change Azure/DNS configuration
+are private under `/tmp/just-maple-cutover-20261029/`; Phoebe provisioning copies are
+under `/root/just-maple-provision-20261029/`. Do not commit these artifacts.
+
+After activation, **never resume Azure or restore an old database over accepted
+Phoebe writes without reconciliation**. The private pre-activation rollback helper
+refuses once the `phoebe-authoritative-opened` marker exists. For a compatible code
+rollback, keep the current database/environment, switch to a reviewed compatible
+release and restart the API. Preserve source exports and backups.
 
 ## Build and deploy
-
-Use the repository's Node version (24.15.0), Bun 1.4.3 and pinned Rust toolchain.
 
 ```sh
 bun install --frozen-lockfile
@@ -107,181 +202,37 @@ bun run build:web:paperbark
 cargo build --release --locked --manifest-path apps/search-worker/Cargo.toml
 ```
 
-For Linux amd64, build the Rust executable on Linux; the macOS executable cannot
-run in the LXC. The current build tree is `/opt/just-maple-build/search-worker`.
-Install a versioned binary under `/opt/just-maple/bin/` and atomically replace the
-`just-maple-search` symlink. Install the official ONNX Runtime 1.23.2 Linux x64
-archive under `/opt/onnxruntime` after checking the hash above. The service fixes
-`ORT_DYLIB_PATH`; `warm-model.sh` can download/warm the pinned model before startup.
+Use Node **24.15.0**, Bun 1.4.3 and the pinned Rust toolchain. Build Linux native
+binaries on Linux (current build tree `/opt/just-maple-build/search-worker`), install
+versioned artifacts and preserve runtime/model pins. Stage `apps/api/dist` as `dist/`
+and this directory as `infra/`, then run `install-in-lxc.sh NEW_RELEASE_ID` inside
+CT131 with `JUST_MAPLE_DEPLOY_SOURCE` pointing there. Existing releases are refused;
+existing environment/database are preserved. Back up before schema changes. The
+installer alone does not create DNS or route traffic.
 
-Stage `apps/api/dist` as `dist/` and this directory as `infra/` inside an LXC-local
-deployment directory. Run `install-in-lxc.sh NEW_RELEASE_ID` with
-`JUST_MAPLE_DEPLOY_SOURCE` pointing there. Existing release IDs are rejected. It
-preserves the database and existing environment, sets restrictive permissions,
-switches the release symlink and restarts the API. Native binaries/model/runtime
-must be installed first. Only initial setup generates a fresh JWT secret.
+Migration commands: `migrate.js inventory`, `export NEW_DIRECTORY
+[--source-quiesced]`, `import EXPORT_DIRECTORY NEW_DATABASE [--staging]`. The flag
+records an externally enforced freeze; it does not stop Mongo writers. Import
+refuses existing targets and verifies counts/content. Operator `smoke.js` and
+`benchmark.js` create/remove their own staging fixtures and require an explicit
+staging flag; never point them at production.
 
-Before a schema upgrade, run the host backup service and verify its result. Keep
-the previous release. For an additive-schema-compatible rollback, stop the API,
-point `current` at that release and restart it. Stop only the new staging services
-when investigating trouble. Never reset a database or replace it with an older copy
-after accepting writes without an explicit reconciliation decision.
+## Validation and remaining work
 
-`migrate.js` provides `inventory`, `export NEW_DIRECTORY [--source-quiesced]` and
-`import EXPORT_DIRECTORY NEW_DATABASE [--staging]`. Export needs a read-only
-`MONGODB_URI`. Import refuses existing targets and verifies manifests and content;
-use a fresh destination on retry. A source write freeze is required for a production
-snapshot; the flag records that operator action, it does not freeze Mongo itself.
+940 API tests passed (3 existing skips); 5 focused web transport tests and 2 isolated
+Swift resolver tests passed. macOS test-build, iOS build, API/frontend builds and
+formatting passed. Earlier checks include 139 shared, 12 Rust and 17 Chromium E2E
+passes (136 existing skips), native paraphrases/isolation/revocation/crash recovery,
+binary fidelity and a staging guest reboot. Full Apple test launch needs development
+signing. Existing frontend suite failures and API rootDir/type diagnostics reproduce
+on the clean base; these changes added no unique API type errors.
 
-## Backups and operations
+Production passed trusted public/LAN HTTPS, anonymous denial, authenticated reads,
+RP identity, CORS, WebSockets, development-auth exclusion, database integrity and NAS
+backup/restore checks. The public sign-in/server-entry UI was inspected. No App Store
+release or main merge occurred.
 
-Phoebe's `just-maple-staging-backup.timer` runs hourly at :15 with jitter. Its script
-uses a separate `VACUUM INTO` connection, verifies integrity, copies the snapshot
-to `/mnt/pve/nas-vms/dump/just-maple-staging/`, verifies SHA-256, then removes only
-its transient guest copy. It refuses to run if the NAS is unmounted or CT131 is
-stopped. It caps the archive at **168 snapshots** and fails for retention review
-instead of deleting prior snapshots. Set the long-term retention policy before
-production. The existing all-guest daily Proxmox backup job was not changed.
-
-```sh
-ssh phoebe 'systemctl start just-maple-staging-backup.service'
-ssh phoebe 'systemctl status just-maple-staging-backup.service --no-pager'
-ssh phoebe 'pct exec 131 -- systemctl status just-maple-api just-maple-search just-maple-cloudflared --no-pager'
-ssh phoebe 'pct exec 131 -- curl -fsS http://127.0.0.1:7071/api/health'
-ssh phoebe 'pct exec 131 -- sqlite3 /var/lib/just-maple/staging.sqlite "select count(*) from embedding_jobs; select count(distinct id) from search_embeddings;"'
-```
-
-Restore by checking the NAS checksum, copying a snapshot to a new local filename,
-checking SQLite integrity/foreign keys, and starting an isolated API with a different
-port, `HOST=127.0.0.1`, `SERVER_SEARCH_ENABLED=false` and outbound jobs disabled.
-This drill passed on the new LXC using `restore-check.sqlite` and port 7074; the
-temporary API was stopped afterwards. A fresh-guest restore remains a production
-acceptance gate. Daily guest backups cover local uploads/config; the hourly job
-covers the database only.
-
-Operator verification bundles require `JUST_MAPLE_STAGING_SMOKE=true`:
-`smoke.js http` verifies authenticated API operations and the production auth gate;
-`smoke.js search` checks native paraphrase search, owner isolation, references and
-revocation. It creates/removes only its own synthetic fixtures. Stop the staging API
-with an EXIT trap to restart it for native search/`benchmark.js`: one API connection
-owns the Unix worker. `benchmark.js` reports corpus counts/timings without source
-text or account identifiers. Never point these tools at production.
-
-## Verification and remaining acceptance gates
-
-The API suite exercises the real Bun SQLite worker without Mongo skip fallbacks.
-A dedicated CI job runs API integration, build and native search tests independently
-of the existing frontend type/format checks. Shared tests, production frontend build,
-Chromium E2E, binary/hash migration checks, live authenticated API, native search,
-worker-crash recovery, and backup restore were exercised.
-
-Verification on October 29, 2026: **940 API tests passed** (3 existing skips),
-**139 shared tests passed**, **12 native Rust tests passed**, and **17 Chromium
-E2E tests passed** (136 existing skips). CT131 rebooted successfully with all three
-services active and no failed systemd units. The active API release is
-`sqlite-hybrid-20261029-10`, built from `030c15e21f19b45b3ba140fe350b853f52ebc8c6`; the native binary is `just-maple-search-20261029-03`.
-The current release manifest verifies 210 runtime/model/frontend artifacts. Five
-focused web routing/fallback tests and two isolated Swift server-selection tests
-pass; macOS test-build and iOS build pass. Full Apple test execution is blocked by
-development signing on this Mac. The built API's identity endpoint, production auth
-gate and graceful SIGTERM were exercised. The latest staging HTTP smoke and NAS
-snapshot `just-maple-20261029T174817Z.sqlite` passed.
-
-Four queries over 12,505 eligible imported items measured 920 ms initially and
-579–672 ms warm with partial embedding coverage. These are diagnostic samples,
-not a p95 result; the provisional 500 ms target needs further load testing. The
-synthetic paraphrase/isolation/revocation smoke measured 107 ms.
-
-The existing frontend suite reports 248 failures/45 errors; the clean base revision
-produced the same counts. API typecheck also has existing diagnostics (including
-shared sources outside its rootDir); it is not green. Do not confuse successful
-bundling/API tests with a clean whole-repository typecheck.
-
-Before production: obtain the scoped Cloudflare zone credential, activate and verify
-both authorized hostnames with trusted HTTPS and correct RP/origins, test real Apple
-and collector selection/replay and two-client Yjs/realtime/media/scheduled-send
-workflows, complete embedding coverage and relevance/load acceptance, define
-TTL/backup retention, and perform the final quiesced export and fresh-guest restore.
-The Azure app and source database remain intact and running pending these steps.
-
-## Public and preferred local server settings
-
-The Apple app accepts a public server address (bare hostnames become HTTPS) and an
-optional local address. It probes `/api/server-info` without credentials and checks
-the stable `INSTANCE_ID` and public URL before choosing the local endpoint. Network
-changes refresh selection; HTTP and WebSocket traffic switch without reloading the
-open editor. A failed LAN read may retry publicly; uncertain writes are never replayed
-by the interceptor. Native keychain/account identity stays on the public URL. Watch
-receives the public API URL because it may be on a different network from the phone.
-
-Server settings are available before sign-in, in Settings, and from the native server
-button even when the web app cannot load. A new Apple build is required for this
-feature; the existing installed release still has its original hardcoded server.
-The server selector in a browser navigates to another origin without transferring
-credentials. Existing passkeys retain `RP_ID=justmaple.app`; allow both new HTTPS
-origins explicitly. `INSTANCE_ID` must survive releases and restores.
-
-`nginx-lan.conf` prepares direct HTTPS on CT131, limited to the current LAN
-`192.168.0.0/23` and loopback. The public tunnel connects to the API on loopback.
-The API should bind `127.0.0.1` after the cutover. Nginx is installed but disabled
-until a trusted certificate has been issued. DNS for the local name should be an
-unproxied A record to `192.168.1.179`; no public route is configured for that name.
-Preserve this DHCP lease with a router reservation before treating it as permanent.
-
-## Final cutover preparation — pending credentials
-
-Azure CLI is authenticated. `ca-justmaple-api` in `rg-justmaple-prod` is the real
-production writer (revision `ca-justmaple-api--0000266` at inspection). Its Mongo URI
-exactly matches `/Users/riabuz/Projects/_Just-Maple/apps/api/.env`. The other app named
-`paperbark-maple` is an untouched quickstart image, without database environment
-variables. Do not stop unrelated apps.
-
-Rollback configuration/secrets are stored privately under
-`/tmp/just-maple-cutover-20261029/` on the operator Mac. A prepared environment is
-root-only at `/etc/just-maple/production.env.prepared` in CT131 and in Phoebe's
-provisioning backup directory. It retains the existing JWT secret, passkey RP identity,
-provider/APNs and Azure media credentials; it omits the source Mongo credential and
-remote Redis. Outbound background jobs remain disabled during verification. This
-file has **not** replaced `/etc/just-maple/api.env`, and its fresh production SQLite
-path has not yet been created.
-
-The current tunnel credential can manage its tunnel but has DNS access only to
-`lawrence.io`. Required: a root/private token with Zone:Read and DNS:Edit for
-`justmaple.app`, provided as `~/.cloudflared/justmaple-api-token` (0600). First verify
-that the zone and tunnel belong to the same account; a different account requires a
-new tunnel there. Use the scoped DNS token for Certbot DNS-01 renewal of the local
-hostname, stored root-only in the guest. Do not put credentials in this repository.
-
-Complete in this order:
-
-1. Back up current Cloudflare records/config, verify account identity, and create
-   only the two requested records: proxied public CNAME to the dedicated tunnel,
-   unproxied local A to the LAN IP. Configure the tunnel's public hostname to the
-   loopback API; keep a catch-all 404 and omit the local hostname from tunnel ingress.
-2. Issue the LAN certificate with `certbot --dns-cloudflare`, enable the supplied
-   Nginx config, configure renewal reload, and verify trusted TLS, WebSocket upgrade
-   and LAN-only access. Verify the public route with isolated staging credentials.
-3. Gate traffic for maintenance, drain editor activity and stop every writer to the
-   source database. Stop only the Just Maple Azure app through `az rest --method post`
-   against its resource ID plus `/stop?api-version=2025-07-01`; the installed CLI has
-   no `az containerapp stop`. Save the response and verify stopped state/zero replicas.
-   No app, database or Azure media resources are deleted. If preflight fails before
-   Phoebe accepts writes, the matching `/start` action restores Azure.
-4. Export a **fresh** quiesced source using `migrate.js export NEW_DIRECTORY
---source-quiesced`, then import to a new production SQLite path **without**
-   `--staging`. Verify all collection counts, canonical content/BLOB hashes,
-   integrity/foreign keys and the report before activation. The earlier live
-   rehearsal is not an authoritative cutover snapshot.
-5. Copy/verify the new database, switch the prepared environment atomically and
-   start one Phoebe API writer. Check passkeys, permissions, real collector upload,
-   editor sync, API reads/writes, media and integrations. Enable background jobs
-   only after those checks. Verify the active-database off-host backup and restore.
-6. Do not resume Azure after Phoebe has accepted writes without reconciling them.
-   Keep Cosmos, export, old deployment and secrets for recovery. Full embedding
-   coverage, relevance/load acceptance and an Apple build rollout remain tracked
-   acceptance work. Google OAuth may also require registering the new callback URL
-   in the existing Google OAuth client before new grants work.
-
-The old `paperbark.justmaple.app` DNS is outside the two-record change. Existing
-clients need the new server-capable build and server selection when Azure is stopped;
-legacy-hostname compatibility must be explicitly included before changing that record.
+Still tracked: Google OAuth callback registration; distribution of the new Apple
+build; automatic initial backfill completion; 30–50-query relevance and load/p95
+acceptance; TTL cleanup/backup retention; fresh-guest recovery drill. Earlier warm
+corpus samples were roughly 0.54–0.94 seconds with partial coverage, not a p95 result.

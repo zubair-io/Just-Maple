@@ -1,15 +1,14 @@
 name: Deploy API to Azure Container Apps
 
+# Phoebe is authoritative. Azure deployment is retained only for deliberate recovery.
 on:
-    push:
-        branches:
-            - main
-        paths:
-            - 'apps/api/**'
-            - 'apps/web/**'
-            - 'packages/shared/**'
-            - '.github/workflows/deploy-api.yml'
     workflow_dispatch:
+        inputs:
+            confirm_legacy_recovery:
+                description: 'Phoebe writes have been reconciled and restoring Azure is intended'
+                required: true
+                type: boolean
+                default: false
 
 env:
     REGISTRY: acrjustmaple.azurecr.io
@@ -18,8 +17,9 @@ env:
     CONTAINER_APP: ca-justmaple-api
 
 jobs:
-    # Only deploy if CI passed
+    # Re-enable this workflow only after a reviewed recovery/reconciliation decision.
     build-and-deploy:
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.confirm_legacy_recovery }}
         runs-on: ubuntu-latest
         timeout-minutes: 5
         permissions:
