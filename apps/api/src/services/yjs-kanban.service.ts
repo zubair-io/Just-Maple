@@ -261,7 +261,7 @@ class YJSKanbanService {
     /**
      * Save document to database
      */
-    private async saveDocument(documentId: string): Promise<void> {
+    private async saveDocument(documentId: string, strict = false): Promise<void> {
         const ydoc = this.documents.get(documentId);
         if (!ydoc) return;
 
@@ -270,6 +270,7 @@ class YJSKanbanService {
             console.log(`[YJS-Kanban] Saved document to database: ${documentId}`);
         } catch (error) {
             console.error(`[YJS-Kanban] Failed to save document ${documentId}:`, error);
+            if (strict) throw error;
         } finally {
             this.saveTimers.delete(documentId);
         }
@@ -288,12 +289,12 @@ class YJSKanbanService {
     /**
      * Force save all pending documents
      */
-    async flushAll(): Promise<void> {
+    async flushAll(strict = false): Promise<void> {
         const savePromises: Promise<void>[] = [];
 
         for (const [documentId, timer] of this.saveTimers) {
             clearTimeout(timer);
-            savePromises.push(this.saveDocument(documentId));
+            savePromises.push(this.saveDocument(documentId, strict));
         }
 
         await Promise.all(savePromises);
@@ -370,7 +371,7 @@ class YJSKanbanService {
      */
     async shutdown(): Promise<void> {
         clearInterval(this.cleanupInterval);
-        await this.flushAll();
+        await this.flushAll(true);
 
         // Destroy all Y.Docs
         for (const ydoc of this.documents.values()) {
