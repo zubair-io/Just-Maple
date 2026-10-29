@@ -1,4 +1,3 @@
-import { ServerSettingsComponent } from '../../components/molecules/server-settings/server-settings.component';
 import { Component, inject, signal, ChangeDetectionStrategy } from '@angular/core';
 import { environment } from '../../../environments/environment';
 import { FormsModule } from '@angular/forms';
@@ -9,14 +8,7 @@ import { FormFieldComponent } from '../../components/molecules';
 @Component({
   selector: 'app-login',
   standalone: true,
-  imports: [
-    ServerSettingsComponent,
-    FormsModule,
-    ButtonComponent,
-    InputComponent,
-    IconComponent,
-    FormFieldComponent,
-  ],
+  imports: [FormsModule, ButtonComponent, InputComponent, IconComponent, FormFieldComponent],
   changeDetection: ChangeDetectionStrategy.Eager,
   templateUrl: './login.component.html',
 })

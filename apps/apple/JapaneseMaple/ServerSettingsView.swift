@@ -39,7 +39,7 @@ struct ServerSettingsView: View {
                 .disabled(saving || publicAddress.trimmingCharacters(in: .whitespaces).isEmpty)
             }
             .formStyle(.grouped)
-            .navigationTitle("Server settings")
+            .navigationTitle(ServerConfigService.shared.hasConfiguredServer ? "Server settings" : "Connect to Just Maple")
             .toolbar {
                 if ServerConfigService.shared.hasConfiguredServer {
                     Button("Cancel") { dismiss() }

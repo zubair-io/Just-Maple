@@ -1,12 +1,17 @@
 import { BrowserTestingModule, platformBrowserTesting } from '@angular/platform-browser/testing';
 import { provideZonelessChangeDetection } from '@angular/core';
-import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { AuthService } from '../../../services/auth.service';
 import { LoginComponent } from '../login.component';
+import { environment } from '../../../../environments/environment';
 
 describe('Passkey login', () => {
+  const originalProduction = environment.production;
+  afterEach(() => {
+    environment.production = originalProduction;
+  });
   const auth = {
     isLoading: signal(false),
     error: signal<string | null>(null),
@@ -19,6 +24,7 @@ describe('Passkey login', () => {
     TestBed.initTestEnvironment(BrowserTestingModule, platformBrowserTesting());
   });
   beforeEach(() => {
+    environment.production = true;
     vi.clearAllMocks();
     auth.isLoading.set(false);
     auth.error.set(null);
@@ -28,7 +34,7 @@ describe('Passkey login', () => {
       providers: [provideZonelessChangeDetection(), { provide: AuthService, useValue: auth }],
     });
   });
-  it('shows passkey sign-in without email or code fields', () => {
+  it('shows passkey sign-in without email, code or server fields', () => {
     const fixture = TestBed.createComponent(LoginComponent);
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Sign in with a passkey');

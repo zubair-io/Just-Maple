@@ -12,6 +12,7 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
+    @State private var hasConfiguredServer = ServerConfigService.shared.hasConfiguredServer
     @State private var showServerSettings = false
     @StateObject private var webViewController = WebViewController()
 
@@ -20,30 +21,29 @@ struct ContentView: View {
     #endif
 
     var body: some View {
-        VStack(spacing: 0) {
-            WebViewContainer(webViewController: webViewController)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .ignoresSafeArea(.container)
-        .overlay(alignment: .topTrailing) {
-            Button { showServerSettings = true } label: {
-                Image(systemName: "server.rack").padding(10)
+        Group {
+            if hasConfiguredServer {
+                WebViewContainer(webViewController: webViewController)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .ignoresSafeArea(.container)
+                    .overlay(alignment: .topTrailing) {
+                        Button { showServerSettings = true } label: {
+                            Image(systemName: "server.rack").padding(10)
+                        }
+                        .buttonStyle(.bordered)
+                        .accessibilityLabel("Server settings")
+                        .padding(8)
+                    }
+            } else {
+                ServerSettingsView()
             }
-            .buttonStyle(.bordered)
-            .accessibilityLabel("Server settings")
-            .padding(8)
         }
         .sheet(isPresented: $showServerSettings) { ServerSettingsView() }
-        .onAppear {
-            #if !DEBUG
-            showServerSettings = !ServerConfigService.shared.hasConfiguredServer
-                && ServerConfigService.shared.getToken() == nil
-            #endif
-        }
         .onReceive(NotificationCenter.default.publisher(for: ServerConfigService.openSettings).receive(on: RunLoop.main)) { _ in
             showServerSettings = true
         }
         .onReceive(NotificationCenter.default.publisher(for: ServerConfigService.configurationDidChange).receive(on: RunLoop.main)) { _ in
+            hasConfiguredServer = ServerConfigService.shared.hasConfiguredServer
             webViewController.reloadFromServer()
         }
         .onReceive(NotificationCenter.default.publisher(for: ServerConfigService.connectionDidChange).receive(on: RunLoop.main)) { _ in

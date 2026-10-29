@@ -15,7 +15,7 @@ migration and hostnames were explicitly authorized; **do not merge to main**.
 | Storage               | `local`: 16 GiB root + 64 GiB managed `/var/lib/just-maple`, backup enabled                     |
 | LAN                   | DHCP `192.168.1.179/23`, gateway `192.168.1.1`; reserve this lease for permanent use            |
 | API                   | Non-root `just-maple-api`, bound to `127.0.0.1:7071`                                            |
-| Application release   | `/opt/just-maple/current` → `sqlite-hybrid-20261029-10`                                         |
+| Application release   | `/opt/just-maple/current` → `sqlite-hybrid-20261029-11`                                         |
 | Runtime source        | `030c15e21f19b45b3ba140fe350b853f52ebc8c6`, based on main `ca1110ba`                            |
 | Database              | `/var/lib/just-maple/production-20261029.sqlite`, WAL/FULL                                      |
 | Local files           | `/var/lib/just-maple/media`; existing Azure media storage/URLs retained                         |
@@ -65,8 +65,10 @@ Azure target. Do not enable it or resume Azure without reconciling Phoebe writes
 
 ## Clients
 
-Apple clients can enter a public server address and an optional preferred local
-address. Bare hostnames become HTTPS. Anonymous `/api/server-info` probes verify the
+Browser login uses the current site and has no server address form.
+
+Apple clients show native setup before loading any website when no server is saved,
+then remember a public server address and an optional preferred local address. Bare hostnames become HTTPS. Anonymous `/api/server-info` probes verify the
 stable `INSTANCE_ID` and public URL before choosing LAN access. Network changes
 switch API and WebSocket transport without reloading an open editor. Failed reads
 can retry publicly; uncertain mutations are not replayed by the interceptor.
@@ -75,7 +77,7 @@ Keychain and collector account identity stays on the public URL. Watch receives 
 public API address because it may be on another network. Native settings are
 reachable before sign-in and even when the web app cannot load. **Existing installed
 Apple builds require an update to get these settings.** No App Store/TestFlight
-release was made. Browser server selection navigates without transferring tokens.
+release was made. Server selection and changes belong to the native app; browser settings do not offer a server selector.
 Existing passkeys keep their original RP identity and can be used at the new origin.
 
 A live run of the actual Swift resolver verified public/local trusted HTTPS identity,
@@ -147,7 +149,7 @@ Runtime pins: Bun **1.4.3**, Rust **1.98.1**, ONNX Runtime **1.23.2**, fastembed
 `bge-m3-5617a9f-cls-l2-512-v1`, 1024 f32 dimensions, CLS/L2, 512 tokens. Body chunks
 are 384 tokens with 64 overlap and a 96-token header budget. Native worker limit is
 5 GiB/2 CPU threads; API/database limit is 2 GiB. See `apps/search-worker/NOTICE.md`.
-The release manifest hashes 210 runtime/model/frontend artifacts.
+The release manifest hashes runtime/model/frontend artifacts and records the separate web source commit; the API and pinned native/model artifacts retain the runtime source above.
 
 ## Operations, backups and recovery
 
@@ -219,7 +221,7 @@ staging flag; never point them at production.
 
 ## Validation and remaining work
 
-940 API tests passed (3 existing skips); 5 focused web transport tests and 2 isolated
+940 API tests passed (3 existing skips); 7 focused login/transport tests and 2 isolated
 Swift resolver tests passed. macOS test-build, iOS build, API/frontend builds and
 formatting passed. Earlier checks include 139 shared, 12 Rust and 17 Chromium E2E
 passes (136 existing skips), native paraphrases/isolation/revocation/crash recovery,
@@ -229,7 +231,7 @@ on the clean base; these changes added no unique API type errors.
 
 Production passed trusted public/LAN HTTPS, anonymous denial, authenticated reads,
 RP identity, CORS, WebSockets, development-auth exclusion, database integrity and NAS
-backup/restore checks. The public sign-in/server-entry UI was inspected. No App Store
+backup/restore checks. The public and LAN sign-in UIs have no server input. Native first launch presents server setup before loading web content; saved addresses survive relaunch. No App Store
 release or main merge occurred.
 
 Still tracked: Google OAuth callback registration; distribution of the new Apple

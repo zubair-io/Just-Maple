@@ -38,7 +38,13 @@ struct ServerConfigTests {
         sessionConfig.protocolClasses = [ServerProbeProtocol.self]
         let session = URLSession(configuration: sessionConfig)
         defer { session.invalidateAndCancel() }
+        #expect(!config.hasConfiguredServer)
+        #expect(config.getToken() == nil)
         try await config.configure(publicAddress: "phoebe.example.com", localAddress: "local.example.com", session: session)
+        let relaunched = ServerConfigService(defaults: defaults, monitorNetwork: false)
+        #expect(relaunched.hasConfiguredServer)
+        #expect(relaunched.getActiveServer().url == "https://phoebe.example.com")
+        #expect(relaunched.localURL == "https://local.example.com")
         #expect(config.getActiveServer().id == "https://phoebe.example.com")
         #expect(config.getAPIUrl() == "https://local.example.com")
         #expect(config.getEffectiveWebURL() == "https://local.example.com")

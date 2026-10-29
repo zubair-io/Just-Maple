@@ -65,7 +65,10 @@ nonisolated final class ServerConfigService: @unchecked Sendable {
         }
     }
 
-    var hasConfiguredServer: Bool { defaults.string(forKey: "maple.server.publicURL") != nil }
+    var hasConfiguredServer: Bool {
+        guard let address = defaults.string(forKey: "maple.server.publicURL") else { return false }
+        return (try? Self.normalizeAddress(address)) == address
+    }
     var localURL: String? { defaults.string(forKey: "maple.server.localURL") }
 
     /// Only origins are accepted: no credentials, paths, query strings or fragments.
@@ -266,6 +269,8 @@ nonisolated final class ServerConfigService: @unchecked Sendable {
     }
 
     func getToken(serverId: String? = nil) -> String? {
+        // A legacy keychain session does not select a server for a new installation.
+        guard serverId != nil || hasConfiguredServer else { return nil }
         let account = tokenKey(for: serverId)
 
         let query = keychainQuery(account: account, extras: [
