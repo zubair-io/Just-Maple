@@ -15,8 +15,8 @@ migration and hostnames were explicitly authorized; **do not merge to main**.
 | Storage               | `local`: 16 GiB root + 64 GiB managed `/var/lib/just-maple`, backup enabled                     |
 | LAN                   | DHCP `192.168.1.179/23`, gateway `192.168.1.1`; reserve this lease for permanent use            |
 | API                   | Non-root `just-maple-api`, bound to `127.0.0.1:7071`                                            |
-| Application release   | `/opt/just-maple/current` → `message-archive-20261030-11`                                       |
-| Runtime source        | `a04b62b570a16c83fd29d36966b8a90fa4041017`; native/model pins retained                          |
+| Application release   | `/opt/just-maple/current` → `search-bounded-20261030-02`                                        |
+| Runtime source        | API `1728f8ed63908e87c0d9869c8fd1761688fd622b`; web `a04b62b5`, native/model pins retained      |
 | Database              | `/var/lib/just-maple/production-20261029.sqlite`, WAL/FULL                                      |
 | Local files           | `/var/lib/just-maple/media`; existing Azure media storage/URLs retained                         |
 | Native search         | `just-maple-search`, private `/run/just-maple-search/worker.sock`                               |
@@ -442,3 +442,50 @@ Never restore a pre-import snapshot over accepted writes without reconciliation.
 Private operator receipts are under `/tmp/japanese-maple-archive-20261030/` on the
 Mac, `/root/message-archive-20261030/` in CT131, and the matching subdirectory of
 Phoebe's `/root/just-maple-provision-20261029/`.
+
+## AI search memory repair — October 30, 2026
+
+The active API release is `search-bounded-20261030-02`, source
+`1728f8ed63908e87c0d9869c8fd1761688fd622b`. The web frontend retains source
+`a04b62b570a16c83fd29d36966b8a90fa4041017`. All 112 manifest artifacts verified;
+DB, environment, model, native worker, DNS and resource limits are retained.
+
+AI search previously serialized the whole archive's metadata (about 222 MB) in one
+EJSON response. The SQLite worker reached about 1.64 GiB RSS and thrashed against
+the service's 1.5 GiB soft throttle, causing deadlines and API restarts. Search now
+reads 500-row keyset batches, carries only sharing-filter facts over IPC and retains
+only identity/version/sort keys between batches. All chat/calendar/mail/place/home
+and presence checks remain in place, followed by fresh permission/revision checks
+before result hydration. Two searches may run at once, four may queue, and further
+calls return `search_overloaded` before allocating candidate maps. Queries without
+phrases or exclusions skip the unnecessary full authorized-ID round trip.
+
+`embedding_jobs_ready` indexes the existing retry-time/rowid ordering, so normal
+background claims stop rescanning and sorting the full backfill queue. Slow SQLite
+operations log operation/collection names and duration, never query arguments or
+message contents. Worker deadline errors now identify the pending operation.
+
+Validation: 964 API tests passed, 3 existing skips; API build and precommit checks
+passed. Full snapshot tests under the unchanged 2 GiB service cap covered 253,660
+eligible items: sequential keyword searches took 8.5–8.7 seconds, chronological
+retrieval 6.2 seconds, and three simultaneous requests completed in 31.2 seconds
+with peak service memory 994.1 MiB. Pings continued during retrieval (up to 2.6
+seconds). An additional cold mixed-workload queue claim took 12.2 seconds; isolated
+warm claims used the index and took 2–9 ms. These are snapshot load measurements,
+not a guarantee of complete semantic coverage or every production latency tail.
+
+Post-deploy public/LAN identity, authenticated reads and anonymous denial passed.
+Messages totaled 242,564, including all 177,862 archive imports; 3,157 conversations,
+chronological thread loading and the warm directory (384 ms) passed. SQLite quick
+check returned `ok` and foreign-key checks were empty. API memory was about 346 MB,
+peak about 1.05 GB, with zero automatic restarts since final activation. Semantic
+backfill continued (218,466 pending at verification).
+
+Verified pre-activation NAS snapshot: `just-maple-20261030T133254Z.sqlite`.
+For compatible code rollback, switch only the symlink to
+`search-bounded-20261030-01` and restart API, retaining live DB/environment and the
+harmless added index. The older archive rollout rollback above is historical;
+prefer retaining these AI-search bounds for this corpus. Do not restore old DB
+contents over accepted writes. Private incident receipts and snapshot benchmark
+copy remain in `/tmp/japanese-maple-lockup-20261030/` on the Mac,
+`/root/lockup-20261030/` in CT131 and Phoebe's existing provisioning directory.
