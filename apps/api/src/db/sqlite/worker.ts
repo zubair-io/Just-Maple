@@ -462,14 +462,15 @@ function dropCollection(name: string): boolean {
 }
 function operation(op: string, name: string | undefined, args: unknown[]): unknown {
     if (op === 'search.candidates') {
-        const [owner, sources, from, to] = args as [
+        const [owner, sources, from, to, after = 0] = args as [
             string,
             string[],
             number | undefined,
             number | undefined,
+            number?,
         ];
         if (!sources.length) return [];
-        const values: SQLQueryBindings[] = [owner, ...sources];
+        const values: SQLQueryBindings[] = [after, owner, ...sources];
         let dates = '';
         if (typeof from === 'number' && Number.isFinite(from)) {
             dates += ' AND occurred_at>=?';
@@ -481,11 +482,13 @@ function operation(op: string, name: string | undefined, args: unknown[]): unkno
         }
         const rows = db
             .query(
-                `SELECT id AS _id,user_id AS userId,source,revision,content_hash AS contentHash,item_metadata
-            FROM search_documents WHERE user_id=? AND source IN (${sources.map(() => '?').join(',')})${dates}`,
+                `SELECT row_id AS cursor,id AS _id,user_id AS userId,source,revision,content_hash AS contentHash,item_metadata
+            FROM search_documents NOT INDEXED WHERE row_id>? AND user_id=? AND source IN (${sources.map(() => '?').join(',')})${dates}
+            ORDER BY row_id LIMIT 500`,
             )
             .all(...values) as Array<{
             _id: string;
+            cursor: number;
             userId: string;
             source: string;
             revision: string;
@@ -861,6 +864,7 @@ function operation(op: string, name: string | undefined, args: unknown[]): unkno
 const input = createInterface({ input: process.stdin, crlfDelay: Infinity });
 input.on('line', (line) => {
     let request: Request | undefined;
+    const started = performance.now();
     try {
         request = decode<Request>(line);
         const value =
@@ -886,6 +890,12 @@ input.on('line', (line) => {
                 },
             }) + '\n',
         );
+    } finally {
+        const elapsed = Math.round(performance.now() - started);
+        if (elapsed >= 1000)
+            console.error(
+                `[SQLite] Slow operation ${request?.operation ?? 'decode'}${request?.collection ? ` (${request.collection})` : ''}: ${elapsed}ms`,
+            );
     }
 });
 process.stdin.on('end', () => {
