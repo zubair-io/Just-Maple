@@ -542,3 +542,28 @@ branch. Roll back code to `search-bounded-20261030-02`, retaining live DB/env an
 optional source fields; portable fallbacks remain compatible. Private receipts and
 visual verification are in `/tmp/japanese-maple-render-20261030/` on the Mac,
 `/root/bot-render-20261030/` in CT131 and Phoebe's existing provisioning directory.
+
+## Graph date requests and bounded database reads (2026-10-30)
+
+The graph now opens with seven days selected; All is removed. Date changes send the
+selected window to the server, and older replies/errors cannot replace a newer
+selection. The API also defaults older clients to seven days and rejects malformed
+or reversed ranges. Contacts and ongoing events retain their existing semantics;
+notebook membership, page sharing and source filters still apply.
+
+SQLite graph reads now apply ordering, limits and body projection before decoding
+records. Item lookups use the primary-key index instead of scanning the owner's
+library; relation reads filter dated hub spans before the read limit. Search vector
+loading uses an additive `(user_id,generation,id,chunk)` index and seeks by the last
+item/chunk, replacing deep OFFSET scans. Stale vector/source checks are retained.
+This prevents a slow vector-loading loop from repeatedly occupying the same database
+worker needed by graph and other API requests.
+
+Pre-activation snapshot `just-maple-20261030T214912Z.sqlite` passed off-host
+integrity/SHA verification. Rehearsal receipts are in
+`/tmp/japanese-maple-graph-20261030/` on the operator Mac and
+`/root/graph-window-20261030/` in CT131. Deployment verification is recorded below
+after activation. Roll back code to `bot-render-20261030-01`, restart only the API,
+and retain the live database/env and harmless additive index. Never restore a
+pre-change snapshot over accepted writes. DNS, Azure, native/model binaries, resource
+limits and other guests are outside this rollout.

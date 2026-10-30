@@ -27,14 +27,13 @@
     <div class="flex flex-wrap items-center gap-2" role="group" aria-label="Date range">
       <button type="button" class="graph-chip" (click)="setRange(7)">7 days</button>
       <button type="button" class="graph-chip" (click)="setRange(30)">30 days</button>
-      <button type="button" class="graph-chip" (click)="setRange(null)">All</button>
       <label class="flex items-center gap-1 font-sans text-xs text-[var(--color-text-muted)]">
         From
         <input
           type="date"
           data-testid="from"
           [value]="fromDate()"
-          (change)="fromDate.set($any($event.target).value)"
+          (change)="fromDate.set($any($event.target).value); !fromDate() && setRange(7)"
           class="h-8 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 font-sans text-xs text-[var(--color-text-main)]"
         />
       </label>

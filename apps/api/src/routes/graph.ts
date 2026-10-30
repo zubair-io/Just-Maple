@@ -51,20 +51,25 @@ export const graphRoutes = new Elysia({ prefix: '/api/graph' })
                 set.status = 404;
                 return NOT_FOUND;
             }
-            const number = (value?: string) =>
-                value !== undefined && Number.isFinite(Number(value)) ? Number(value) : undefined;
+            if (query.from !== undefined && query.to !== undefined && query.to < query.from) {
+                set.status = 400;
+                return {
+                    error: 'Invalid date range',
+                    message: 'Choose an end date after the start date.',
+                };
+            }
             return {
                 graph: await getDataGraph(params.notebookId, auth.user._id, {
-                    from: number(query.from),
-                    to: number(query.to),
+                    from: query.from ?? Math.floor(Date.now() / 1000) - 7 * 86400,
+                    to: query.to,
                 }),
             };
         },
         {
             params: t.Object({ notebookId: t.String() }),
             query: t.Object({
-                from: t.Optional(t.String()),
-                to: t.Optional(t.String()),
+                from: t.Optional(t.Numeric()),
+                to: t.Optional(t.Numeric()),
             }),
         },
     )

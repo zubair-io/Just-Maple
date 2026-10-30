@@ -215,6 +215,22 @@ describe.runIf(mongoAvailable)('connected-data graph', () => {
         sam = await person('Sam');
     });
 
+    it('defaults to seven days, supports an explicit older window and rejects reversed dates', async () => {
+        await upload(
+            ['mail', 'calendar'],
+            [{ ...partyMail, occurredAt: now - 14 * 86400 }, partyEvent],
+        );
+        const { notebookId } = await notebook(['mail', 'calendar']);
+        agreeableModel();
+        await runGraphPass(notebookId);
+        const recent = (await graphOf(alex, notebookId)).graph;
+        expect(recent.nodes.some((n) => n.itemId === partyMail.id)).toBe(false);
+        const older = (await graphOf(alex, notebookId, `?from=${now - 30 * 86400}`)).graph;
+        expect(older.nodes.some((n) => n.itemId === partyMail.id)).toBe(true);
+        expect((await call(alex, `/api/graph/${notebookId}?from=30&to=10`)).status).toBe(400);
+        expect((await call(alex, `/api/graph/${notebookId}?from=bad`)).status).toBe(422);
+    });
+
     // MARK: - Rule links
 
     it('links the dental appointment to the visit, the office and the drive', async () => {

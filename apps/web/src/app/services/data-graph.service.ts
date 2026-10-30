@@ -18,7 +18,10 @@ export class DataGraphService {
   readonly loading = signal(false);
   readonly error = signal<string | null>(null);
 
-  async load(notebookId: string): Promise<void> {
+  private requestId = 0;
+
+  async load(notebookId: string, range: { from: number; to?: number }): Promise<void> {
+    const requestId = ++this.requestId;
     if (this.notebookId() !== notebookId) {
       this._graph.set(null);
       this.notebookId.set(notebookId);
@@ -27,16 +30,19 @@ export class DataGraphService {
     this.error.set(null);
     try {
       const reply = await firstValueFrom(
-        this.http.get<{ graph: DataGraph }>(`/api/graph/${encodeURIComponent(notebookId)}`),
+        this.http.get<{ graph: DataGraph }>(`/api/graph/${encodeURIComponent(notebookId)}`, {
+          params: { from: range.from, ...(range.to !== undefined ? { to: range.to } : {}) },
+        }),
       );
       // A reply for a notebook that's no longer open is dropped.
-      if (this.notebookId() !== notebookId) return;
+      if (this.requestId !== requestId) return;
       this._graph.set(reply.graph);
     } catch (err) {
+      if (this.requestId !== requestId) return;
       const message = (err as { error?: { message?: string } })?.error?.message;
       this.error.set(message || 'Could not load the graph.');
     } finally {
-      this.loading.set(false);
+      if (this.requestId === requestId) this.loading.set(false);
     }
   }
 

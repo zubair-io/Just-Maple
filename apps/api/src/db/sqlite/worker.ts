@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS search_embeddings(
     PRIMARY KEY(id,chunk,generation)
 );
 CREATE INDEX IF NOT EXISTS search_embeddings_owner ON search_embeddings(user_id,generation);
+CREATE INDEX IF NOT EXISTS search_embeddings_scan ON search_embeddings(user_id,generation,id,chunk);
 INSERT OR IGNORE INTO schema_migrations VALUES(2, strftime('%Y-%m-%dT%H:%M:%fZ','now'));
 `);
 
@@ -495,6 +496,83 @@ function searchFilterItem(item: MacDataItem): MacDataItem {
 }
 
 function operation(op: string, name: string | undefined, args: unknown[]): unknown {
+    if (op === 'graph.relations') {
+        ensureCollection('graph_relations');
+        const [notebookId, statuses, limit, range] = args as [
+            string,
+            string[],
+            number,
+            { from?: number; to?: number } | undefined,
+        ];
+        if (!statuses.length) return [];
+        const values: SQLQueryBindings[] = [notebookId, ...statuses];
+        let dates = '';
+        if (typeof range?.from === 'number') {
+            dates += ` AND (${field('a')} LIKE 'item:%' OR ${field('b')} LIKE 'item:%' OR ${field('lastAt')} IS NULL OR ${field('lastAt')}>=?)`;
+            values.push(range.from);
+        }
+        if (typeof range?.to === 'number') {
+            dates += ` AND (${field('a')} LIKE 'item:%' OR ${field('b')} LIKE 'item:%' OR ${field('firstAt')} IS NULL OR ${field('firstAt')}<=?)`;
+            values.push(range.to);
+        }
+        // Bound the read before decoding documents. The notebook/status index scopes it.
+        const rows = db
+            .query(
+                `SELECT body FROM docs_graph_relations WHERE ${field('notebookId')}=?
+            AND ${field('status')} IN (${statuses.map(() => '?').join(',')})${dates}
+            ORDER BY ${field('updatedAt')} DESC LIMIT ?`,
+            )
+            .all(...values, Math.max(1, limit)) as { body: string }[];
+        return rows.map((row) => decode(row.body));
+    }
+    if (op === 'device.graph' || op === 'device.graphItems') {
+        ensureCollection('device_items');
+        const owner = String(args[0]);
+        const bodyChars = Math.max(
+            0,
+            Number(op === 'device.graph' ? (args[2] as { bodyChars: number }).bodyChars : args[2]),
+        );
+        let where: string;
+        let suffix = '';
+        let values: SQLQueryBindings[];
+        if (op === 'device.graphItems') {
+            const ids = (args[1] as string[]).slice(0, 500);
+            if (!ids.length) return [];
+            where = `_id IN (${ids.map(() => '?').join(',')}) AND ${field('userId')}=?`;
+            values = [...ids.map((id) => idKey(`${owner}:${id}`)), owner];
+        } else {
+            const source = String(args[1]);
+            const range = args[2] as {
+                from?: number;
+                to?: number;
+                updatedSince?: Date;
+                limit: number;
+            };
+            where = `${field('userId')}=? AND ${field('source')}=?`;
+            values = [owner, source];
+            for (const [key, comparison, bound] of [
+                ['occurredAt', '>=', range.from],
+                ['occurredAt', '<=', range.to],
+                ['updatedAt', '>', range.updatedSince?.getTime()],
+            ] as const) {
+                if (typeof bound === 'number') {
+                    where += ` AND ${field(key)}${comparison}?`;
+                    values.push(bound);
+                }
+            }
+            suffix = ` ORDER BY ${field('occurredAt')} DESC LIMIT ?`;
+            values.push(Math.max(1, range.limit));
+        }
+        // Project and truncate in SQL: never decode vectors or full bodies just to discard them.
+        const rows = db
+            .query(
+                `SELECT json_set(json_extract(index_data,'$.item'),'$.body',
+            substr(COALESCE(json_extract(index_data,'$.item.body'),''),1,?)) AS item
+            FROM docs_device_items ${op === 'device.graphItems' ? 'INDEXED BY sqlite_autoindex_docs_device_items_1' : ''} WHERE ${where}${suffix}`,
+            )
+            .all(bodyChars, ...values) as { item: string }[];
+        return rows.map((row) => JSON.parse(row.item));
+    }
     if (op === 'search.candidates') {
         const [owner, sources, from, to, after = 0] = args as [
             string,
