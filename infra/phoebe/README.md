@@ -15,8 +15,8 @@ migration and hostnames were explicitly authorized; **do not merge to main**.
 | Storage               | `local`: 16 GiB root + 64 GiB managed `/var/lib/just-maple`, backup enabled                     |
 | LAN                   | DHCP `192.168.1.179/23`, gateway `192.168.1.1`; reserve this lease for permanent use            |
 | API                   | Non-root `just-maple-api`, bound to `127.0.0.1:7071`                                            |
-| Application release   | `/opt/just-maple/current` → `search-bounded-20261030-02`                                        |
-| Runtime source        | API `1728f8ed63908e87c0d9869c8fd1761688fd622b`; web `a04b62b5`, native/model pins retained      |
+| Application release   | `/opt/just-maple/current` → `bot-render-20261030-01`                                            |
+| Runtime source        | API/web `ce82c5e01f473a72a768d2dd8aa4e2ac8523059a`; native/model pins retained                  |
 | Database              | `/var/lib/just-maple/production-20261029.sqlite`, WAL/FULL                                      |
 | Local files           | `/var/lib/just-maple/media`; existing Azure media storage/URLs retained                         |
 | Native search         | `just-maple-search`, private `/run/just-maple-search/worker.sock`                               |
@@ -489,3 +489,56 @@ prefer retaining these AI-search bounds for this corpus. Do not restore old DB
 contents over accepted writes. Private incident receipts and snapshot benchmark
 copy remain in `/tmp/japanese-maple-lockup-20261030/` on the Mac,
 `/root/lockup-20261030/` in CT131 and Phoebe's existing provisioning directory.
+
+## Bot responses rendered from preserved source
+
+New bot messages retain `botResponseSource` alongside validated `botUI` and the
+portable rich-text fallback. Chat, thread replies and the thread's parent message
+parse that original source with the current shared parser when displayed, so later
+parser/renderer fixes apply without rewriting stored messages. Replies saved before
+source preservation still render their validated block data; legacy raw Response
+programs in rich-text code blocks are recovered on read/display without migration.
+
+The static parser also accepts a leading `Response(...)` without a `root =`
+assignment, concatenated statements and mislabelled fences such as `vbnet`. Ordinary
+code remains code. Only the existing flat Text/Card/Table/Button/Form/Source library
+is accepted, with collection/string limits and no runtime/tool provider. Model
+source cannot create server action/proposal/draft cards. Those cards are retained
+from validated server data and continue to load current access/state on interaction.
+Shared-draft privacy notices omit preserved raw output, revisions keep the previous
+source, and explicit message edits clear the old generated source/presentation.
+
+The server's processed fallback still supports notifications, text clients and
+conversation context. Original source was not retained on some older successfully
+processed replies; those keep their portable blocks rather than inventing source.
+No bulk history rewrite is required for this rendering change.
+
+### Render-time rollout — October 30, 2026
+
+Activated `bot-render-20261030-01`, API/web source
+`ce82c5e01f473a72a768d2dd8aa4e2ac8523059a`, all 112 manifest artifacts verified.
+Pre-activation NAS snapshot `just-maple-20261030T154109Z.sqlite` passed the existing
+integrity/SHA workflow. Both public and LAN paths passed health, anonymous denial
+and authenticated reads. The affected existing reply returned two text blocks and
+three source blocks with preserved source; its stored document SHA-256 was unchanged.
+All 177,862 archive records remain present. Native/model/environment/search bounds
+and resource limits were retained; no DNS, Azure, other guest or main merge change.
+
+The running Mac client applied the service-worker Update and displayed that same
+saved reply as two paragraphs and three source buttons, with no raw Response code.
+Other hosted clients receive this web update on reload/Update; no native binary
+change is required. Earlier successfully processed replies without saved raw source
+continue to use their portable blocks. New replies and recovered legacy raw replies
+use the current parser at display time. No automatic message replay, message resend
+or bulk content rewrite was performed.
+
+Validation: full API 967 passed/3 existing skips, final save/edit/revision regressions
+4 passed, shared 155, focused chat/thread UI 15; final separate-entry API 19/UI 9.
+API/paperbark builds, shared/web typechecks and precommit checks passed. Existing
+standalone API workspace/rootDir diagnostics remain. The parser library's existing
+CommonJS/initial-size warnings remain non-blocking. Branch
+`codex/bot-response-rendering`, draft PR313, is stacked on the unmerged archive/search
+branch. Roll back code to `search-bounded-20261030-02`, retaining live DB/env and
+optional source fields; portable fallbacks remain compatible. Private receipts and
+visual verification are in `/tmp/japanese-maple-render-20261030/` on the Mac,
+`/root/bot-render-20261030/` in CT131 and Phoebe's existing provisioning directory.

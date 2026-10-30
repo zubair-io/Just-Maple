@@ -5,6 +5,7 @@ import type { BotUIResponse } from '@maple/shared';
 import { CalendarProposalService } from '../../../services/calendar-proposal.service';
 import { HomeProposalService } from '../../../services/home-proposal.service';
 import { BotActionService } from '../../../services/bot-action.service';
+import { DeviceDataService } from '../../../services/device-data.service';
 
 const savedResponse: BotUIResponse = {
   version: 1,
@@ -24,6 +25,11 @@ const savedResponse: BotUIResponse = {
 };
 
 describe('saved OpenUI replies', () => {
+  beforeEach(() =>
+    TestBed.configureTestingModule({
+      providers: [{ provide: DeviceDataService, useValue: { openItem: vi.fn() } }],
+    }),
+  );
   async function render() {
     await TestBed.configureTestingModule({ imports: [BotUIComponent] }).compileComponents();
     const fixture = TestBed.createComponent(BotUIComponent);

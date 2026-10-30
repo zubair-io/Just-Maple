@@ -27,6 +27,7 @@ export type Mention = Static<typeof MentionSchema>;
 export const MessageRevisionSchema = Type.Object({
     content: PageContentSchema,
     botUI: Type.Optional(BotUIResponseSchema),
+    botResponseSource: Type.Optional(Type.String({ maxLength: 100000 })),
     // When this version was written (the post's creation, or an earlier revision)
     at: Type.String({ format: 'date-time' }),
 });
@@ -47,6 +48,8 @@ export const MessageSchema = Type.Object({
     senderDisplayName: Type.Optional(Type.String()), // Populated sender display name (or bot name)
     senderProfilePictureUrl: Type.Optional(Type.String()), // Populated sender profile picture (or bot avatar)
     botUI: Type.Optional(BotUIResponseSchema),
+    // Original model response, parsed with the current renderer when displayed.
+    botResponseSource: Type.Optional(Type.String({ maxLength: 100000 })),
     botModel: Type.Optional(Type.String()),
     content: PageContentSchema, // TipTap/ProseMirror JSON (rich text)
     mentions: Type.Optional(Type.Array(MentionSchema)), // Parsed mentions from content
