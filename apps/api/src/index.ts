@@ -88,7 +88,7 @@ async function main() {
         config.serverSearchEnabled && config.databaseDriver === 'sqlite'
             ? startServerEmbedding()
             : undefined;
-    // Hourly: drop device data older than the retention window
+    // Hourly: expire rolling-window data, retaining Messages and archived contact mail
     if (config.backgroundJobsEnabled) {
         startDeviceDataRetention();
         // Every 5 minutes: link the data in notebooks that have a Graph page

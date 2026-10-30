@@ -15,8 +15,8 @@ migration and hostnames were explicitly authorized; **do not merge to main**.
 | Storage               | `local`: 16 GiB root + 64 GiB managed `/var/lib/just-maple`, backup enabled                     |
 | LAN                   | DHCP `192.168.1.179/23`, gateway `192.168.1.1`; reserve this lease for permanent use            |
 | API                   | Non-root `just-maple-api`, bound to `127.0.0.1:7071`                                            |
-| Application release   | `/opt/just-maple/current` → `sqlite-hybrid-20261029-11`                                         |
-| Runtime source        | `030c15e21f19b45b3ba140fe350b853f52ebc8c6`, based on main `ca1110ba`                            |
+| Application release   | `/opt/just-maple/current` → `japanese-maple-20261030-02`                                        |
+| Runtime source        | `c2b4550c394f06fdec6012f53d8cf927ee882919`; native/model pins retained                          |
 | Database              | `/var/lib/just-maple/production-20261029.sqlite`, WAL/FULL                                      |
 | Local files           | `/var/lib/just-maple/media`; existing Azure media storage/URLs retained                         |
 | Native search         | `just-maple-search`, private `/run/just-maple-search/worker.sock`                               |
@@ -247,8 +247,8 @@ staging flag; never point them at production.
 Swift resolver tests passed. macOS test-build, iOS build, API/frontend builds and
 formatting passed. Earlier checks include 139 shared, 12 Rust and 17 Chromium E2E
 passes (136 existing skips), native paraphrases/isolation/revocation/crash recovery,
-binary fidelity and a staging guest reboot. Full Apple test launch needs development
-signing. Existing frontend suite failures and API rootDir/type diagnostics reproduce
+binary fidelity and a staging guest reboot. Signed focused macOS tests now pass after the account refresh; broader Apple UI
+validation remains pending. Existing frontend suite failures and API rootDir/type diagnostics reproduce
 on the clean base; these changes added no unique API type errors.
 
 Production passed trusted public/LAN HTTPS, anonymous denial, authenticated reads,
@@ -260,3 +260,83 @@ Still tracked: Google OAuth callback registration; distribution of the new Apple
 build; automatic initial backfill completion; 30–50-query relevance and load/p95
 acceptance; TTL cleanup/backup retention; fresh-guest recovery drill. Earlier warm
 corpus samples were roughly 0.54–0.94 seconds with partial coverage, not a p95 result.
+
+## Messages and contact-mail retention
+
+The history-retention branch removes the Messages date cutoff. Its versioned Mac
+checkpoint rewinds only Messages once, then commits and uploads bounded pages; quit
+or interruption resumes from the last committed page. Reactions are excluded and
+attachment-only messages keep their placeholder; attachment files are not uploaded.
+The existing 20,000-character body cap is unchanged.
+
+Messages never expire automatically. Mail whose sender email exactly matches one of
+the same owner's contact addresses is archived without expiry, including mail already
+imported when this policy is activated. The decision persists through later contact
+edits and collector reconciliation deletions. Explicit device/source/data forgetting
+still deletes it. Recipients, display names and other users' contacts cannot grant
+retention. Non-contact mail and other sources retain their existing 30-day policy
+(with the ongoing-event/current-Home exceptions).
+
+Mail's reader/checkpoint/window are unchanged: this does **not** backfill older email.
+The server's lexical index includes every uploaded message immediately; the durable
+embedding queue adds semantic coverage in the background. Historical uploads are
+marked as backlog and excluded from proactive news, including recent history. Graph linking
+continues to use its separate 30-day window. Deploy the retention API before starting
+an all-history collector, and take a verified NAS snapshot first. Keep the active DB
+and environment during code activation/rollback; an older API's retention job would
+expire archived data, so do not roll back to that policy without disabling that job.
+
+Activated the retention API on **2026-10-30** as `message-history-20261030-01`,
+after verified NAS snapshot `just-maple-20261030T051652Z.sqlite`. The API source is
+`c2b4550c394f06fdec6012f53d8cf927ee882919`; the previous web source
+`2639adf64d72abe0c8455189127d8e4873a80c3e` and native/model artifacts are unchanged.
+All 208 manifest artifacts were checked during activation. Public/LAN authenticated
+reads, identity, CORS, WebSocket, anonymous denial and development-auth exclusion
+passed after activation; API/search/tunnel/Nginx are active.
+
+Imported **64,698 unique available Messages items**, December 10, 2019 through
+October 30, 2026 UTC, through the Mac's existing active collector in 329 message-only
+batches. Normal message types 0/2/3 and legacy NULL types are included; reactions,
+sticker reactions, votes and unreadable/empty records are excluded. The versioned
+checkpoint also repairs the former type filter. Every item has a current search
+document; a historical FTS query passed. Apple Mail remained **10,700** items and
+its local checkpoint hash was unchanged; **12** already imported emails qualified
+for permanent contact-mail retention.
+
+At **05:31 UTC**, 63,485 semantic jobs remained with zero retries. This is complete
+ingestion/lexical coverage, with semantic coverage still building. SQLite was
+979,660,800 bytes; available data space was 58,590,478,336 bytes. Counts and sizes
+continue changing. Final post-import NAS snapshot `just-maple-20261030T053200Z.sqlite`
+passed the backup service's integrity/SHA checks. No DNS change, source-database
+modification or main merge.
+
+## Client/frontend rollout — October 30, 2026
+
+Frontend source `3fff5ce5580555814a089027a23e0aad2dd28ec3` is deployed as
+`japanese-maple-20261030-02`. The retention API remains at `c2b4550c`; database,
+environment and native/model pins are preserved. All **111** current manifest
+artifacts passed SHA-256 checks. Pre-deployment NAS snapshot
+`just-maple-20261030T053758Z.sqlite` passed integrity/SHA verification. Public/LAN
+identity, authenticated reads, anonymous denial, CORS, WebSockets and development-auth
+exclusion passed after activation. API/search/tunnel/Nginx remain active.
+
+Signed JapaneseMaple **1.0.0 (64)** was installed on physical iPhone **Artemis**
+(`com.just.maple.JapaneseMaple`); the installed app listing confirms build 64.
+Opening it was blocked by iOS while the phone was locked, so phone launch verification
+awaits unlocking. No uninstall or data-container reset was used.
+
+Mac build **64** is installed and running from
+`/Users/riabuz/Applications/JapaneseMaple.app`, with its signature verified and the
+previous user bundle preserved under `/tmp/japanese-maple-deploy-20261030/mac-backups/`.
+It retained sign-in, uses the primary Phoebe domain and automatically discovers the
+LAN hostname; the native settings visibly report **Connected locally**. Its Messages
+checkpoint is version 3 with backfill complete, and the local staging cache has
+64,698 messages and 10,700 emails. The separate root-owned
+`/Applications/JapaneseMaple.app` remains build 63: replacing it requires administrator
+authentication. Use the updated user-installed copy. No App Store/TestFlight release.
+
+A compatible frontend rollback returns the current symlink to
+`message-history-20261030-01` and restarts only the API while preserving the live
+database/environment. Mac rollback can restore the backed-up bundle without deleting
+its container/keychain, though it loses the new collection policy. Semantic indexing
+continues in the durable background queue. No main merge or DNS change.

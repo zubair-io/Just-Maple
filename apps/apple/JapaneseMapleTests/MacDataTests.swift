@@ -72,7 +72,7 @@ private func attributedBody(_ text: String) -> Data {
         try db.execute("INSERT INTO chat_message_join VALUES (1, ?)", [rowid])
     }
 
-    @Test func importsRecentMessagesOnly() throws {
+    @Test func importsCompleteHistory() throws {
         let (url, db) = try makeChatDB()
         try insert(db, rowid: 1, text: "Too old", at: now.addingTimeInterval(-40 * 86_400))
         try insert(db, rowid: 2, text: "No practice Friday", at: now.addingTimeInterval(-3600))
@@ -81,8 +81,8 @@ private func attributedBody(_ text: String) -> Data {
         try insert(db, rowid: 5, text: "Thanks!", at: now, fromMe: true)
 
         let result = try IMessageReader(databaseURL: url).read(checkpoint: nil, now: now)
-        #expect(result.items.map(\.body) == ["No practice Friday", "Purple socks tomorrow", "Thanks!"])
-        let first = try #require(result.items.first)
+        #expect(result.items.map(\.body) == ["Too old", "No practice Friday", "Purple socks tomorrow", "Thanks!"])
+        let first = try #require(result.items.first { $0.id == "imessage:guid-2" })
         #expect(first.id == "imessage:guid-2")
         #expect(first.thread == "Soccer parents")
         #expect(first.extra?["chatId"] == .string("iMessage;+;chat1"))
@@ -90,6 +90,57 @@ private func attributedBody(_ text: String) -> Data {
         #expect(first.participants == ["+15185550100", "coach@example.com"])
         #expect(result.items.last?.sender == "Me")
         #expect(abs(first.occurredAt - now.addingTimeInterval(-3600).timeIntervalSince1970) < 0.001)
+    }
+
+    @Test func rewindsLegacyCheckpointOnceAndResumesBoundedHistory() throws {
+        let (url, db) = try makeChatDB()
+        try db.transaction {
+            for id in 1...(IMessageReader.batchSize + 3) {
+                try insert(db, rowid: id, text: "History \(id)", at: now.addingTimeInterval(-400 * 86_400))
+            }
+        }
+        let reader = IMessageReader(databaseURL: url)
+        let legacy = "{\"lastRowId\":999999,\"lastScan\":100}"
+        let first = try reader.read(checkpoint: legacy, now: now)
+        #expect(first.items.count == IMessageReader.batchSize)
+        #expect(first.hasMore)
+        #expect(first.items.allSatisfy { $0.extra?["historyBackfill"] == .bool(true) })
+        let second = try reader.read(checkpoint: first.checkpoint, now: now.addingTimeInterval(1))
+        #expect(second.items.count == 3)
+        #expect(!second.hasMore)
+        #expect(second.items.allSatisfy { $0.extra?["historyBackfill"] == .bool(true) })
+        #expect(Set(first.items.map(\.id)).isDisjoint(with: second.items.map(\.id)))
+        let done = try reader.read(checkpoint: second.checkpoint, now: now.addingTimeInterval(2))
+        #expect(done.items.isEmpty)
+        #expect(!done.hasMore)
+
+        // More than a page of old edits must resume without losing the remainder.
+        try db.execute("UPDATE message SET text='Old edit', date_edited=?",
+            [IMessageReader.appleNanos(now.addingTimeInterval(3))])
+        let edit = try reader.read(checkpoint: done.checkpoint, now: now.addingTimeInterval(4))
+        #expect(edit.items.count == IMessageReader.batchSize)
+        #expect(edit.hasMore)
+        let lastEdits = try reader.read(checkpoint: edit.checkpoint, now: now.addingTimeInterval(5))
+        #expect(lastEdits.items.count == 3)
+        #expect(!lastEdits.hasMore)
+        #expect(lastEdits.items.allSatisfy { $0.extra?["historyBackfill"] == nil })
+        #expect(Set(edit.items.map(\.id)).isDisjoint(with: lastEdits.items.map(\.id)))
+        #expect(try reader.read(checkpoint: lastEdits.checkpoint, now: now.addingTimeInterval(6)).items.isEmpty)
+    }
+
+    @Test func includesNormalAppVariantsAndLegacyNullTypes() throws {
+        let (url, db) = try makeChatDB()
+        for id in 1...3 {
+            try insert(db, rowid: id, text: "Normal variant \(id)", at: now.addingTimeInterval(-400 * 86_400))
+        }
+        try db.execute("UPDATE message SET associated_message_type=2 WHERE ROWID=1")
+        try db.execute("UPDATE message SET associated_message_type=3 WHERE ROWID=2")
+        try db.execute("UPDATE message SET associated_message_type=NULL WHERE ROWID=3")
+        let result = try IMessageReader(databaseURL: url).read(
+            checkpoint: "{\"lastRowId\":999999,\"lastScan\":100,\"historyVersion\":2}", now: now)
+        #expect(result.items.map(\.body) == ["Normal variant 1", "Normal variant 2", "Normal variant 3"])
+        #expect(result.items.allSatisfy { $0.extra?["historyBackfill"] == .bool(true) })
+        #expect(!result.hasMore)
     }
 
     @Test func laterPassesReturnOnlyNewAndEditedMessages() throws {
@@ -819,6 +870,30 @@ final class StubServer: URLProtocol, @unchecked Sendable {
 @Suite struct MacDataRetentionTests {
     let now = Date(timeIntervalSince1970: 1_790_000_000)
 
+    @Test func archivesContactMailWithoutRewindingMailOrFollowingSourceRemoval() throws {
+        let store = try MacDataStore(path: tempDirectory().appendingPathComponent("store.sqlite").path)
+        try store.enable(.mail)
+        try store.enable(.contacts)
+        var email = makeItem("mail:archive", .mail, at: now.timeIntervalSince1970 - 400 * 86_400)
+        email.sender = "Family <SHARED@example.com>"
+        try store.apply(MacDataReadResult(items: [email], removedIds: [], presentIds: nil, reconcileWindow: nil, checkpoint: "mail-cursor"), source: .mail, now: now)
+        var card = makeItem("contacts:1", .contacts, at: now.timeIntervalSince1970)
+        card.title = "Family"
+        card.extra = ["emails": .array([.object(["value": .string("shared@example.com")])])]
+        var duplicate = card
+        duplicate.id = "contacts:2"
+        duplicate.title = "Other family member"
+        try store.apply(readResult([card, duplicate]), source: .contacts, now: now)
+        #expect(try store.pruneExpired(now: now) == 0)
+        #expect(try store.checkpoint(.mail) == "mail-cursor")
+        // It remains an archive even if the contact is later removed or Mail deletes it.
+        try store.disable(.contacts)
+        try store.apply(MacDataReadResult(items: [], removedIds: [email.id], presentIds: [],
+            reconcileWindow: 0...Double.greatestFiniteMagnitude, checkpoint: "mail-cursor"), source: .mail)
+        #expect(try store.pruneExpired(now: now) == 0)
+        #expect(try store.item(id: email.id) != nil)
+    }
+
     @Test func prunesOldItemsButKeepsContactsAndEventsThatHaventEnded() throws {
         let store = try MacDataStore(path: tempDirectory().appendingPathComponent("store.sqlite").path)
         let t = now.timeIntervalSince1970
@@ -838,10 +913,10 @@ final class StubServer: URLProtocol, @unchecked Sendable {
         try store.apply(readResult([makeItem("contacts:old", .contacts, at: t - 400 * day)]), source: .contacts, now: now)
         try store.saveEmbedding(itemId: "imessage:old", revision: "1", vectors: [[1, 0]])
 
-        #expect(try store.pruneExpired(now: now) == 3)
+        #expect(try store.pruneExpired(now: now) == 2)
         let left = try MacDataSource.allCases.flatMap { try store.items(source: $0).map(\.id) }
-        #expect(Set(left) == ["imessage:new", "calendar:ongoing", "contacts:old"])
-        #expect(try store.vectors(itemId: "imessage:old").isEmpty)
+        #expect(Set(left) == ["imessage:old", "imessage:new", "calendar:ongoing", "contacts:old"])
+        #expect(try store.vectors(itemId: "imessage:old").count == 1)
         // Pruning isn't a deletion to upload: the server applies the same rule itself.
         #expect(try store.changes(after: 0, limit: 100).allSatisfy { $0.kind != "removed" })
         #expect(try store.pruneExpired(now: now) == 0)
