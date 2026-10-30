@@ -8,6 +8,7 @@ import {
     MacDataSourceSchema,
     UpdateDeviceDataPageSchema,
     isHomeStateItemId,
+    withMessageSenderNames,
     type DeviceDataAccess,
     type JWTPayload,
     type MacDataSource,
@@ -38,6 +39,7 @@ import {
     homeExposureMatcher,
     itemMatcherFor,
     itemQueryFor,
+    visibleMessageContacts,
 } from '../services/device-data-access.service';
 import { getUsersWithNotebookAccess } from '../repositories/notebook.repo';
 import { realtimeWSService } from '../services/realtime-ws.service';
@@ -232,6 +234,7 @@ export const deviceDataRoutes = new Elysia({ prefix: '/api' })
             if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
             let sources: MacDataSource[] = [query.source];
             let ownerId = auth.user._id;
+            let contactNotebookId: string | undefined;
             let pageQuery: Awaited<ReturnType<typeof itemQueryFor>> | undefined;
             let access: DeviceDataAccess | undefined;
             if (query.pageId) {
@@ -248,6 +251,7 @@ export const deviceDataRoutes = new Elysia({ prefix: '/api' })
                 }
                 sources = [view.source];
                 ownerId = view.ownerId;
+                contactNotebookId = view.page.notebookId;
                 pageQuery = await itemQueryFor(view);
                 if (!pageQuery) {
                     return { items: [], total: 0, collector: null, access };
@@ -284,8 +288,17 @@ export const deviceDataRoutes = new Elysia({ prefix: '/api' })
                 order: query.order,
                 ...pageQuery,
             });
+            const items = result.items.some(
+                (item) => item.source === 'mail' || item.source === 'imessage',
+            )
+                ? withMessageSenderNames(
+                      result.items,
+                      await visibleMessageContacts(ownerId, auth.user._id, contactNotebookId),
+                  )
+                : result.items;
             return {
                 ...result,
+                items,
                 collector: collector
                     ? {
                           name: collector.name,

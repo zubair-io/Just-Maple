@@ -77,6 +77,101 @@ describe.runIf(mongoAvailable)('device data routes', () => {
             '/api/collectors',
         ).then((r) => r.json());
 
+    it('resolves sender names from the owner’s contacts without replacing raw identifiers', async () => {
+        await upsertDeviceItems(userId, 'test-device', [
+            item('contacts:alice', 'contacts', {
+                title: 'Alice Green',
+                extra: {
+                    emails: [{ value: 'alice@example.com' }],
+                    phones: [{ value: '+15185550123' }],
+                },
+            }),
+            item('mail:alice', 'mail', { sender: 'Old Header <alice@example.com>' }),
+            item('imessage:alice', 'imessage', {
+                sender: '+15185550123',
+                participants: ['+15185550123'],
+            }),
+        ]);
+        for (const source of ['mail', 'imessage']) {
+            const response = await request(null, `/api/device-data/items?source=${source}`, 'GET');
+            expect(response.status).toBe(200);
+            expect((await response.json()).items[0]).toMatchObject({
+                senderName: 'Alice Green',
+                senderContactId: 'contacts:alice',
+            });
+        }
+        const stored = await testDb
+            .collection('device_items')
+            .findOne({ userId, id: 'mail:alice' });
+        expect(stored?.item.sender).toBe('Old Header <alice@example.com>');
+        expect(stored?.item.senderName).toBeUndefined();
+    });
+
+    it('never enriches a shared message with an unshared contact name or another owner’s contact', async () => {
+        const other = await createUserFixture();
+        const otherId = other._id.toString();
+        const otherToken = await createAuthToken(otherId);
+        await upsertDeviceItems(userId, 'owner-device', [
+            item('contacts:private', 'contacts', {
+                title: 'Private Contact Name',
+                extra: { emails: [{ value: 'bare@example.com' }] },
+            }),
+            item('mail:shared', 'mail', { sender: 'bare@example.com' }),
+        ]);
+        await upsertDeviceItems(otherId, 'other-device', [
+            item('contacts:other', 'contacts', {
+                title: 'Other Owner Name',
+                extra: { emails: [{ value: 'bare@example.com' }] },
+            }),
+        ]);
+        const notebook = await createNotebookFixture({
+            createdBy: userId,
+            sharedWith: [
+                { userId, accessLevel: 'owner' },
+                { userId: otherId, accessLevel: 'read' },
+            ],
+        });
+        const page = await createPageFixture({
+            userId,
+            notebookId: notebook._id.toString(),
+            type: 'devicedata',
+        });
+        await testDb
+            .collection('pages')
+            .updateOne(
+                { id: page.id },
+                { $set: { deviceSource: 'mail', deviceFilter: { includeAll: true } } },
+            );
+        const url = `/api/device-data/items?source=mail&pageId=${page.id}`;
+        const response = await request(null, url, 'GET', otherToken);
+        expect(response.status).toBe(200);
+        const shared = (await response.json()).items[0];
+        expect(shared.senderName).toBe('bare@example.com');
+        expect(shared.senderContactId).toBeUndefined();
+        const contacts = await createPageFixture({
+            userId,
+            notebookId: notebook._id.toString(),
+            type: 'devicedata',
+        });
+        await testDb
+            .collection('pages')
+            .updateOne(
+                { id: contacts.id },
+                { $set: { deviceSource: 'contacts', deviceFilter: { includeAll: true } } },
+            );
+        const named = (await (await request(null, url, 'GET', otherToken)).json()).items[0];
+        expect(named).toMatchObject({
+            senderName: 'Private Contact Name',
+            senderContactId: 'contacts:private',
+        });
+        await testDb
+            .collection('pages')
+            .updateOne({ id: contacts.id }, { $set: { deviceFilter: {} } });
+        expect(
+            (await (await request(null, url, 'GET', otherToken)).json()).items[0].senderContactId,
+        ).toBeUndefined();
+    });
+
     it('makes each source come from one device, and switching moves it', async () => {
         const mac = await register('mac-device-1', ['imessage', 'mail', 'calendar', 'contacts']);
         expect(mac.collector.activeSources).toEqual(['imessage', 'mail', 'calendar', 'contacts']);

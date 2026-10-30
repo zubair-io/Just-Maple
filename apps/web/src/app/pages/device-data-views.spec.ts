@@ -4,6 +4,7 @@ import { signal, type Type } from '@angular/core';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { of } from 'rxjs';
 import type { MacDataItem, Page } from '@maple/shared';
+import { MailViewComponent } from './mail-view/mail-view.component';
 import { IMessageViewComponent } from './imessage-view/imessage-view.component';
 import { ContactsViewComponent } from './contacts-view/contacts-view.component';
 import { HealthViewComponent } from './health-view/health-view.component';
@@ -101,6 +102,21 @@ describe('device data views', () => {
     fixture.detectChanges();
     return { fixture, root: fixture.nativeElement as HTMLElement };
   }
+
+  it('shows resolved contact names for messages and email instead of raw sender addresses', async () => {
+    for (const component of [IMessageViewComponent, MailViewComponent]) {
+      listItems.mockResolvedValue({
+        items: [item({ sender: 'raw@example.com', senderName: 'Alice Green' })],
+        total: 1,
+        collector: null,
+      });
+      const { root, fixture } = await render(component as Type<IMessageViewComponent>);
+      const row = root.querySelector('tbody')!;
+      expect(row.textContent).toContain('Alice Green');
+      expect(row.textContent).not.toContain('raw@example.com');
+      fixture.destroy();
+    }
+  });
 
   describe('Messages', () => {
     it('loads the page’s items from the API and names the collecting device', async () => {

@@ -205,14 +205,19 @@ nonisolated struct MacDataContactNames: Sendable, Equatable {
     /// Built from stored contact items, using the phones and emails in their `extra`.
     init(contacts: [MacDataItem]) {
         var names: [String: String] = [:]
-        // The me card loses to other cards that share a number (a family landline).
-        for contact in contacts.sorted(by: { ($0.extra?["isMe"] == .bool(true) ? 0 : 1) < ($1.extra?["isMe"] == .bool(true) ? 0 : 1) }) {
+        var ambiguous = Set<String>()
+        // A shared phone/email does not identify which contact authored a message.
+        for contact in contacts {
             guard let name = contact.title, !name.isEmpty else { continue }
             for field in ["phones", "emails"] {
                 guard case .array(let entries) = contact.extra?[field] else { continue }
                 for case .object(let entry) in entries {
                     guard case .string(let value) = entry["value"], let key = Self.key(value) else { continue }
-                    names[key] = name
+                    guard !ambiguous.contains(key) else { continue }
+                    if let previous = names[key], previous != name {
+                        names.removeValue(forKey: key)
+                        ambiguous.insert(key)
+                    } else { names[key] = name }
                 }
             }
         }
@@ -225,8 +230,8 @@ nonisolated struct MacDataContactNames: Sendable, Equatable {
         Self.key(handle).flatMap { names[$0] }
     }
 
-    /// Emails compare lowercased. Phones compare by their last 10 digits, so
-    /// "+1 (518) 555-0100", "518-555-0100" and "15185550100" all match.
+    /// Emails compare lowercased. US national numbers default to +1; explicit country
+    /// codes are retained so numbers in different countries cannot collide by suffix.
     static func key(_ handle: String) -> String? {
         var value = handle.trimmingCharacters(in: .whitespacesAndNewlines)
         if value.lowercased().hasPrefix("mailto:") { value = String(value.dropFirst(7)) }
@@ -234,7 +239,7 @@ nonisolated struct MacDataContactNames: Sendable, Equatable {
         let digits = value.unicodeScalars.filter { ("0"..."9").contains($0) }.map(String.init).joined()
         // Short codes and stray numbers would match too much.
         guard digits.count >= 7 else { return nil }
-        return String(digits.suffix(10))
+        return "+" + (digits.count == 10 ? "1" + digits : digits)
     }
 }
 #endif

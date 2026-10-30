@@ -177,7 +177,12 @@ nonisolated struct IMessageReader {
             allDay: nil,
             mailbox: row["service"]?.string,
             isRead: nil,
-            extra: row["chat_guid"]?.string.map { ["chatId": .string($0)] })
+            extra: {
+                var values: [String: JSONValue] = [:]
+                if let chat = row["chat_guid"]?.string { values["chatId"] = .string(chat) }
+                if !isFromMe, let handle { values["senderHandle"] = .string(handle) }
+                return values.isEmpty ? nil : values
+            }())
     }
 
     // MARK: - Handles

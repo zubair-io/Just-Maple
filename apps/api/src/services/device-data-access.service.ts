@@ -21,6 +21,7 @@ import { findUserById } from '../repositories/user.repo';
 import { collectorTimeZone } from '../repositories/collector.repo';
 import { listPlaces } from '../repositories/profile.repo';
 import {
+    findDeviceContactItems,
     findDeviceItemFacets,
     findHomeStateItems,
     type DeviceItemQuery,
@@ -329,4 +330,21 @@ export async function notebookDataSlices(notebookId: string): Promise<DataPageSl
         });
     }
     return slices;
+}
+
+/** Contact names are personal data too: only enrich with the owner's or currently shared cards. */
+export async function visibleMessageContacts(
+    ownerId: string,
+    viewerId: string,
+    notebookId?: string,
+): Promise<MacDataItem[]> {
+    if (ownerId === viewerId) return findDeviceContactItems(ownerId);
+    if (!notebookId) return [];
+    const slices = (await dataPageSlicesFor(viewerId, notebookId)).filter(
+        (slice) => slice.ownerId === ownerId && slice.source === 'contacts',
+    );
+    if (!slices.length) return [];
+    return (await findDeviceContactItems(ownerId)).filter((card) =>
+        slices.some((slice) => slice.match(card)),
+    );
 }

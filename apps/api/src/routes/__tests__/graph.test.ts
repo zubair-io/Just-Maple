@@ -1219,6 +1219,46 @@ describe.runIf(mongoAvailable)('connected-data graph', () => {
             expect(String(doc._id).startsWith(`${doc.notebookId}|`)).toBe(true);
     });
 
+    it('shows message authors as contacts and links to their visible person without changing counts', async () => {
+        const message = item('imessage:author', 'imessage', {
+            sender: 'Old label',
+            participants: ['+15185550123', '+15185550100'],
+            extra: { senderHandle: '+15185550123' },
+            body: 'Pizza soon?',
+        });
+        const email = item('mail:author', 'mail', {
+            sender: 'Header Name <jen@example.com>',
+            title: 'Dinner plans',
+        });
+        await upload(['contacts', 'imessage', 'mail'], [meCard, jenCard, message, email]);
+        const { notebookId } = await notebook(['contacts', 'imessage', 'mail']);
+        judge.mockImplementation(async (request: GraphJudgeRequest) => ({
+            pairs: [],
+            topics: [
+                {
+                    name: 'Dinner',
+                    items: request.items.map((entry) => entry.n),
+                    confidence: 0.9,
+                },
+            ],
+        }));
+        await runGraphPass(notebookId);
+        const { graph } = await graphOf(alex, notebookId);
+        const jen = graph.nodes.find(
+            (node) => node.kind === 'person' && node.label === 'Jen Lawrence',
+        )!;
+        expect(jen).toBeDefined();
+        for (const id of [message.id, email.id]) {
+            expect(graph.nodes.find((node) => node.itemId === id)).toMatchObject({
+                senderName: 'Jen Lawrence',
+                senderPersonId: jen.id,
+            });
+        }
+        expect(graph.nodes.find((node) => node.itemId === email.id)?.label).toContain(
+            'Dinner plans',
+        );
+    });
+
     it('tells bots every reason a person in an item is connected', async () => {
         await upload(familySources, family);
         const { notebookId } = await notebook(familySources);

@@ -743,7 +743,7 @@ final class StubServer: URLProtocol, @unchecked Sendable {
         ])
     }
 
-    @Test func matchesPhonesByLastTenDigitsAndEmailsIgnoringCase() {
+    @Test func matchesNormalizedPhonesAndEmailsIgnoringCase() {
         let names = names()
         #expect(names.name(for: "+15185550100") == "Julia")
         #expect(names.name(for: "518.555.0100") == "Julia")
@@ -751,7 +751,22 @@ final class StubServer: URLProtocol, @unchecked Sendable {
         #expect(names.name(for: "mailto:COACH@example.com") == "Coach Dan")
         #expect(names.name(for: "+15185550199") == nil)
         #expect(names.name(for: "12345") == nil)  // short codes don't match anything
-        #expect(MacDataContactNames.key("+44 20 7946 0958") == "2079460958")
+        #expect(MacDataContactNames.key("+44 20 7946 0958") == "+442079460958")
+        #expect(MacDataContactNames.key("+44 20 7946 0958") != MacDataContactNames.key("+1 207 946 0958"))
+    }
+
+    @Test func doesNotGuessWhichPersonUsesASharedNumber() {
+        let alice = CNMutableContact()
+        alice.givenName = "Alice"
+        alice.phoneNumbers = [CNLabeledValue(label: nil, value: CNPhoneNumber(stringValue: "+15185550123"))]
+        let bob = CNMutableContact()
+        bob.givenName = "Bob"
+        bob.phoneNumbers = alice.phoneNumbers
+        let names = MacDataContactNames(contacts: [
+            ContactsReader.item(from: alice, isMe: false, readAt: now),
+            ContactsReader.item(from: bob, isMe: false, readAt: now),
+        ])
+        #expect(names.name(for: "+15185550123") == nil)
     }
 
     @Test func iMessageAndMailShowContactNames() throws {
@@ -774,6 +789,7 @@ final class StubServer: URLProtocol, @unchecked Sendable {
         let item = try #require(
             IMessageReader(databaseURL: chat).read(checkpoint: nil, now: now, names: names()).items.first)
         #expect(item.sender == "Coach Dan")
+        #expect(item.extra?["senderHandle"] == .string("coach@example.com"))
         #expect(item.thread == "Julia, Coach Dan")
         #expect(item.participants == ["+15185550100", "coach@example.com"])  // raw handles stay
 
