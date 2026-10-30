@@ -641,10 +641,11 @@ function operation(op: string, name: string | undefined, args: unknown[]): unkno
     if (op === 'messages.previews') {
         const ids = (args[1] as string[]).slice(0, 500).map((id) => `${String(args[0])}:${id}`);
         if (!ids.length) return [];
+        // The scope index otherwise scans the entire library for every preview batch.
         return db
             .query(
                 `SELECT item_id AS id,substr(body,1,160) AS body,item_metadata AS metadata
-            FROM search_documents WHERE user_id=? AND source='imessage' AND id IN (${ids.map(() => '?').join(',')})`,
+            FROM search_documents INDEXED BY sqlite_autoindex_search_documents_1 WHERE user_id=? AND source='imessage' AND id IN (${ids.map(() => '?').join(',')})`,
             )
             .all(String(args[0]), ...ids);
     }
