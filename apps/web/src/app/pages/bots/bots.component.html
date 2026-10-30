@@ -30,14 +30,14 @@
               <div class="bot-card" [class.disabled]="!bot.isEnabled">
                 <app-profile-avatar
                   [email]="bot.userId + '@bot'"
-                  [displayName]="bot.templateName || bot.handle"
+                  [displayName]="bot.displayName || bot.templateName || bot.handle"
                   [profilePictureUrl]="bot.templateAvatar"
                   size="md"
                   [showBorder]="false"
                 />
                 <div class="bot-info">
                   <div class="bot-handle">@{{ bot.handle }}</div>
-                  <div class="bot-name">{{ bot.templateName || 'Bot' }}</div>
+                  <div class="bot-name">{{ bot.displayName || bot.templateName || 'Bot' }}</div>
                   @if (!bot.isEnabled) {
                     <span class="bot-status disabled">Disabled</span>
                   }
@@ -465,7 +465,7 @@
           <div class="template-preview">
             <app-profile-avatar
               [email]="bot.userId + '@bot'"
-              [displayName]="bot.templateName || bot.handle"
+              [displayName]="bot.displayName || bot.templateName || bot.handle"
               [profilePictureUrl]="bot.templateAvatar"
               size="lg"
               [showBorder]="false"
@@ -489,13 +489,31 @@
           </div>
 
           <div class="form-field">
+            <label for="editHandle">Handle</label>
+            <div class="input-with-prefix">
+              <span class="prefix">@</span>
+              <input
+                id="editHandle"
+                type="text"
+                maxlength="30"
+                autocapitalize="none"
+                spellcheck="false"
+                [ngModel]="editHandle()"
+                (ngModelChange)="editHandle.set($event)"
+              />
+            </div>
+            <p class="field-hint">Use this handle when mentioning the bot.</p>
+          </div>
+
+          <div class="form-field">
             <label for="editDisplayName">Name</label>
             <input
               type="text"
               id="editDisplayName"
+              maxlength="50"
               [ngModel]="editDisplayName()"
               (ngModelChange)="editDisplayName.set($event)"
-              [placeholder]="bot.templateName || bot.handle"
+              [placeholder]="bot.displayName || bot.templateName || bot.handle"
             />
           </div>
 
@@ -933,6 +951,7 @@
             <input
               type="text"
               id="editBotName"
+              maxlength="50"
               [ngModel]="editCustomBotName()"
               (ngModelChange)="editCustomBotName.set($event)"
               [placeholder]="bot.handle"
@@ -940,12 +959,20 @@
           </div>
 
           <div class="form-field">
-            <label>Handle</label>
-            <div class="input-with-prefix disabled">
+            <label for="editCustomBotHandle">Handle</label>
+            <div class="input-with-prefix">
               <span class="prefix">@</span>
-              <input type="text" [value]="bot.handle" disabled />
+              <input
+                id="editCustomBotHandle"
+                type="text"
+                maxlength="30"
+                autocapitalize="none"
+                spellcheck="false"
+                [ngModel]="editCustomBotHandle()"
+                (ngModelChange)="editCustomBotHandle.set($event)"
+              />
             </div>
-            <p class="field-hint">Handle cannot be changed after creation</p>
+            <p class="field-hint">Use this handle when mentioning the bot.</p>
           </div>
 
           <div class="form-field">

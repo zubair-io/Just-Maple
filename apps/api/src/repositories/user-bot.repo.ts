@@ -220,7 +220,8 @@ export async function updateUserBot(
 
     const updateDoc: Record<string, unknown> = { updatedAt: now };
 
-    if (data.displayName !== undefined) updateDoc.displayName = data.displayName;
+    if (data.handle !== undefined) updateDoc.handle = data.handle.trim().toLowerCase();
+    if (data.displayName !== undefined) updateDoc.displayName = data.displayName.trim();
 
     // Merge config instead of replacing it to preserve existing fields
     if (data.config !== undefined) {
@@ -250,7 +251,8 @@ export async function updateUserBot(
         );
 
         return result ? toUserBotSafe(result) : null;
-    } catch {
+    } catch (error) {
+        if ((error as { code?: number }).code === 11000) throw error;
         return null;
     }
 }
@@ -443,7 +445,8 @@ export async function updateCustomBot(
 
     const updateDoc: Record<string, unknown> = { updatedAt: now };
 
-    if (data.name !== undefined) updateDoc.displayName = data.name;
+    if (data.handle !== undefined) updateDoc.handle = data.handle.trim().toLowerCase();
+    if (data.name !== undefined) updateDoc.displayName = data.name.trim();
     if (data.description !== undefined) updateDoc.description = data.description;
     if (data.invokeUrl !== undefined) updateDoc.invokeUrl = data.invokeUrl;
     if (data.permissions !== undefined) updateDoc.permissions = data.permissions;
@@ -463,7 +466,8 @@ export async function updateCustomBot(
         );
 
         return result ? toUserBotSafe(result) : null;
-    } catch {
+    } catch (error) {
+        if ((error as { code?: number }).code === 11000) throw error;
         return null;
     }
 }

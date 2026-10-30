@@ -4,7 +4,7 @@ import { Router } from '@angular/router';
 import { Clipboard } from '@angular/cdk/clipboard';
 import { of, Subject, throwError } from 'rxjs';
 import { BotsComponent } from './bots.component';
-import { BotService, type EnrichedUserBot } from '../../services/bot.service';
+import { BotService, type EnrichedUserBot, type CustomBot } from '../../services/bot.service';
 import { DialogService } from '../../components';
 import type { BotTemplate, BotModelOption } from '@maple/shared';
 
@@ -23,6 +23,7 @@ const bot = {
   templateId: 'template',
   handle: 'claude',
   isEnabled: true,
+  displayName: 'My assistant',
   config: { model: 'claude-current', apiKey: '***REDACTED***' },
 } as EnrichedUserBot;
 
@@ -41,10 +42,12 @@ describe('provider models in bot settings', () => {
     loadModels: vi.fn(),
     updateBot: vi.fn(() => of(bot)),
     registerBot: vi.fn(() => of(bot)),
+    updateCustomBot: vi.fn(() => of(bot)),
   };
   beforeEach(() => {
     service.loadModels.mockReset();
     service.updateBot.mockClear();
+    service.updateCustomBot.mockClear();
     service.loadModels.mockReturnValue(
       of([
         { id: 'claude-current', name: 'Claude Current' },
@@ -60,6 +63,59 @@ describe('provider models in bot settings', () => {
         { provide: DialogService, useValue: {} },
       ],
     });
+  });
+  it('edits the AI name and handle and displays the saved name on its card', async () => {
+    const fixture = TestBed.createComponent(BotsComponent);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.bot-name').textContent).toContain('My assistant');
+    const component = fixture.componentInstance;
+    component.editBot(bot);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const handle: HTMLInputElement = fixture.nativeElement.querySelector('#editHandle');
+    const name: HTMLInputElement = fixture.nativeElement.querySelector('#editDisplayName');
+    expect(handle.disabled).toBe(false);
+    expect(handle.value).toBe('claude');
+    handle.value = 'My_Assistant';
+    handle.dispatchEvent(new Event('input'));
+    name.value = 'Personal helper';
+    name.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    component.saveBot();
+    expect(service.updateBot).toHaveBeenLastCalledWith(
+      'bot',
+      expect.objectContaining({ handle: 'my_assistant', displayName: 'Personal helper' }),
+    );
+    component.editBot(bot);
+    component.editHandle.set('bad handle');
+    component.saveBot();
+    expect(service.updateBot).toHaveBeenCalledTimes(1);
+    expect(component.editError()).toContain('1–30');
+    fixture.destroy();
+  });
+  it('edits webhook handles and names instead of showing a disabled handle', async () => {
+    const fixture = TestBed.createComponent(BotsComponent);
+    fixture.detectChanges();
+    const component = fixture.componentInstance;
+    component.editCustomBot({
+      ...bot,
+      botType: 'custom',
+      invokeUrl: 'https://example.com/webhook',
+      displayName: 'Webhook bot',
+    } as CustomBot);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const handle: HTMLInputElement = fixture.nativeElement.querySelector('#editCustomBotHandle');
+    expect(handle.disabled).toBe(false);
+    expect(handle.value).toBe('claude');
+    component.editCustomBotHandle.set(' webhook_new ');
+    component.editCustomBotName.set('New webhook');
+    component.saveCustomBot();
+    expect(service.updateCustomBot).toHaveBeenCalledWith(
+      'bot',
+      expect.objectContaining({ handle: 'webhook_new', name: 'New webhook' }),
+    );
+    fixture.destroy();
   });
   it('loads saved credentials by bot ID and persists the dropdown selection', async () => {
     const fixture = TestBed.createComponent(BotsComponent);

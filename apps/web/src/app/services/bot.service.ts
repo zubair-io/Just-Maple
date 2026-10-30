@@ -188,6 +188,7 @@ export class BotService {
         this._userBots.update((bots) =>
           bots.map((b) => (b._id === id ? { ...b, ...response.userBot } : b)),
         );
+        this.clearNotebookBotsCache();
       }),
       map((response) => response.userBot),
       catchError((err) => {
@@ -266,10 +267,11 @@ export class BotService {
     return this.http.patch<{ bot: CustomBot }>(`/api/custom-bots/${id}`, data).pipe(
       tap((response) => {
         this._customBots.update((bots) => bots.map((b) => (b._id === id ? response.bot : b)));
+        this.clearNotebookBotsCache();
       }),
       map((response) => response.bot),
       catchError((err) => {
-        const message = err?.error?.error || 'Failed to update custom bot';
+        const message = err?.error?.message || err?.error?.error || 'Failed to update custom bot';
         return throwError(() => new Error(message));
       }),
     );

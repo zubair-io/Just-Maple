@@ -151,7 +151,36 @@ export const customBotRoutes = new Elysia({ prefix: '/api/custom-bots' })
                 return { error: 'Unauthorized' };
             }
 
-            const bot = await updateCustomBot(params.id, auth.user._id, body);
+            const existing = await findUserBotById(params.id);
+            if (!existing || existing.userId !== auth.user._id || existing.botType !== 'custom') {
+                set.status = 404;
+                return {
+                    error: 'resource/not_found',
+                    message: 'Bot not found or not a custom bot',
+                };
+            }
+            if (body.handle !== undefined) {
+                body.handle = body.handle.toLowerCase();
+                const taken = await findUserBotByHandle(auth.user._id, body.handle);
+                if (taken && taken._id !== params.id) {
+                    set.status = 409;
+                    return {
+                        error: 'validation/duplicate_handle',
+                        message: `You already have a bot with handle @${body.handle}`,
+                    };
+                }
+            }
+            let bot;
+            try {
+                bot = await updateCustomBot(params.id, auth.user._id, body);
+            } catch (error) {
+                if ((error as { code?: number }).code !== 11000) throw error;
+                set.status = 409;
+                return {
+                    error: 'validation/duplicate_handle',
+                    message: 'A bot with this handle already exists',
+                };
+            }
 
             if (!bot) {
                 set.status = 404;
