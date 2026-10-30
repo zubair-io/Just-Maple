@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { BotMessageContentComponent } from './bot-message-content.component';
 import { DeviceDataService } from '../../../services/device-data.service';
-import { markdownToProseMirror } from '@maple/shared';
+import { markdownToProseMirror } from '@maple/shared/bot-response';
 
 const program =
   'Response([note, ci, src1, src2, src3])note = Text("A forwarded email has a deadline.")ci = Text("Two workflows failed.")src1 = Source("Forwarded email", "mail:123")src2 = Source("Web workflow", "mail:124")src3 = Source("Android workflow", "mail:125")';

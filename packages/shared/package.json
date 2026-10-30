@@ -20,6 +20,10 @@
     "./local": {
       "types": "./dist/local/index.d.ts",
       "import": "./dist/local/index.js"
+    },
+    "./bot-response": {
+      "types": "./dist/bot-response.d.ts",
+      "import": "./dist/bot-response.js"
     }
   },
   "scripts": {
