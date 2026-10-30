@@ -16,8 +16,11 @@ struct ServerSettingsView: View {
                 if isWelcome {
                     Section {
                         VStack(spacing: 12) {
-                            Image(systemName: "leaf.fill")
-                                .font(.system(size: 44)).foregroundStyle(.orange)
+                            Image("MapleLeaf")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 120, height: 52)
+                                .accessibilityLabel("Maple leaf")
                             Text("Welcome to JapaneseMaple")
                                 .font(.title2.bold())
                             Text("Connect to your server to get started.")
