@@ -72,6 +72,8 @@ describe('provider models in bot settings', () => {
       _id: 'webhook',
       botType: 'custom' as const,
       invokeUrl: 'https://example.com/webhook',
+      permissions: { messages: { read: true, write: true } },
+      status: 'active',
     } as CustomBot;
     service.userBots.set([bot, webhook as EnrichedUserBot]);
     service.customBots.set([webhook]);
