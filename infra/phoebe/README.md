@@ -15,8 +15,8 @@ migration and hostnames were explicitly authorized; **do not merge to main**.
 | Storage               | `local`: 16 GiB root + 64 GiB managed `/var/lib/just-maple`, backup enabled                     |
 | LAN                   | DHCP `192.168.1.179/23`, gateway `192.168.1.1`; reserve this lease for permanent use            |
 | API                   | Non-root `just-maple-api`, bound to `127.0.0.1:7071`                                            |
-| Application release   | `/opt/just-maple/current` → `japanese-maple-20261030-02`                                        |
-| Runtime source        | `c2b4550c394f06fdec6012f53d8cf927ee882919`; native/model pins retained                          |
+| Application release   | `/opt/just-maple/current` → `message-archive-20261030-11`                                       |
+| Runtime source        | `a04b62b570a16c83fd29d36966b8a90fa4041017`; native/model pins retained                          |
 | Database              | `/var/lib/just-maple/production-20261029.sqlite`, WAL/FULL                                      |
 | Local files           | `/var/lib/just-maple/media`; existing Azure media storage/URLs retained                         |
 | Native search         | `just-maple-search`, private `/run/just-maple-search/worker.sock`                               |
@@ -385,3 +385,60 @@ contains imported records and checkpoints; the original staging files should als
 be retained for unfinished jobs. A resumed job whose source file is unavailable
 fails safely rather than inventing or deleting records. Do not remove staging files
 while jobs are active.
+
+### Archive rollout — October 30, 2026
+
+Deployed `message-archive-20261030-11`, API/web source
+`a04b62b570a16c83fd29d36966b8a90fa4041017`, with all 112 manifest artifacts
+verified. Native binary/model/environment pins and the existing 2 GiB API limit
+are unchanged. Public/LAN authenticated reads, identity, CORS, WebSocket, anonymous
+access denial and development-auth exclusion passed. The Mac reader UI was checked
+through the installed JapaneseMaple client; hosted Apple clients load this interface
+from the server without a new native binary.
+
+Processed all **208,713 source records / 14 platforms**: **177,862 added** and
+**30,851 exact native iMessage overlaps skipped**. Existing native history stayed
+at 64,698, giving **242,560 Messages records**. All-platform directory checks found
+3,157 conversations; automated archive conversations are hidden by default and can
+be included with the checkbox. Curated aliases link direct histories across
+platforms while groups remain distinct. Historical AIM keyword search and
+chronological threads passed. The 2,017 undated records remain explicitly unknown.
+Naive source timestamps used `America/New_York`; their original text is retained.
+Seven messages exceeded the existing JavaScript 20,000-character text cap; full
+original text remains in the source/staging archive. Attachment files were not copied.
+
+The original 53,309,440-byte archive's SHA-256 stayed unchanged. A protected source
+copy is retained on the NAS as `message-archive-20261030-source.sqlite` beside the
+production backups, with the same verified checksum. Pre-import snapshot
+`just-maple-20261030T063209Z.sqlite`, paused-import snapshot
+`just-maple-20261030T065106Z.sqlite`, and completed-import snapshot
+`just-maple-20261030T072910Z.sqlite` passed off-host integrity/SHA checks. At the
+post-import audit, SQLite held 2,772,647,936 bytes plus a 29,449,792-byte WAL, with
+53,988,368,384 bytes available; quick-check passed and foreign-key errors were zero.
+Derived embeddings continue growing: the post-import queue had 232,624 jobs, so
+complete semantic coverage is not claimed. Keyword search is available now.
+
+The large corpus exposed compatibility reads that hydrated old messages during
+header, collector-count and retention queries. The import was paused safely at
+123,000 records and resumed from its durable checkpoint after correcting these
+reads. Message metadata and group memberships are interned, directory previews use
+unique-ID lookups with text cut in SQL, collector counts use covering indexes,
+and mail retention/expiry read bounded metadata. Vector uploads no longer evict the
+conversation metadata cache. Explicit data forgetting drains imports and deletes
+items in bounded transactions. Retention policy did not change.
+
+Validation: 961 API tests passed with 3 existing skips; final focused message tests
+10 passed; 147 shared and 17 focused UI tests passed. API/paperbark builds,
+shared/web typecheck and pre-commit checks passed. Standalone API `tsc` still has
+pre-existing workspace/rootDir diagnostics. Feature branch
+`codex/message-archive-and-threads`, draft PR312, remains unmerged. No DNS, Azure,
+other guest or standalone local/iCloud app changes.
+
+For a compatible code rollback, return to `message-archive-20261030-10` while
+keeping the current production database/environment. Pause any future active import
+first. Preserve the bounded history/retention queries when rolling farther back;
+older compatibility scans do not handle this corpus within the current memory cap.
+Never restore a pre-import snapshot over accepted writes without reconciliation.
+Private operator receipts are under `/tmp/japanese-maple-archive-20261030/` on the
+Mac, `/root/message-archive-20261030/` in CT131, and the matching subdirectory of
+Phoebe's `/root/just-maple-provision-20261029/`.
