@@ -15,8 +15,8 @@ migration and hostnames were explicitly authorized; **do not merge to main**.
 | Storage               | `local`: 16 GiB root + 64 GiB managed `/var/lib/just-maple`, backup enabled                     |
 | LAN                   | DHCP `192.168.1.179/23`, gateway `192.168.1.1`; reserve this lease for permanent use            |
 | API                   | Non-root `just-maple-api`, bound to `127.0.0.1:7071`                                            |
-| Application release   | `/opt/just-maple/current` → `sqlite-hybrid-20261029-11`                                         |
-| Runtime source        | `030c15e21f19b45b3ba140fe350b853f52ebc8c6`, based on main `ca1110ba`                            |
+| Application release   | `/opt/just-maple/current` → `message-history-20261030-01`                                       |
+| Runtime source        | `c2b4550c394f06fdec6012f53d8cf927ee882919`; native/model pins retained                          |
 | Database              | `/var/lib/just-maple/production-20261029.sqlite`, WAL/FULL                                      |
 | Local files           | `/var/lib/just-maple/media`; existing Azure media storage/URLs retained                         |
 | Native search         | `just-maple-search`, private `/run/just-maple-search/worker.sock`                               |
@@ -285,3 +285,22 @@ continues to use its separate 30-day window. Deploy the retention API before sta
 an all-history collector, and take a verified NAS snapshot first. Keep the active DB
 and environment during code activation/rollback; an older API's retention job would
 expire archived data, so do not roll back to that policy without disabling that job.
+
+Activated the retention API on **2026-10-30** as `message-history-20261030-01`,
+after verified NAS snapshot `just-maple-20261030T051652Z.sqlite`. The API source is
+`c2b4550c394f06fdec6012f53d8cf927ee882919`; the previous web source
+`2639adf64d72abe0c8455189127d8e4873a80c3e` and native/model artifacts are unchanged.
+All 208 manifest artifacts were checked during activation. Public/LAN authenticated
+reads, identity, CORS, WebSocket, anonymous denial and development-auth exclusion
+passed after activation; API/search/tunnel/Nginx are active.
+
+Imported **64,611 unique available Messages items**, December 10, 2019 through
+October 30, 2026 UTC, through the Mac's existing active collector in 328 message-only
+batches. Every item has a current search document; a historical FTS query passed.
+Apple Mail remained **10,700** items and its local checkpoint hash was unchanged;
+**12** already imported emails qualified for permanent contact-mail retention.
+At **05:25 UTC**, 64,277 semantic jobs remained, 334 message items had current
+embeddings, and no queued job had failed/retried. This is complete ingestion/lexical
+coverage, with semantic coverage still building. SQLite was 978,931,712 bytes plus
+13,048,072-byte WAL; available data space was 58,591,207,424 bytes. Counts and sizes
+continue changing. Post-import NAS snapshot `just-maple-20261030T052632Z.sqlite` also passed the backup service’s integrity/SHA checks. No DNS change, source-database modification or main merge.
