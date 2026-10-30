@@ -120,6 +120,7 @@ export class IMessageViewComponent {
       const selected = this.selected();
       const query = this.query();
       const around = this.around();
+      this.list.page()?.updatedAt;
       this.refreshVersion();
       untracked(() => {
         this.messageRequest++;
