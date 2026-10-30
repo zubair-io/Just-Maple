@@ -15,8 +15,8 @@ migration and hostnames were explicitly authorized; **do not merge to main**.
 | Storage               | `local`: 16 GiB root + 64 GiB managed `/var/lib/just-maple`, backup enabled                     |
 | LAN                   | DHCP `192.168.1.179/23`, gateway `192.168.1.1`; reserve this lease for permanent use            |
 | API                   | Non-root `just-maple-api`, bound to `127.0.0.1:7071`                                            |
-| Application release   | `/opt/just-maple/current` → `bot-identity-20261030-02`                                          |
-| Runtime source        | API/web `ff6bc7d5af124dd09c23e9e5d776e8629e07e7aa`; native/model pins retained                  |
+| Application release   | `/opt/just-maple/current` → `mobile-pages-20261030-01`                                          |
+| Runtime source        | API `ff6bc7d5af124dd09c23e9e5d776e8629e07e7aa`; web `333534c7ea65d70fad0ecb00c500c3eaf9865e65`  |
 | Database              | `/var/lib/just-maple/production-20261029.sqlite`, WAL/FULL                                      |
 | Local files           | `/var/lib/just-maple/media`; existing Azure media storage/URLs retained                         |
 | Native search         | `just-maple-search`, private `/run/just-maple-search/worker.sock`                               |
@@ -632,3 +632,28 @@ Rollback code to `graph-window-20261030-02`, restart only API, retain live DB/en
 any user-saved names/handles. No data restore, DNS, native/model, resource-limit or
 other guest change. The server hash check validates deployment preservation, while
 actual rename writes are exercised only in the isolated tests.
+
+## Mobile page sidebar (2026-10-30)
+
+Activated frontend-only `mobile-pages-20261030-01`, web source
+`333534c7ea65d70fad0ecb00c500c3eaf9865e65`; API source stays
+`ff6bc7d5af124dd09c23e9e5d776e8629e07e7aa`. All 112 manifest artifacts verified,
+including unchanged API/native/model hashes. Mobile notebook/page selector opens the
+existing full sidebar, auto-expanded to the current notebook. Selecting a page closes
+the sidebar and navigates. Desktop retains its notebook dropdown; desktop menu and
+overlay stay hidden below the medium breakpoint. Mobile control exposes its sidebar
+target and expanded state for accessibility.
+
+Shared/web typechecks, three existing chat tests, explicit paperbark build and
+precommit passed. NAS snapshot `just-maple-20261030T222433Z.sqlite` verified before
+activation. Public/LAN health, anonymous denial and authenticated graph reads pass;
+all 177,862 archive imports remain. Mac applied Update; a narrow window verified
+opening Engineering's full sidebar and selecting Graph (sidebar closes, graph opens).
+Desktop dropdown verified afterward and window returned to desktop size. Physical
+phone UI was not inspected; hosted phone clients apply Update/reload.
+
+Private visual/API receipts are in `/tmp/japanese-maple-mobile-nav-20261030/` on Mac
+and `/root/mobile-pages-20261030/` in CT131. Draft PR316 is stacked on PR315, unmerged.
+Roll back code to `bot-identity-20261030-02` and restart only API to select its web
+folder; retain live database/env. No DNS, data, native binary, model, resource-limit
+or other guest change.
