@@ -1,5 +1,11 @@
 import { listBotModels, BotModelsError } from '../services/bot-models.service';
-import { isBotModel, type BotConfig, type BotProvider, type BotTemplate } from '@maple/shared';
+import {
+    BotHandleSchema,
+    isBotModel,
+    type BotConfig,
+    type BotProvider,
+    type BotTemplate,
+} from '@maple/shared';
 import { resolveEndpoint } from '../utils/url-safety';
 import { Elysia, t } from 'elysia';
 import { jwtPlugin, checkAuth, type AuthContext } from '../middleware/auth';
@@ -260,12 +266,20 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                 return { error: 'Unauthorized' };
             }
 
-            if (body.config?.baseUrl !== undefined) {
-                const existing = await findUserBotByIdInternal(params.id);
-                if (!existing || existing.userId !== auth.user._id) {
-                    set.status = 404;
-                    return { error: 'Bot not found' };
+            const existing = await findUserBotByIdInternal(params.id);
+            if (!existing || existing.userId !== auth.user._id) {
+                set.status = 404;
+                return { error: 'Bot not found' };
+            }
+            if (body.handle !== undefined) {
+                body.handle = body.handle.toLowerCase();
+                const taken = await findUserBotByHandle(auth.user._id, body.handle);
+                if (taken && taken._id !== params.id) {
+                    set.status = 409;
+                    return { error: `You already have a bot with handle @${body.handle}` };
                 }
+            }
+            if (body.config?.baseUrl !== undefined) {
                 const template = existing.templateId
                     ? await findBotTemplateById(existing.templateId)
                     : null;
@@ -294,7 +308,14 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                 }
             }
 
-            const userBot = await updateUserBot(params.id, auth.user._id, body);
+            let userBot;
+            try {
+                userBot = await updateUserBot(params.id, auth.user._id, body);
+            } catch (error) {
+                if ((error as { code?: number }).code !== 11000) throw error;
+                set.status = 409;
+                return { error: 'A bot with this handle already exists' };
+            }
             if (!userBot) {
                 set.status = 404;
                 return { error: 'Bot not found' };
@@ -305,7 +326,8 @@ export const botRoutes = new Elysia({ prefix: '/api' })
         {
             params: t.Object({ id: t.String() }),
             body: t.Object({
-                displayName: t.Optional(t.String()),
+                handle: t.Optional(BotHandleSchema),
+                displayName: t.Optional(t.String({ maxLength: 50 })),
                 config: t.Optional(
                     t.Object({
                         model: t.Optional(t.String({ minLength: 1, maxLength: 128 })),

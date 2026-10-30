@@ -232,9 +232,17 @@ export const CreateCustomBotSchema = Type.Object({
 
 export type CreateCustomBotInput = Static<typeof CreateCustomBotSchema>;
 
+// Handles are normalized to lowercase when saved; the @ is a UI prefix.
+export const BotHandleSchema = Type.String({
+    minLength: 1,
+    maxLength: 30,
+    pattern: '^[a-zA-Z0-9_-]+$',
+});
+
 // Update user bot input
 export const UpdateUserBotSchema = Type.Object({
-    displayName: Type.Optional(Type.String()),
+    handle: Type.Optional(BotHandleSchema),
+    displayName: Type.Optional(Type.String({ maxLength: 50 })),
     config: Type.Optional(BotConfigSchema),
     isEnabled: Type.Optional(Type.Boolean()),
 });
@@ -243,6 +251,7 @@ export type UpdateUserBotInput = Static<typeof UpdateUserBotSchema>;
 
 // Update custom bot input
 export const UpdateCustomBotSchema = Type.Object({
+    handle: Type.Optional(BotHandleSchema),
     name: Type.Optional(Type.String({ minLength: 1, maxLength: 50 })),
     description: Type.Optional(Type.String({ maxLength: 500 })),
     invokeUrl: Type.Optional(Type.String({ format: 'uri' })),
