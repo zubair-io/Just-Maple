@@ -43,6 +43,7 @@ nonisolated final class ServerConfigService: @unchecked Sendable {
     private let defaults: UserDefaults
     private var effectiveURL: String?
     private var lastProbe: Date?
+    private var endpointGeneration = 0
     private var monitor: NWPathMonitor?
     static let configurationDidChange = Notification.Name("MapleServerConfigurationDidChange")
     static let connectionDidChange = Notification.Name("MapleServerConnectionDidChange")
@@ -54,7 +55,7 @@ nonisolated final class ServerConfigService: @unchecked Sendable {
             let monitor = NWPathMonitor()
             monitor.pathUpdateHandler = { [weak self] _ in
                 guard let self else { return }
-                self.lock.withLock { self.effectiveURL = nil; self.lastProbe = nil }
+                self.lock.withLock { self.effectiveURL = nil; self.lastProbe = nil; self.endpointGeneration += 1 }
                 Task {
                     await self.resolveEndpoint()
                     NotificationCenter.default.post(name: Self.connectionDidChange, object: nil)
@@ -101,11 +102,13 @@ nonisolated final class ServerConfigService: @unchecked Sendable {
     struct ServerIdentity: Decodable, Sendable {
         let instanceId: String
         let publicUrl: String
+        let localUrl: String?
     }
 
     static func identity(at origin: String, session: URLSession = .shared) async throws -> ServerIdentity {
         var request = URLRequest(url: URL(string: origin + "/api/server-info")!)
         request.timeoutInterval = 2
+        request.httpShouldHandleCookies = false
         request.cachePolicy = .reloadIgnoringLocalCacheData
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200,
@@ -117,50 +120,67 @@ nonisolated final class ServerConfigService: @unchecked Sendable {
         return identity
     }
 
-    func configure(publicAddress: String, localAddress: String, session: URLSession = .shared) async throws {
+    private static func advertisedLocalURL(_ identity: ServerIdentity, primary: String) -> String? {
+        guard let address = identity.localUrl, let normalized = try? normalizeAddress(address),
+              normalized != primary else { return nil }
+        return normalized
+    }
+
+    func configure(publicAddress: String, session: URLSession = .shared) async throws {
         let primary = try Self.normalizeAddress(publicAddress)
-        let local = localAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? nil : try Self.normalizeAddress(localAddress)
         let identity = try await Self.identity(at: primary, session: session)
         guard try Self.normalizeAddress(identity.publicUrl) == primary else { throw ConfigurationError.differentServer }
-        // A local server may be unreachable while away from home. It is never used until verified.
-        if let local, let candidate = try? await Self.identity(at: local, session: session),
-           candidate.instanceId != identity.instanceId || candidate.publicUrl != identity.publicUrl {
-            throw ConfigurationError.differentServer
-        }
         lock.withLock {
             defaults.set(primary, forKey: "maple.server.publicURL")
-            defaults.set(local, forKey: "maple.server.localURL")
+            defaults.set(Self.advertisedLocalURL(identity, primary: primary), forKey: "maple.server.localURL")
             defaults.set(identity.instanceId, forKey: "maple.server.instanceId")
             effectiveURL = nil
             lastProbe = nil
+            endpointGeneration += 1
         }
         await resolveEndpoint(session: session)
         NotificationCenter.default.post(name: Self.configurationDidChange, object: nil)
     }
 
-    /// Anonymous probe first; bearer tokens stay keyed to the public identity.
+    /// Discover LAN routing from the primary server; verify it anonymously before sending tokens.
+    /// Retain the last discovered address when the primary cannot be reached on the current network.
     @discardableResult
     func resolveEndpoint(session: URLSession = .shared) async -> String {
-        let primary = getActiveServer().url
-        let local = localURL
-        if let cached = lock.withLock({ () -> String? in
-            guard let lastProbe, Date().timeIntervalSince(lastProbe) < 30 else { return nil }
-            return effectiveURL ?? primary
-        }) { return cached }
+        let snapshot = lock.withLock { (
+            primary: getActiveServer().url,
+            local: localURL,
+            instanceId: defaults.string(forKey: "maple.server.instanceId"),
+            generation: endpointGeneration,
+            cached: lastProbe.map { Date().timeIntervalSince($0) < 30 } == true
+                ? effectiveURL ?? getActiveServer().getAPIUrl() : nil
+        ) }
+        if let cached = snapshot.cached { return cached }
+        guard let expected = snapshot.instanceId else { return getActiveServer().getAPIUrl() }
+        var local = snapshot.local
+        if let report = try? await Self.identity(at: snapshot.primary, session: session),
+           report.instanceId == expected,
+           (try? Self.normalizeAddress(report.publicUrl)) == snapshot.primary {
+            // A successful report owns this setting, including removing an old/manual address.
+            local = Self.advertisedLocalURL(report, primary: snapshot.primary)
+        }
         var resolved: String?
-        if let local, let expected = defaults.string(forKey: "maple.server.instanceId"),
-           let identity = try? await Self.identity(at: local, session: session),
-           identity.instanceId == expected, identity.publicUrl == primary {
+        if let local, let normalized = try? Self.normalizeAddress(local), normalized == local,
+           let candidate = try? await Self.identity(at: local, session: session),
+           candidate.instanceId == expected,
+           (try? Self.normalizeAddress(candidate.publicUrl)) == snapshot.primary {
             resolved = local
         }
-        lock.withLock {
-            if getConfiguredURL() == primary && localURL == local {
-                effectiveURL = resolved
-                lastProbe = Date()
+        return lock.withLock {
+            guard endpointGeneration == snapshot.generation,
+                  getConfiguredURL() == snapshot.primary,
+                  defaults.string(forKey: "maple.server.instanceId") == expected else {
+                return effectiveURL ?? getActiveServer().getAPIUrl()
             }
+            defaults.set(local, forKey: "maple.server.localURL")
+            effectiveURL = resolved
+            lastProbe = Date()
+            return resolved ?? snapshot.primary
         }
-        return resolved ?? primary
     }
 
     private func getConfiguredURL() -> String { defaults.string(forKey: "maple.server.publicURL") ?? Self.defaultServer.url }

@@ -67,9 +67,16 @@ Azure target. Do not enable it or resume Azure without reconciling Phoebe writes
 
 Browser login uses the current site and has no server address form.
 
-Apple clients show native setup before loading any website when no server is saved,
-then remember a public server address and an optional preferred local address. Bare hostnames become HTTPS. Anonymous `/api/server-info` probes verify the
-stable `INSTANCE_ID` and public URL before choosing LAN access. Network changes
+Apple clients show a native welcome screen before loading any website when no
+server is saved. Enter only the primary domain; bare hostnames become HTTPS. The
+client remembers the primary identity and discovers the local address from the
+server’s `/api/server-info` response, then verifies the
+stable `INSTANCE_ID` and primary URL before choosing LAN access. It refreshes the
+advertisement on launch/foreground/network changes, bounded by a 30-second cache.
+An unreachable or mismatched LAN endpoint falls back to the primary address.
+A successful primary report replaces or clears stale/manual local addresses; if
+the primary is unreachable, a previously discovered LAN address is still probed
+against the saved identity. Network changes
 switch API and WebSocket transport without reloading an open editor. Failed reads
 can retry publicly; uncertain mutations are not replayed by the interceptor.
 
@@ -77,7 +84,22 @@ Keychain and collector account identity stays on the public URL. Watch receives 
 public API address because it may be on another network. Native settings are
 reachable before sign-in and even when the web app cannot load. **Existing installed
 Apple builds require an update to get these settings.** No App Store/TestFlight
-release was made. Server selection and changes belong to the native app; browser settings do not offer a server selector.
+release was made. Server selection belongs to the native app. Its settings show discovered LAN
+connection status without an editable local-domain field. Browser login always
+uses its own origin.
+
+With the discovery update installed, server administrators can set **Settings →
+Server network → Local domain**. `GET`/`PUT /api/server/settings/network` require
+a signed-in user whose current account has `admin: true`. The server stores the
+override in SQLite’s `server_settings` collection; it survives restarts and is
+advertised anonymously without user data. Until an override exists, `LOCAL_URL`
+is the default. Clearing the field disables local advertisement even if the
+environment has a default. The primary URL and instance ID remain operator settings.
+This setting advertises an existing listener; the operator must configure trusted
+HTTPS, DNS, CORS and passkey origins for that hostname before use. It does not
+create DNS records or certificates. The existing Phoebe LAN hostname already has
+these prerequisites. These changes are prepared in the discovery branch; production
+remains on the release listed above until explicitly deployed.
 Existing passkeys keep their original RP identity and can be used at the new origin.
 
 A live run of the actual Swift resolver verified public/local trusted HTTPS identity,

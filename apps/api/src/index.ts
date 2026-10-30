@@ -5,6 +5,7 @@ import { cors } from '@elysiajs/cors';
 import { join, resolve } from 'path';
 import { connectToDatabase, getDb, closeDatabase } from './db/client';
 import { authRoutes } from './routes/auth';
+import { serverInfoRoutes, serverNetworkSettingsRoutes } from './routes/server-network';
 import { notebookRoutes } from './routes/notebooks';
 import { pageRoutes } from './routes/pages';
 import { messageRoutes } from './routes/messages';
@@ -112,6 +113,8 @@ async function main() {
                 credentials: true,
             }),
         )
+        .use(serverInfoRoutes)
+        .use(serverNetworkSettingsRoutes)
         .use(authRoutes)
         .use(notebookRoutes)
         .use(pageRoutes)
@@ -160,19 +163,6 @@ async function main() {
     // App version for client version checking
     const APP_VERSION = process.env.APP_VERSION || '0.9.0';
     const BUILD_TIME = process.env.BUILD_TIME || new Date().toISOString();
-
-    app.get('/api/server-info', ({ set }) => {
-        set.headers['cache-control'] = 'no-store';
-        if (!config.instanceId) {
-            set.status = 503;
-            return { error: 'Server identity is not configured' };
-        }
-        return {
-            instanceId: config.instanceId,
-            publicUrl: config.publicUrl,
-            localUrl: config.localUrl || null,
-        };
-    });
 
     app.get('/api/health', async ({ set }) => {
         try {
