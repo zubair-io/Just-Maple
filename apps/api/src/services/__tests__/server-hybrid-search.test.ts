@@ -116,6 +116,51 @@ describe('server hybrid query contract', () => {
             ).results,
         ).toEqual([]);
     });
+    it('pages a large archive without losing late matches or bypassing page filters', async () => {
+        const userId = (await createUserFixture())._id.toString();
+        const notebook = await createNotebookFixture({ createdBy: userId });
+        const page = await createPageFixture({ userId, notebookId: String(notebook._id) });
+        await testDb.collection('pages').updateOne(
+            { id: page.id },
+            {
+                $set: {
+                    type: 'devicedata',
+                    deviceSource: 'imessage',
+                    deviceFilter: { chats: [{ id: 'selected-chat', name: 'Selected' }] },
+                },
+            },
+        );
+        await upsertDeviceItems(
+            userId,
+            'archive',
+            Array.from({ length: 503 }, (_, index) => ({
+                ...makeItem(`imessage:batch-${index}`, 'Boundaryneedle package'),
+                occurredAt: 1000 + index,
+                thread: index === 502 ? 'Selected' : 'Hidden',
+                extra: { chatId: index === 502 ? 'selected-chat' : 'hidden-chat' },
+            })),
+        );
+        const db = getSqliteDatabase()!;
+        const request = vi.spyOn(db, 'request');
+        try {
+            const result = await searchServerDataPages(
+                { userId, notebookId: String(notebook._id), timeZone: 'UTC' },
+                { query: 'Boundaryneedle' },
+            );
+            expect(result.results.map((row) => row.id)).toEqual(['imessage:batch-502']);
+            expect(result.search.coverage.eligible).toBe(1);
+            const batches = request.mock.calls
+                .map((call, index) => ({ call, result: request.mock.results[index] }))
+                .filter(({ call }) => call[0] === 'search.candidates');
+            expect(batches).toHaveLength(2);
+            expect(batches[0]!.call[2]?.[4]).toBe(0);
+            expect(batches[1]!.call[2]?.[4]).toBeGreaterThan(0);
+            expect(await batches[0]!.result!.value).toHaveLength(500);
+            expect(await batches[1]!.result!.value).toHaveLength(3);
+        } finally {
+            request.mockRestore();
+        }
+    });
     it('rejects stale embedding publication after a source revision changes', async () => {
         await upsertDeviceItems('owner', 'device', [makeItem('imessage:item', 'first')]);
         const db = getSqliteDatabase()!;

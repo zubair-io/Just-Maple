@@ -84,7 +84,9 @@ export class SqliteDatabase {
             const timer = setTimeout(
                 () =>
                     this.fail(
-                        new Error('SQLite worker deadline exceeded; write outcome may be unknown'),
+                        new Error(
+                            `SQLite worker deadline exceeded (${operation}${collection ? `: ${collection}` : ''}); write outcome may be unknown`,
+                        ),
                     ),
                 60_000,
             );
