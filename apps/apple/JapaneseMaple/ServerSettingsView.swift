@@ -30,7 +30,7 @@ struct ServerSettingsView: View {
                     }
                 }
                 Section("Server address") {
-                    TextField("phoebe.justmaple.app", text: $publicAddress)
+                    TextField("Server address", text: $publicAddress)
                         .autocorrectionDisabled()
                         .disabled(saving)
                     Text("Enter the primary domain of your JapaneseMaple server.")
