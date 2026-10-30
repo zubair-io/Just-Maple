@@ -15,19 +15,24 @@ export function messageMetadata(userId: string): Promise<MacDataItem[]> {
         sqlite
             ? sqlite
                   .request<{
-                      items: MacDataItem[];
+                      rows: [string, number, number][];
+                      shapes: Omit<MacDataItem, 'id' | 'occurredAt'>[];
                       people: { key: string; name: string; handles: string[] }[];
                   }>('messages.metadata', undefined, [userId])
-                  .then(({ items, people }) => {
+                  .then(({ rows, shapes, people }) => {
                       const byKey = new Map(people.map((person) => [person.key, person]));
-                      for (const item of items) {
+                      for (const item of shapes) {
                           const keys = item.extra?.['archiveMemberKeys'];
                           if (Array.isArray(keys))
                               item.extra!['archiveMembers'] = keys
                                   .map((key) => byKey.get(String(key)))
                                   .filter(Boolean);
                       }
-                      return items;
+                      return rows.map(([id, occurredAt, index]) => ({
+                          ...shapes[index]!,
+                          id,
+                          occurredAt,
+                      }));
                   })
             : getDb()
                   .collection<{ item: MacDataItem }>('device_items')

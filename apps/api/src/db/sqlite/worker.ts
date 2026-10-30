@@ -543,6 +543,9 @@ function operation(op: string, name: string | undefined, args: unknown[]): unkno
         const native = op === 'messages.native';
         const items: MacDataItem[] = [];
         const people = new Map<string, unknown>();
+        const shapes: Omit<MacDataItem, 'id' | 'occurredAt'>[] = [];
+        const shapeIndex = new Map<string, number>();
+        const compact: [string, number, number][] = [];
         const rows = db
             .query(
                 `SELECT item_metadata,${native ? 'body' : "'' AS body"} FROM search_documents WHERE user_id=? AND source='imessage' ${native ? "AND item_id LIKE 'imessage:%'" : ''}`,
@@ -563,11 +566,9 @@ function operation(op: string, name: string | undefined, args: unknown[]): unkno
                         memberKeys.push(person.key);
                     }
                 }
-            items.push({
-                id: item.id,
+            const shape = {
                 source: 'imessage',
                 revision: '',
-                occurredAt: item.occurredAt,
                 title: item.title,
                 thread: item.thread,
                 participants: item.participants,
@@ -580,10 +581,18 @@ function operation(op: string, name: string | undefined, args: unknown[]): unkno
                     archiveAutomated: extra['archiveAutomated'],
                     archiveMemberKeys: memberKeys,
                 },
-            });
+            } satisfies Omit<MacDataItem, 'id' | 'occurredAt'>;
+            const key = JSON.stringify(shape);
+            let index = shapeIndex.get(key);
+            if (index === undefined) {
+                index = shapes.length;
+                shapes.push(shape);
+                shapeIndex.set(key, index);
+            }
+            compact.push([item.id, item.occurredAt, index]);
         }
         // Intern repeated archive memberships to bound the cross-process payload and API memory.
-        return native ? items : { items, people: [...people.values()] };
+        return native ? items : { rows: compact, shapes, people: [...people.values()] };
     }
     if (op === 'messages.matching') {
         return (
