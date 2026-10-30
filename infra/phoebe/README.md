@@ -15,8 +15,8 @@ migration and hostnames were explicitly authorized; **do not merge to main**.
 | Storage               | `local`: 16 GiB root + 64 GiB managed `/var/lib/just-maple`, backup enabled                     |
 | LAN                   | DHCP `192.168.1.179/23`, gateway `192.168.1.1`; reserve this lease for permanent use            |
 | API                   | Non-root `just-maple-api`, bound to `127.0.0.1:7071`                                            |
-| Application release   | `/opt/just-maple/current` → `bot-render-20261030-01`                                            |
-| Runtime source        | API/web `ce82c5e01f473a72a768d2dd8aa4e2ac8523059a`; native/model pins retained                  |
+| Application release   | `/opt/just-maple/current` → `graph-window-20261030-01`                                          |
+| Runtime source        | API/web `e8c1f7c2e8871bec7e956918efcde849b060cc4d`; native/model pins retained                  |
 | Database              | `/var/lib/just-maple/production-20261029.sqlite`, WAL/FULL                                      |
 | Local files           | `/var/lib/just-maple/media`; existing Azure media storage/URLs retained                         |
 | Native search         | `just-maple-search`, private `/run/just-maple-search/worker.sock`                               |
@@ -562,8 +562,27 @@ worker needed by graph and other API requests.
 Pre-activation snapshot `just-maple-20261030T214912Z.sqlite` passed off-host
 integrity/SHA verification. Rehearsal receipts are in
 `/tmp/japanese-maple-graph-20261030/` on the operator Mac and
-`/root/graph-window-20261030/` in CT131. Deployment verification is recorded below
-after activation. Roll back code to `bot-render-20261030-01`, restart only the API,
+`/root/graph-window-20261030/` in CT131. Deployment verification is recorded below. Roll back code to `bot-render-20261030-01`, restart only the API,
 and retain the live database/env and harmless additive index. Never restore a
 pre-change snapshot over accepted writes. DNS, Azure, native/model binaries, resource
 limits and other guests are outside this rollout.
+
+Activated `graph-window-20261030-01`, source
+`e8c1f7c2e8871bec7e956918efcde849b060cc4d`; all 209 manifest artifacts verified.
+Both hostnames passed authenticated seven/30-day graph reads, health and anonymous
+denial. LAN graph responses measured 171–349 ms; public 789–1411 ms. All 177,862
+archive imports remain present. Background embedding work continues (144,412 jobs
+at this verification); these measurements do not claim complete semantic coverage
+or a comprehensive latency guarantee.
+
+On an independent production snapshot under the API's memory/CPU limits, the old
+unindexed deep vector batch took 6,156 ms. The new seek batch took 7–10 ms. Loading
+137,302 chunks through the SQLite boundary took 4,660 ms while three concurrent
+graph reads took 186–222 ms, with 312.1 MiB service peak. Both graph implementations
+returned identical 1,055 nodes/1,051 links when measured correctly; the initial
+archived-source benchmark bundle was discarded after its dependency mismatch yielded
+an empty graph. No native inference/LLM was invoked for the snapshot load rehearsal.
+
+Validation: 971 API tests passed/3 existing skips, 16 focused web tests, shared/web
+typechecks, API/paperbark builds and precommit passed. Draft PR314 is stacked on
+PR313 and remains unmerged.
