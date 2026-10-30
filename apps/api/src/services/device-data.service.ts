@@ -110,7 +110,13 @@ export async function applyDeviceUpload(
  */
 export function isNews(item: MacDataItem, kind: 'added' | 'changed', now = Date.now()): boolean {
     // Home states change all day; bots read them when asked instead.
-    if (item.source === 'contacts' || item.source === 'home' || item.isFromMe) return false;
+    if (
+        item.source === 'contacts' ||
+        item.source === 'home' ||
+        item.isFromMe ||
+        item.extra?.['historyBackfill'] === true
+    )
+        return false;
     const nowSeconds = now / 1000;
     const fresh = nowSeconds - FRESHNESS_SECONDS;
     if (item.source === 'calendar') {
@@ -278,7 +284,7 @@ export async function conversationsFor(
     });
 }
 
-/** Removes items past the retention window every hour; devices apply the same rule locally. */
+/** Hourly expiry for rolling-window sources; Messages and archived contact mail stay. */
 export function startDeviceDataRetention(intervalMs = 60 * 60 * 1000): () => void {
     const run = async () => {
         try {

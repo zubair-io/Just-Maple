@@ -2,6 +2,7 @@ import type { Collection } from 'mongodb';
 import { getDb } from '../db/client';
 import {
     DEVICE_DATA_RETENTION_DAYS,
+    normalizePersonHandle,
     deviceChoiceKey,
     isHomeStateItemId,
     deviceItemThreadKey,
@@ -33,6 +34,8 @@ export interface DeviceItemDocument {
     embeddedRevision?: string;
     /** Messages: the conversation, so a thread's messages can be read without a scan. */
     threadKey?: string;
+    /** Sticky archive decision, made from this owner’s contacts, never a client flag. */
+    retainedContactMail?: boolean;
     updatedAt: Date;
 }
 
@@ -80,6 +83,12 @@ export async function upsertDeviceItems(
 ): Promise<number> {
     if (items.length === 0) return 0;
     const now = new Date();
+    const emails = items.some((item) => item.source === 'mail')
+        ? contactEmails([
+              ...(await findDeviceContactItems(userId)),
+              ...items.filter((item) => item.source === 'contacts'),
+          ])
+        : new Set<string>();
     await getCollection().bulkWrite(
         items.map((raw) => {
             const item = { ...raw, body: raw.body.slice(0, MAX_BODY_CHARS) };
@@ -99,6 +108,7 @@ export async function upsertDeviceItems(
                             item,
                             searchText: searchTextFor(item),
                             ...(threadKey ? { threadKey } : {}),
+                            ...(isContactMail(item, emails) ? { retainedContactMail: true } : {}),
                             updatedAt: now,
                         },
                     },
@@ -159,7 +169,11 @@ export async function removeDeviceItems(
     scope: { deviceId: string; sources: MacDataSource[] },
 ): Promise<number> {
     if (ids.length === 0 || scope.sources.length === 0) return 0;
+    // Older collectors can still send reconciliation removals. Archived contact mail
+    // survives those; explicit “forget device/source” uses deleteDeviceItems instead.
+    await retainContactMail(userId);
     const result = await getCollection().deleteMany({
+        retainedContactMail: { $ne: true },
         _id: { $in: ids.map((id) => docId(userId, id)) },
         deviceId: scope.deviceId,
         source: { $in: scope.sources },
@@ -499,23 +513,95 @@ export async function deleteDeviceItems(
     return result.deletedCount;
 }
 
-/**
- * Drops items older than the retention window. Contacts are kept; calendar events are
- * kept until they end. Returns the user ids that lost items, so their indexes refresh.
+/** Addresses can belong to several cards and still qualify for retention. */
+function contactEmails(contacts: MacDataItem[]): Set<string> {
+    const emails = new Set<string>();
+    for (const contact of contacts) {
+        const entries = contact.extra?.['emails'];
+        if (!Array.isArray(entries)) continue;
+        for (const entry of entries) {
+            const raw = typeof entry === 'string' ? entry : entry?.value;
+            const email = typeof raw === 'string' ? normalizePersonHandle(raw) : null;
+            if (email?.includes('@')) emails.add(email);
+        }
+    }
+    return emails;
+}
+
+function isContactMail(item: MacDataItem, emails: Set<string>): boolean {
+    if (item.source !== 'mail') return false;
+    const sender = normalizePersonHandle(item.sender);
+    return sender !== null && emails.has(sender);
+}
+
+/** Promote already imported mail too, without reading or backfilling the mail source.
+ * The decision is sticky: later card edits cannot expire previously archived mail.
+ */
+export async function retainContactMail(userId?: string): Promise<number> {
+    const owners = userId
+        ? [userId]
+        : [
+              ...new Set(
+                  (
+                      await getCollection()
+                          .find({ source: 'contacts' }, { projection: { userId: 1 } })
+                          .toArray()
+                  ).map((doc) => doc.userId),
+              ),
+          ];
+    let retained = 0;
+    for (const owner of owners) {
+        const emails = contactEmails(await findDeviceContactItems(owner));
+        if (!emails.size) continue;
+        let after = '';
+        while (true) {
+            const batch = await getCollection()
+                .find(
+                    {
+                        userId: owner,
+                        source: 'mail',
+                        retainedContactMail: { $ne: true },
+                        _id: { $gt: after },
+                    },
+                    { projection: { _id: 1, item: 1 } },
+                )
+                .sort({ _id: 1 })
+                .limit(500)
+                .toArray();
+            if (!batch.length) break;
+            const ids = batch
+                .filter((doc) => isContactMail(doc.item, emails))
+                .map((doc) => doc._id);
+            if (ids.length) {
+                retained += (
+                    await getCollection().updateMany(
+                        { _id: { $in: ids } },
+                        { $set: { retainedContactMail: true } },
+                    )
+                ).modifiedCount;
+            }
+            after = batch[batch.length - 1]!._id;
+        }
+    }
+    return retained;
+}
+
+/** iMessages, contacts and archived contact mail have no automatic expiry.
+ * Other sources keep the rolling window, with ongoing event/current Home exceptions.
  */
 export async function purgeExpiredDeviceItems(now = Date.now()): Promise<string[]> {
+    await retainContactMail();
     const cutoff = now / 1000 - DEVICE_DATA_RETENTION_DAYS * 24 * 60 * 60;
     const expired = await getCollection()
         .find(
             {
-                source: { $nin: ['contacts'] },
+                source: { $nin: ['contacts', 'imessage'] },
+                retainedContactMail: { $ne: true },
                 occurredAt: { $lt: cutoff },
             },
             { projection: { _id: 1, id: 1, userId: 1, source: 1, endAt: 1 } },
         )
         .toArray();
-    // Calendar events that started before the cutoff but haven't ended yet stay, and so
-    // does each Home entity's current state (only its recorded changes age out).
     const doomed = expired.filter(
         (doc) =>
             (doc.source !== 'calendar' || (doc.endAt ?? 0) < cutoff) &&

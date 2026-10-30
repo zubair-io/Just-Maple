@@ -239,7 +239,7 @@ export const UploadDeviceItemsResultSchema = Type.Object({
 export type UploadDeviceItemsResult = Static<typeof UploadDeviceItemsResultSchema>;
 
 /**
- * Items older than this are removed, except contacts, calendar events that haven't ended,
+ * Items older than this are removed, except iMessages, archived contact mail, contacts, ongoing calendar events,
  * and Home entities' current state (only their recorded changes age out).
  */
 export const DEVICE_DATA_RETENTION_DAYS = 30;

@@ -184,6 +184,12 @@ actor MacDataEngine {
                 try store.pruneExpired(now: date)
                 changed = applied > 0 || changed
                 failures[source] = nil
+                if result.hasMore {
+                    // Let status, other readers and uploads progress during a full history import.
+                    await uploadPending()
+                    try Task.checkCancellation()
+                    rerun.insert(source)
+                }
             } catch let error as MacDataError {
                 failures[source] = error
             } catch {

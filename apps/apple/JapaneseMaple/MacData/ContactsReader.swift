@@ -197,23 +197,34 @@ nonisolated struct MacDataContactNames: Sendable, Equatable {
     static let empty = MacDataContactNames(names: [:])
 
     private var names: [String: String]
+    private var handles: Set<String>
 
     init(names: [String: String]) {
         self.names = names
+        self.handles = Set(names.keys)
     }
 
     /// Built from stored contact items, using the phones and emails in their `extra`.
     init(contacts: [MacDataItem]) {
         var names: [String: String] = [:]
         var ambiguous = Set<String>()
+        var handles = Set<String>()
         // A shared phone/email does not identify which contact authored a message.
         for contact in contacts {
-            guard let name = contact.title, !name.isEmpty else { continue }
+            let name = contact.title ?? ""
             for field in ["phones", "emails"] {
                 guard case .array(let entries) = contact.extra?[field] else { continue }
-                for case .object(let entry) in entries {
-                    guard case .string(let value) = entry["value"], let key = Self.key(value) else { continue }
-                    guard !ambiguous.contains(key) else { continue }
+                for entry in entries {
+                    let value: String?
+                    switch entry {
+                    case .object(let fields):
+                        if case .string(let raw) = fields["value"] { value = raw } else { value = nil }
+                    case .string(let raw): value = raw
+                    default: value = nil
+                    }
+                    guard let value, let key = Self.key(value) else { continue }
+                    handles.insert(key)
+                    guard !name.isEmpty, !ambiguous.contains(key) else { continue }
                     if let previous = names[key], previous != name {
                         names.removeValue(forKey: key)
                         ambiguous.insert(key)
@@ -222,6 +233,14 @@ nonisolated struct MacDataContactNames: Sendable, Equatable {
             }
         }
         self.names = names
+        self.handles = handles
+    }
+
+    func containsEmail(_ handle: String) -> Bool {
+        guard let key = Self.key(handle),
+            key.range(of: #"^[^\s@]+@[^\s@]+\.[^\s@]+$"#, options: .regularExpression) != nil
+        else { return false }
+        return handles.contains(key)
     }
 
     var isEmpty: Bool { names.isEmpty }
@@ -234,6 +253,9 @@ nonisolated struct MacDataContactNames: Sendable, Equatable {
     /// codes are retained so numbers in different countries cannot collide by suffix.
     static func key(_ handle: String) -> String? {
         var value = handle.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let start = value.firstIndex(of: "<"), let end = value[start...].firstIndex(of: ">") {
+            value = String(value[value.index(after: start)..<end]).trimmingCharacters(in: .whitespaces)
+        }
         if value.lowercased().hasPrefix("mailto:") { value = String(value.dropFirst(7)) }
         if value.contains("@") { return value.isEmpty ? nil : value.lowercased() }
         let digits = value.unicodeScalars.filter { ("0"..."9").contains($0) }.map(String.init).joined()

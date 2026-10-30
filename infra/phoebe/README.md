@@ -260,3 +260,28 @@ Still tracked: Google OAuth callback registration; distribution of the new Apple
 build; automatic initial backfill completion; 30–50-query relevance and load/p95
 acceptance; TTL cleanup/backup retention; fresh-guest recovery drill. Earlier warm
 corpus samples were roughly 0.54–0.94 seconds with partial coverage, not a p95 result.
+
+## Messages and contact-mail retention
+
+The history-retention branch removes the Messages date cutoff. Its versioned Mac
+checkpoint rewinds only Messages once, then commits and uploads bounded pages; quit
+or interruption resumes from the last committed page. Reactions are excluded and
+attachment-only messages keep their placeholder; attachment files are not uploaded.
+The existing 20,000-character body cap is unchanged.
+
+Messages never expire automatically. Mail whose sender email exactly matches one of
+the same owner's contact addresses is archived without expiry, including mail already
+imported when this policy is activated. The decision persists through later contact
+edits and collector reconciliation deletions. Explicit device/source/data forgetting
+still deletes it. Recipients, display names and other users' contacts cannot grant
+retention. Non-contact mail and other sources retain their existing 30-day policy
+(with the ongoing-event/current-Home exceptions).
+
+Mail's reader/checkpoint/window are unchanged: this does **not** backfill older email.
+The server's lexical index includes every uploaded message immediately; the durable
+embedding queue adds semantic coverage in the background. Historical uploads are
+marked as backlog and excluded from proactive news, including recent history. Graph linking
+continues to use its separate 30-day window. Deploy the retention API before starting
+an all-history collector, and take a verified NAS snapshot first. Keep the active DB
+and environment during code activation/rollback; an older API's retention job would
+expire archived data, so do not roll back to that policy without disabling that job.

@@ -298,7 +298,7 @@ export function macDataSystemPrompt(ctx: MacDataToolContext): string {
     return (
         [
             `## The user's personal data`,
-            `You can read the user's ${describeSources(ctx.sources)} with the local-data tools. Their devices collect it; it covers about the last 30 days, plus all contacts and upcoming events.`,
+            `You can read the user's ${describeSources(ctx.sources)} with the local-data tools. Their devices collect it; it includes available iMessage history, retained mail from contacts, all contacts and upcoming events. Other data generally covers the last 30 days.`,
             `The user's current local time is ${ctx.now} (${ctx.timeZone}). Interpret "today", "tomorrow" and weekdays in that time zone, and give times in it.`,
             "Search before answering questions about the user's plans, messages, deliveries, schedules or accounts. Prefer specific facts (times, places, deadlines, amounts) and say when something is not confirmed.",
             'Never invent details. If the data does not answer the question, say what you found and what is missing.',
