@@ -1,1 +1,1 @@
-export { markdownToProseMirror } from '@maple/shared';
+export { markdownToProseMirror } from '@maple/shared/bot-response';

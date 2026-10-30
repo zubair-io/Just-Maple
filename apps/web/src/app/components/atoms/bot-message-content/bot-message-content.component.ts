@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import { botMessagePresentation, isBotUIFallbackContent, type Message } from '@maple/shared';
+import { isBotUIFallbackContent, type Message } from '@maple/shared';
+import { botMessagePresentation } from '@maple/shared/bot-response';
 import { BotUIComponent } from '../bot-ui/bot-ui.component';
 import { ContentRendererComponent } from '../content-renderer/content-renderer.component';
 

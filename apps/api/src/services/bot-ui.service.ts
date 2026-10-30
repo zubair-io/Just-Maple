@@ -1,6 +1,7 @@
-import { parseBotResponse, botUIToText, type PageContent, type BotUIResponse } from '@maple/shared';
+import { botUIToText, type PageContent, type BotUIResponse } from '@maple/shared';
+import { parseBotResponse } from '@maple/shared/bot-response';
 import { markdownToProseMirror } from '../utils/markdown-to-prosemirror';
-export { parseBotResponse, botUIPrompt } from '@maple/shared';
+export { parseBotResponse, botUIPrompt } from '@maple/shared/bot-response';
 
 /** Keep generated UI details available to text clients and subsequent conversation turns. */
 export { botUIToText } from '@maple/shared';

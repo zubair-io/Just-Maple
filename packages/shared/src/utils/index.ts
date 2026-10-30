@@ -7,7 +7,3 @@ export * from './own-addresses';
 export * from './message-sender';
 
 export * from './message-history';
-
-export * from './bot-ui-parser';
-export * from './bot-message';
-export * from './markdown-to-prosemirror';
