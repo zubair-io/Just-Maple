@@ -84,7 +84,6 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "E3F7D1602EF6838E00F8DE3C"
             BuildableName = "Just Maple Watch App.app"
-            BlueprintName = "Just Maple Watch App"
             ReferencedContainer = "container:JapaneseMaple.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
@@ -101,7 +100,6 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "E3F7D1602EF6838E00F8DE3C"
             BuildableName = "Just Maple Watch App.app"
-            BlueprintName = "Just Maple Watch App"
             ReferencedContainer = "container:JapaneseMaple.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>

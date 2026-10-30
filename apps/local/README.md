@@ -1,4 +1,4 @@
-# Just Maple Local
+# Just Maple
 
 A separate macOS/iOS app containing a bundled Markdown editor and native recorder.
 Open a local folder or the app's iCloud Drive notebooks. Notes are ordinary `.md`
@@ -7,25 +7,26 @@ The editor and recording controls start without a Just Maple server, account or
 login. Initial on-device transcription needs model preparation. Optional recorder
 provider features use only keys the user enters in Recorder settings.
 
-The full Just Maple remains deployed on Phoebe. This app has a separate target,
+The hosted JapaneseMaple remains deployed on Phoebe. This app has a separate target,
 sandbox, preferences, WebKit data, URL scheme, recorder Keychain service and iCloud
-container. No hosted or Sugar Maple data is imported automatically. Working display
-name: **Just Maple Local**; bundle ID `com.just.maple.Local`; iCloud container
-`iCloud.com.just.maple.Local`. Apple provisioning must confirm these identifiers.
+container. No hosted or Sugar Maple data is imported automatically. Display
+name: **Just Maple**; bundle ID `app.justmaple.JustMaple`; iCloud container
+`iCloud.com.just.maple.Local`. The storage container, recorder Keychain service and
+local recording namespace retain their original identifiers across this rename.
 
 ## Build
 
 ```sh
 bun install --cwd apps/local/web --frozen-lockfile
 bun run build:local
-xcodebuild build -project apps/local/apple/LocalMaple.xcodeproj \
-  -scheme LocalMaple -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
-xcodebuild build -project apps/local/apple/LocalMaple.xcodeproj \
-  -scheme LocalMaple -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO
+xcodebuild build -project apps/local/apple/JustMaple.xcodeproj \
+  -scheme JustMaple -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
+xcodebuild build -project apps/local/apple/JustMaple.xcodeproj \
+  -scheme JustMaple -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO
 bun run test:local
 ```
 
-Open `apple/LocalMaple.xcodeproj` in Xcode. Its build phase builds and bundles the
+Open `apple/JustMaple.xcodeproj` in Xcode. Its build phase builds and bundles the
 web editor, fonts, icons and lazy chunks into `WebApp/`; production loads only the
 confined `app://localhost` origin. `MAPLE_LOCAL_SKIP_WEB_BUILD=1` is for operator
 builds immediately after `bun run build:local`; it still requires an existing
@@ -74,19 +75,20 @@ The local web suite passes 176 tests. `scripts/test-core.sh` runs five focused S
 tests against the actual document/asset-path and recorder host-configuration sources,
 without downloading inference models. They cover exact file round trips, conflicting
 edits, duplicate creation, missing folders, path/symlink denial, bundled routes and
-preservation of the hosted recorder defaults. Both Apple platform builds compile.
+preservation of the hosted recorder defaults. Both Apple platform builds compile and sign with automatic Apple development provisioning.
 
 A sandboxed, ad-hoc signed macOS smoke build opened the bundled editor, selected a
 disposable folder, edited a note, verified the saved `.md` bytes and switched to the
 recorder without model downloads. This development signing does not enable iCloud.
 
-A normal iCloud-enabled signing attempt was blocked: Xcode rejected the saved Apple
-Developer account login, and the available wildcard Mac profile lacks the new
-container/capability. Refresh Xcode Settings → Accounts, then build with automatic
-signing to provision this app/container. No existing iCloud container or hosted app
-identity should be reused as a workaround. Signed cross-device iCloud, microphone
-and system-audio capture, real model inference, and App Store/TestFlight distribution
-remain device/release acceptance work. No main merge or hosted redeployment occurs.
+After refreshing the Xcode account, automatic provisioning succeeds for macOS and
+iOS with bundle ID `app.justmaple.JustMaple` and this app’s own iCloud entitlement.
+The signed Mac app shows **Just Maple** in its window, menu and bundled editor, and
+can enumerate/open its iCloud folder. This verifies availability on this Mac;
+cross-device synchronization, microphone/system-audio capture, real model inference
+and App Store/TestFlight distribution remain device/release acceptance work.
+The hosted Apple app and web source now use **JapaneseMaple** branding. No main
+merge or hosted redeployment occurs in this rename.
 
 ## Source attribution
 

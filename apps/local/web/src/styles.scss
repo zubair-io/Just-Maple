@@ -6,7 +6,7 @@
 @import '@fontsource/merriweather/400.css';
 @import '@fontsource/merriweather/700.css';
 
-/* Just Maple Local Design System with Tailwind CSS */
+/* Just Maple Design System with Tailwind CSS */
 
 html {
   @include mat.theme(
@@ -21,7 +21,7 @@ html {
   );
 }
 
-/* Override Material datepicker to use Just Maple Local theme tokens */
+/* Override Material datepicker to use Just Maple theme tokens */
 .mat-datepicker-content {
   background: var(--color-surface) !important;
   color: var(--color-text-main) !important;

@@ -16,9 +16,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "E36BCC2B2F6B333D002FC0DE"
-               BuildableName = "LocalMaple.app"
-               BlueprintName = "LocalMaple"
-               ReferencedContainer = "container:LocalMaple.xcodeproj">
+               BuildableName = "Just Maple.app"
+               BlueprintName = "JustMaple"
+               ReferencedContainer = "container:JustMaple.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -36,9 +36,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "E36BCC3C2F6B333E002FC0DE"
-               BuildableName = "LocalMapleTests.xctest"
-               BlueprintName = "LocalMapleTests"
-               ReferencedContainer = "container:LocalMaple.xcodeproj">
+               BuildableName = "JustMapleTests.xctest"
+               BlueprintName = "JustMapleTests"
+               ReferencedContainer = "container:JustMaple.xcodeproj">
             </BuildableReference>
          </TestableReference>
          <TestableReference
@@ -47,9 +47,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "E36BCC462F6B333E002FC0DE"
-               BuildableName = "LocalMapleUITests.xctest"
-               BlueprintName = "LocalMapleUITests"
-               ReferencedContainer = "container:LocalMaple.xcodeproj">
+               BuildableName = "JustMapleUITests.xctest"
+               BlueprintName = "JustMapleUITests"
+               ReferencedContainer = "container:JustMaple.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
@@ -70,9 +70,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "E36BCC2B2F6B333D002FC0DE"
-            BuildableName = "LocalMaple.app"
-            BlueprintName = "LocalMaple"
-            ReferencedContainer = "container:LocalMaple.xcodeproj">
+            BuildableName = "Just Maple.app"
+            BlueprintName = "JustMaple"
+            ReferencedContainer = "container:JustMaple.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
       <EnvironmentVariables>
@@ -94,9 +94,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "E36BCC2B2F6B333D002FC0DE"
-            BuildableName = "LocalMaple.app"
-            BlueprintName = "LocalMaple"
-            ReferencedContainer = "container:LocalMaple.xcodeproj">
+            BuildableName = "Just Maple.app"
+            BlueprintName = "JustMaple"
+            ReferencedContainer = "container:JustMaple.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

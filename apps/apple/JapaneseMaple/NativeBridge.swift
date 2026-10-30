@@ -1558,7 +1558,7 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
             let introURL = defaultURL.appendingPathComponent("Welcome.md")
             if !fm.fileExists(atPath: introURL.path) {
                 let intro = """
-                # Welcome to Just Maple
+                # Welcome to JapaneseMaple
 
                 This is your **iCloud notebook**. Notes you create here sync automatically across all your Apple devices.
 

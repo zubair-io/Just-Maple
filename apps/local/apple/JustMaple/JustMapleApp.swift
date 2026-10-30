@@ -1,6 +1,6 @@
 //
-//  LocalMapleApp.swift
-//  LocalMaple
+//  JustMapleApp.swift
+//  JustMaple
 //
 //  Created by Zubair Lawrence on 11/30/25.
 //
@@ -14,7 +14,7 @@ import AppKit
 #endif
 
 @main
-struct LocalMapleApp: App {
+struct JustMapleApp: App {
     #if os(macOS)
     @NSApplicationDelegateAdaptor(LocalAppDelegate.self) var delegate
     #endif
@@ -56,7 +56,7 @@ struct LocalMapleApp: App {
     }
 
     private func handleDeepLink(url: URL) {
-        print("[LocalMapleApp] Received deep link: \(url)")
+        print("[JustMapleApp] Received deep link: \(url)")
         NotificationCenter.default.post(
             name: NSNotification.Name("DeepLinkReceived"),
             object: nil,

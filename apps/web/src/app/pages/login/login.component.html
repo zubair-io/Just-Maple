@@ -11,7 +11,7 @@
           alt=""
           class="w-9 h-9 object-contain"
         />
-        Just Maple
+        JapaneseMaple
       </h1>
       <h2 class="text-xl font-sans mb-2">
         {{ creatingAccount() ? 'Create your account' : 'Welcome back' }}
@@ -83,13 +83,13 @@
         {{
           creatingAccount()
             ? 'Already have an account? Sign in'
-            : 'New to Just Maple? Create an account'
+            : 'New to JapaneseMaple? Create an account'
         }}
       </button>
     } @else {
       <p class="text-center text-sm text-[var(--color-mist)]">
-        Open Just Maple in a browser that supports passkeys. A secure HTTPS connection or localhost
-        is required.
+        Open JapaneseMaple in a browser that supports passkeys. A secure HTTPS connection or
+        localhost is required.
       </p>
     }
     @if (devTokenLogin) {

@@ -1,6 +1,6 @@
 //
 //  TagListView.swift
-//  Just Maple Watch App
+//  JapaneseMaple Watch App
 //
 //  Main view showing list of tags
 //
@@ -30,7 +30,7 @@ struct TagListView: View {
                     tagListView
                 }
             }
-            .navigationTitle("Just Maple")
+            .navigationTitle("JapaneseMaple")
             .navigationDestination(for: Tag.self) { tag in
                 MessageListView(tag: tag)
             }

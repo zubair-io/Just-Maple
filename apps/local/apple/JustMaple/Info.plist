@@ -13,8 +13,6 @@
 			</array>
 		</dict>
 	</array>
-	<key>ITSAppUsesNonExemptEncryption</key>
-	<false/>
 	<key>MapleRecorderICloudContainer</key>
 	<string>iCloud.com.just.maple.Local</string>
 	<key>MapleRecorderKeychainService</key>

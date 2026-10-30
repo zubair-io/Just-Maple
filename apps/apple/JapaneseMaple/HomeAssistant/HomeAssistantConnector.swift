@@ -569,7 +569,7 @@ actor HomeAssistantConnector: HomeActionPerforming {
             guard list.contains(call.entityId), exposed.contains(call.entityId) else {
                 return DeviceActionResult(
                     ok: false,
-                    error: "\(call.name ?? call.entityId) is no longer exposed in Home Assistant, so Just Maple can't change it.")
+                    error: "\(call.name ?? call.entityId) is no longer exposed in Home Assistant, so JapaneseMaple can't change it.")
             }
             let id = takeId()
             var message = HomeServiceRules.message(call, id: id)

@@ -1,13 +1,13 @@
 //
-//  LocalMapleUITestsLaunchTests.swift
-//  LocalMapleUITests
+//  JustMapleUITestsLaunchTests.swift
+//  JustMapleUITests
 //
 //  Created by Zubair Lawrence on 3/18/26.
 //
 
 import XCTest
 
-final class LocalMapleUITestsLaunchTests: XCTestCase {
+final class JustMapleUITestsLaunchTests: XCTestCase {
 
     override class var runsForEachTargetApplicationUIConfiguration: Bool {
         true

@@ -1,6 +1,6 @@
 //
 //  WebViewController.swift
-//  LocalMaple
+//  JustMaple
 //
 //  Created by Zubair Lawrence on 11/30/25.
 //
@@ -214,7 +214,7 @@ class WebViewController: NSObject, ObservableObject, WKNavigationDelegate, WKUID
             <head>
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Just Maple Local</title>
+                <title>Just Maple</title>
                 <style>
                     body {
                         font-family: -apple-system, BlinkMacSystemFont, sans-serif;

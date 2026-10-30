@@ -19,7 +19,7 @@
 //  Undo: when the user undoes an added event in the bot action log, the server queues a
 //  `delete_event` action with the event's identifier and the id of the `create_event`
 //  that added it. The event is removed only if it still carries that action's marker,
-//  so an event Just Maple didn't add is never touched; one already gone counts as done.
+//  so an event JapaneseMaple didn't add is never touched; one already gone counts as done.
 //
 
 #if os(macOS)
@@ -122,13 +122,13 @@ nonisolated enum CalendarActionError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .noAccess:
-            "Just Maple can't write to Calendar on this Mac. Turn on Calendar access in System Settings → Privacy & Security → Calendars."
+            "JapaneseMaple can't write to Calendar on this Mac. Turn on Calendar access in System Settings → Privacy & Security → Calendars."
         case .noCalendar:
             "This Mac has no calendar that accepts new events."
         case .notAddedByJustMaple:
-            "This event wasn't added by Just Maple, so it was left alone. Remove it in Calendar."
+            "This event wasn't added by JapaneseMaple, so it was left alone. Remove it in Calendar."
         case .unsupported(let type):
-            "This Mac doesn't know how to do \"\(type)\". Update Just Maple."
+            "This Mac doesn't know how to do \"\(type)\". Update JapaneseMaple."
         }
     }
 }
@@ -320,7 +320,7 @@ nonisolated struct EventKitCalendarWriter: CalendarWriting, @unchecked Sendable 
 extension MacDataEngine {
     static let actionCalendarKey = "action_calendar_id"
 
-    /// Does what the user confirmed in Just Maple. Overlapping calls coalesce into one
+    /// Does what the user confirmed in JapaneseMaple. Overlapping calls coalesce into one
     /// extra pass. Only while this Mac collects the calendar or Home Assistant: the server
     /// gives each source's actions to its collector alone.
     func runActions() async {

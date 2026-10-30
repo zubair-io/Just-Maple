@@ -92,8 +92,8 @@ nonisolated final class ServerConfigService: @unchecked Sendable {
         var errorDescription: String? {
             switch self {
             case .invalidAddress: return "Enter a server hostname or HTTPS origin, without a path."
-            case .unavailable: return "Could not reach that Just Maple server over a trusted HTTPS connection."
-            case .differentServer: return "The local address belongs to a different Just Maple server."
+            case .unavailable: return "Could not reach that JapaneseMaple server over a trusted HTTPS connection."
+            case .differentServer: return "The local address belongs to a different JapaneseMaple server."
             }
         }
     }

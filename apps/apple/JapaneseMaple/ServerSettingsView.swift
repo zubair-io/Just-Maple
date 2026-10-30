@@ -14,13 +14,13 @@ struct ServerSettingsView: View {
                 Section("Server") {
                     TextField("phoebe.justmaple.app", text: $publicAddress)
                         .autocorrectionDisabled()
-                    Text("Enter the public address of your Just Maple server.")
+                    Text("Enter the public address of your JapaneseMaple server.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("Local address (optional)") {
                     TextField("local.phoebe.justmaple.app", text: $localAddress)
                         .autocorrectionDisabled()
-                    Text("Used when this device can reach the same server on your network. Otherwise, Just Maple uses the public address.")
+                    Text("Used when this device can reach the same server on your network. Otherwise, JapaneseMaple uses the public address.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 if let error { Text(error).foregroundStyle(.red) }
@@ -39,7 +39,7 @@ struct ServerSettingsView: View {
                 .disabled(saving || publicAddress.trimmingCharacters(in: .whitespaces).isEmpty)
             }
             .formStyle(.grouped)
-            .navigationTitle(ServerConfigService.shared.hasConfiguredServer ? "Server settings" : "Connect to Just Maple")
+            .navigationTitle(ServerConfigService.shared.hasConfiguredServer ? "Server settings" : "Connect to JapaneseMaple")
             .toolbar {
                 if ServerConfigService.shared.hasConfiguredServer {
                     Button("Cancel") { dismiss() }

@@ -26,7 +26,7 @@ nonisolated struct ContactsReader {
     static var accessProblem: String? {
         switch CNContactStore.authorizationStatus(for: .contacts) {
         case .denied:
-            return "Contacts access is turned off for Just Maple. Turn it on in System Settings → Privacy & Security → Contacts."
+            return "Contacts access is turned off for JapaneseMaple. Turn it on in System Settings → Privacy & Security → Contacts."
         case .restricted:
             return "Contacts access is restricted on this Mac, for example by Screen Time or a device profile."
         default:

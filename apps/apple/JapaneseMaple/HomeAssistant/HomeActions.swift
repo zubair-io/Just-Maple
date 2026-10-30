@@ -81,12 +81,12 @@ nonisolated enum HomeServiceRules {
             call.entityId.hasPrefix("\(call.domain)."),
             HomeDomains.control.contains(call.domain),
             let allowed = services[call.domain], let field = allowed[call.service]
-        else { return "Just Maple can't do \(call.domain).\(call.service)." }
+        else { return "JapaneseMaple can't do \(call.domain).\(call.service)." }
         if call.sensitive != true,
             isSensitive(entityId: call.entityId, deviceClass: deviceClass, name: name)
                 || isSensitive(entityId: call.entityId, deviceClass: nil, name: call.name)
         {
-            return "\(call.name ?? call.entityId) needs a second confirmation in Just Maple."
+            return "\(call.name ?? call.entityId) needs a second confirmation in JapaneseMaple."
         }
         let data = call.data ?? [:]
         guard data.count <= 1, data.keys.allSatisfy({ $0 == field }) else {
