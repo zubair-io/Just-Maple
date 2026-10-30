@@ -1,0 +1,6 @@
+@if (!hideText()) {
+  <app-content-renderer [content]="presentation().content" />
+}
+@if (presentation().botUI; as ui) {
+  <app-bot-ui [response]="ui" [disabled]="disabled()" (followUp)="followUp.emit($event)" />
+}

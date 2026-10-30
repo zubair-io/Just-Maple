@@ -36,6 +36,7 @@ interface MessageDocument {
     senderProfilePictureUrl?: string;
     content: PageContent;
     botUI?: BotUIResponse;
+    botResponseSource?: string;
     botModel?: string;
     mentions?: Mention[];
     hasThread?: boolean;
@@ -53,12 +54,19 @@ function getCollection(): Collection<MessageDocument> {
 }
 
 /** A bot's message content and card, with old raw card text read as a card. */
-function readBotContent(doc: MessageDocument): Pick<Message, 'content' | 'botUI'> {
+function readBotContent(
+    doc: MessageDocument,
+): Pick<Message, 'content' | 'botUI' | 'botResponseSource'> {
     if (doc.senderType === 'bot' && !doc.botUI) {
         const repaired = repairRawBotUI(doc.content);
-        if (repaired) return { content: repaired.content, botUI: repaired.ui };
+        if (repaired)
+            return {
+                content: repaired.content,
+                botUI: repaired.ui,
+                botResponseSource: doc.botResponseSource ?? repaired.source,
+            };
     }
-    return { content: doc.content, botUI: doc.botUI };
+    return { content: doc.content, botUI: doc.botUI, botResponseSource: doc.botResponseSource };
 }
 
 function toMessageResponse(
@@ -281,6 +289,7 @@ export async function createMessage(
         senderProfilePictureUrl,
         content: doc.content,
         botUI: doc.botUI,
+        botResponseSource: doc.botResponseSource,
         botModel: doc.botModel,
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
@@ -307,6 +316,8 @@ export async function updateMessage(
                     updatedAt: now,
                     editedAt: now,
                 },
+                // An explicit edit replaces the generated presentation too.
+                $unset: { botResponseSource: '', botUI: '' },
             },
             { returnDocument: 'after' },
         );
@@ -476,6 +487,7 @@ export async function createMessageInThread(data: {
     senderProfilePictureUrl?: string;
     content: PageContent;
     botUI?: BotUIResponse;
+    botResponseSource?: string;
     botModel?: string;
 }): Promise<Message> {
     const now = new Date();
@@ -494,6 +506,10 @@ export async function createMessageInThread(data: {
         senderProfilePictureUrl: isBot ? data.senderProfilePictureUrl : undefined,
         content: data.content,
         botUI: data.botUI,
+        botResponseSource:
+            data.senderType === undefined || data.senderType === 'bot'
+                ? data.botResponseSource
+                : undefined,
         botModel: data.botModel,
         createdAt: now,
         updatedAt: now,
@@ -514,6 +530,10 @@ export async function createMessageInThread(data: {
         senderProfilePictureUrl: data.senderProfilePictureUrl,
         content: data.content,
         botUI: data.botUI,
+        botResponseSource:
+            data.senderType === undefined || data.senderType === 'bot'
+                ? data.botResponseSource
+                : undefined,
         botModel: data.botModel,
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
@@ -544,6 +564,7 @@ export async function createTopLevelBotMessage(data: {
     senderProfilePictureUrl?: string;
     content: PageContent;
     botUI?: BotUIResponse;
+    botResponseSource?: string;
     botModel?: string;
     proactiveMeta?: ProactiveMessageMeta;
 }): Promise<Message> {
@@ -560,6 +581,7 @@ export async function createTopLevelBotMessage(data: {
         senderProfilePictureUrl: data.senderProfilePictureUrl,
         content: data.content,
         botUI: data.botUI,
+        botResponseSource: data.botResponseSource,
         botModel: data.botModel,
         ...(data.proactiveMeta ? { proactiveMeta: data.proactiveMeta } : {}),
         createdAt: now,
@@ -580,6 +602,7 @@ export async function createTopLevelBotMessage(data: {
         senderProfilePictureUrl: data.senderProfilePictureUrl,
         content: data.content,
         botUI: data.botUI,
+        botResponseSource: data.botResponseSource,
         botModel: data.botModel,
         ...(data.proactiveMeta ? { proactiveMeta: data.proactiveMeta } : {}),
         createdAt: now.toISOString(),
@@ -606,6 +629,7 @@ export async function reviseBotMessage(
     update: {
         content: PageContent;
         botUI?: BotUIResponse;
+        botResponseSource?: string;
         botModel?: string;
         proactiveMeta?: ProactiveMessageMeta;
     },
@@ -630,6 +654,9 @@ export async function reviseBotMessage(
     const previous = {
         content: current.content,
         ...(current.botUI ? { botUI: current.botUI } : {}),
+        ...(current.botResponseSource !== undefined
+            ? { botResponseSource: current.botResponseSource }
+            : {}),
         at: current.revisedAt ?? current.createdAt,
     };
     const all = [...(current.revisions ?? []), previous];
@@ -643,6 +670,9 @@ export async function reviseBotMessage(
             $set: {
                 content: update.content,
                 ...(update.botUI ? { botUI: update.botUI } : {}),
+                ...(update.botResponseSource !== undefined
+                    ? { botResponseSource: update.botResponseSource }
+                    : {}),
                 ...(update.botModel ? { botModel: update.botModel } : {}),
                 ...(update.proactiveMeta ? { proactiveMeta: update.proactiveMeta } : {}),
                 revisions,
@@ -650,7 +680,16 @@ export async function reviseBotMessage(
                 updatedAt: now,
             },
             // A revision without a card drops the old card.
-            ...(update.botUI ? {} : { $unset: { botUI: '' as const } }),
+            ...(!update.botUI || update.botResponseSource === undefined
+                ? {
+                      $unset: {
+                          ...(update.botUI ? {} : { botUI: '' as const }),
+                          ...(update.botResponseSource !== undefined
+                              ? {}
+                              : { botResponseSource: '' as const }),
+                      },
+                  }
+                : {}),
         },
         { returnDocument: 'after' },
     );

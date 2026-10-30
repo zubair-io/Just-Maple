@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { ObjectId } from 'mongodb';
-import { createMessageInThread, findMessageById, findMessagesByThreadId } from '../message.repo';
+import {
+    createMessageInThread,
+    createTopLevelBotMessage,
+    reviseBotMessage,
+    updateMessage,
+    findMessageById,
+    findMessagesByThreadId,
+} from '../message.repo';
 import { mongoAvailable } from '../../__tests__/setup';
 import { parseBotResponse } from '../../services/bot-ui.service';
 
@@ -52,5 +59,54 @@ describe.runIf(mongoAvailable)('saved interactive bot replies', () => {
             { type: 'source', label: 'CI run failed', itemId: 'mail:737267' },
         ]);
         expect(JSON.stringify(reloaded?.content)).not.toContain('root = Response');
+        expect(reloaded?.botResponseSource).toBe(raw);
+    });
+
+    it('preserves original source across saves and revisions, clearing it when a revision has none', async () => {
+        const userBotId = new ObjectId().toString();
+        const original = 'Response([Text("Original")])';
+        const message = await createTopLevelBotMessage({
+            pageId: 'source-page',
+            userId: new ObjectId().toString(),
+            userBotId,
+            content: { type: 'doc', content: [] },
+            botResponseSource: original,
+        });
+        expect((await findMessageById(message.id))?.botResponseSource).toBe(original);
+        const revised = await reviseBotMessage(message.id, userBotId, {
+            content: { type: 'doc', content: [] },
+            botResponseSource: 'Response([Text("Revised")])',
+        });
+        expect(revised?.botResponseSource).toContain('Revised');
+        expect(revised?.revisions?.[0]?.botResponseSource).toBe(original);
+        const cleared = await reviseBotMessage(message.id, userBotId, {
+            content: { type: 'doc', content: [] },
+        });
+        expect(cleared?.botResponseSource).toBeUndefined();
+        expect(cleared?.revisions?.at(-1)?.botResponseSource).toContain('Revised');
+    });
+
+    it('shows an explicit edit instead of replaying the old generated source', async () => {
+        const userId = new ObjectId().toString();
+        const message = await createTopLevelBotMessage({
+            pageId: 'edit-source-page',
+            userId,
+            userBotId: new ObjectId().toString(),
+            content: { type: 'doc', content: [] },
+            botResponseSource: 'Response([Text("Original")])',
+            botUI: {
+                version: 1,
+                format: 'openui',
+                blocks: [{ type: 'text', content: 'Original' }],
+            },
+        });
+        const content = {
+            type: 'doc',
+            content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Edited by owner' }] }],
+        };
+        const edited = await updateMessage(message.id, userId, { content });
+        expect(edited?.botResponseSource).toBeUndefined();
+        expect(edited?.botUI).toBeUndefined();
+        expect(edited?.content).toEqual(content);
     });
 });

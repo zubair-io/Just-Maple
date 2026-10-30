@@ -16,7 +16,7 @@ import {
   ChangeDetectionStrategy,
 } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
-import { BotUIComponent } from '../../../atoms/bot-ui/bot-ui.component';
+import { BotMessageContentComponent } from '../../../atoms/bot-message-content/bot-message-content.component';
 import { CommonModule, DatePipe } from '@angular/common';
 import { Editor, Extension } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
@@ -24,13 +24,11 @@ import Placeholder from '@tiptap/extension-placeholder';
 import { BotService, type BotSuggestion } from '../../../../services/bot.service';
 import { MessageService } from '../../../../services/message.service';
 import { RealtimeService } from '../../../../services/realtime.service';
-import { ContentRendererComponent } from '../../../atoms/content-renderer/content-renderer.component';
 import { ProfileAvatarComponent } from '../../../atoms/profile-avatar/profile-avatar.component';
 import { ChatTypingComponent } from '../chat-typing.component';
 import { BotActivityService } from '../../../../services/bot-activity.service';
 import { MentionSuggestionComponent } from '../mention-suggestion.component';
 import { Mention, type MentionNodeAttrs } from '../extensions/mention';
-import { isBotUIFallbackContent } from '@maple/shared';
 import type { Message, Thread, PageContent } from '@maple/shared';
 import { extractMentions, extractText } from '@maple/shared';
 import { Subscription, Subject, takeUntil, filter, combineLatest, switchMap, of } from 'rxjs';
@@ -39,10 +37,9 @@ import { Subscription, Subject, takeUntil, filter, combineLatest, switchMap, of 
   selector: 'app-thread-panel',
   standalone: true,
   imports: [
-    BotUIComponent,
+    BotMessageContentComponent,
     CommonModule,
     DatePipe,
-    ContentRendererComponent,
     ProfileAvatarComponent,
     MentionSuggestionComponent,
     ChatTypingComponent,
@@ -56,7 +53,6 @@ import { Subscription, Subject, takeUntil, filter, combineLatest, switchMap, of 
   },
 })
 export class ThreadPanelComponent implements AfterViewInit, OnDestroy {
-  readonly isBotUIFallbackContent = isBotUIFallbackContent;
   @ViewChild('threadMessageList') private messageListRef?: ElementRef<HTMLElement>;
   @ViewChild('threadEditorElement', { static: false })
   private editorRef?: ElementRef<HTMLElement>;

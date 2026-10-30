@@ -1029,6 +1029,8 @@ export class BotExecutorService {
         if (receipts.length) ui = await withActionReceipts(ui, receipts);
         // And drafted replies' cards, which carry no text (reply-draft.service).
         if (drafts.length) ui = await withReplyDraftCards(ui, drafts);
+        const source = String(ctx.variables.$response || '');
+        ctx.variables.$botResponseSource = !notice && source.length <= 100000 ? source : undefined;
         ctx.variables.$botUI = ui;
         return markdownToProseMirror(parsed.markdown || (ui ? botUIToText(ui) : ''));
     }
@@ -1094,6 +1096,7 @@ export class BotExecutorService {
         const message = await createMessageInThread({
             pageId: source.pageId,
             botUI: ctx.variables.$botUI as Message['botUI'],
+            botResponseSource: ctx.variables.$botResponseSource as string | undefined,
             botModel: ctx.variables.$model as string | undefined,
             notebookId: invocation.notebookId,
             threadId: thread._id,
@@ -1148,6 +1151,7 @@ export class BotExecutorService {
             senderProfilePictureUrl: template.avatar,
             content,
             botUI: ctx.variables.$botUI as Message['botUI'],
+            botResponseSource: ctx.variables.$botResponseSource as string | undefined,
             botModel: ctx.variables.$model as string | undefined,
             ...(proactiveMeta ? { proactiveMeta } : {}),
         });
@@ -1264,6 +1268,7 @@ export class BotExecutorService {
             {
                 content,
                 botUI: ctx.variables.$botUI as Message['botUI'],
+                botResponseSource: ctx.variables.$botResponseSource as string | undefined,
                 botModel: ctx.variables.$model as string | undefined,
                 ...(params.proactiveMeta ? { proactiveMeta: params.proactiveMeta } : {}),
             },
