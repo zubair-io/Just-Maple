@@ -1,4 +1,4 @@
-import { beforeEach, afterEach, describe, it, expect } from 'vitest';
+import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -12,7 +12,13 @@ import {
     createPageFixture,
 } from '../../__tests__/helpers/fixtures';
 import { createTestApp } from '../../__tests__/helpers/app';
-import { upsertDeviceItems } from '../../repositories/device-item.repo';
+import { getSqliteDatabase } from '../../db/client';
+import {
+    upsertDeviceItems,
+    findDeviceItems,
+    findDeviceItemFacets,
+    countDeviceItems,
+} from '../../repositories/device-item.repo';
 import { invalidateMessageMetadata } from '../../repositories/message-history.repo';
 import { messageDirectory, messageHistoryPage } from '../message-history.service';
 import {
@@ -270,6 +276,42 @@ describe('message history access and pagination', () => {
         expect((await messageDirectory(owner, { from: 1577898004, to: 1577898006 })).total).toBe(3);
         expect((await messageDirectory(owner, { search: '" OR *' })).total).toBe(0);
     });
+    it('keeps legacy message headers, collector counts and sharing choices on metadata-only reads', async () => {
+        await upsertDeviceItems(
+            owner,
+            'mac',
+            Array.from({ length: 250 }, (_, n) =>
+                message(`imessage:${n}`, 'Large body '.repeat(200), {
+                    thread: 'Alice',
+                    extra: { chatId: 'dm-a' },
+                }),
+            ),
+        );
+        await upsertDeviceItems(owner, 'archive:history', [
+            message('archive:other', 'Old history', { thread: 'Other', extra: { chatId: 'dm-b' } }),
+        ]);
+        const spy = vi.spyOn(getSqliteDatabase()!, 'request');
+        try {
+            expect(
+                (await findDeviceItems(owner, { sources: ['imessage'], limit: 5 })).items,
+            ).toHaveLength(5);
+            expect((await countDeviceItems(owner, 'mac')).imessage).toBe(250);
+            expect((await countDeviceItems(owner)).imessage).toBe(251);
+            expect((await findDeviceItemFacets(owner)).chats).toHaveLength(2);
+            const documentReads = spy.mock.calls.filter(
+                (call) => call[0] === 'find' && call[1] === 'device_items',
+            );
+            expect(documentReads.length).toBeGreaterThan(0);
+            expect(documentReads.every((call) => !!(call[2]?.[0] as { _id?: unknown })?._id)).toBe(
+                true,
+            );
+            expect(spy.mock.calls.some((call) => call[0] === 'device.counts')).toBe(true);
+            expect(spy.mock.calls.some((call) => call[0] === 'device.facets')).toBe(true);
+        } finally {
+            spy.mockRestore();
+        }
+    });
+
     it('does not equate different platforms, incomplete peers or attachments', () => {
         const native = message('imessage:1', 'Hello');
         expect(

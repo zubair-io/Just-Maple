@@ -497,6 +497,48 @@ function operation(op: string, name: string | undefined, args: unknown[]): unkno
             item: JSON.parse(item_metadata),
         }));
     }
+    if (op === 'device.counts') {
+        ensureCollection('device_items');
+        const device = typeof args[1] === 'string' && args[1] ? args[1] : undefined;
+        const rows = db
+            .query(
+                `SELECT json_extract(index_data,'$.source') AS source,count(*) AS n
+            FROM docs_device_items WHERE json_extract(index_data,'$.userId')=?
+            ${device ? "AND json_extract(index_data,'$.deviceId')=?" : ''} GROUP BY source`,
+            )
+            .all(...(device ? [String(args[0]), device] : [String(args[0])])) as {
+            source: string;
+            n: number;
+        }[];
+        return Object.fromEntries(rows.map((row) => [row.source, row.n]));
+    }
+    if (op === 'device.facets') {
+        const rows = db
+            .query(
+                `SELECT source,max(occurred_at) AS occurredAt,calendar,mailbox,thread,calendarId,chatId FROM (
+            SELECT source,occurred_at,json_extract(item_metadata,'$.calendar') AS calendar,
+                json_extract(item_metadata,'$.mailbox') AS mailbox,json_extract(item_metadata,'$.thread') AS thread,
+                json_extract(item_metadata,'$.extra.calendarId') AS calendarId,json_extract(item_metadata,'$.extra.chatId') AS chatId
+            FROM search_documents WHERE user_id=? AND source IN ('calendar','mail','imessage'))
+            GROUP BY source,calendar,mailbox,thread,calendarId,chatId`,
+            )
+            .all(String(args[0])) as {
+            source: string;
+            occurredAt: number;
+            calendar: string | null;
+            mailbox: string | null;
+            thread: string | null;
+            calendarId: string | null;
+            chatId: string | null;
+        }[];
+        return rows.map(
+            ({ source, occurredAt, calendar, mailbox, thread, calendarId, chatId }) => ({
+                source,
+                occurredAt,
+                item: { calendar, mailbox, thread, extra: { calendarId, chatId } },
+            }),
+        );
+    }
     if (op === 'messages.metadata' || op === 'messages.native') {
         const native = op === 'messages.native';
         const items: MacDataItem[] = [];
