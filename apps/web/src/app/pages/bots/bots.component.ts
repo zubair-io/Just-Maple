@@ -65,10 +65,12 @@ export class BotsComponent implements OnInit, OnDestroy {
 
   // Unified bot list
   readonly allBots = computed(() => {
-    const templateBots = this.userBots().map((bot) => ({
-      ...bot,
-      botType: 'template' as const,
-    }));
+    const templateBots = this.userBots()
+      .filter((bot) => bot.botType !== 'custom')
+      .map((bot) => ({
+        ...bot,
+        botType: 'template' as const,
+      }));
     const custom = this.customBots().map((bot) => ({
       ...bot,
       botType: 'custom' as const,
