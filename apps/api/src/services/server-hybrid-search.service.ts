@@ -42,6 +42,25 @@ const cachedOwners = new Map<string, CachedOwner>();
 const loadingOwners = new Map<string, Promise<CachedOwner>>();
 const MAX_CACHE_BYTES = 1024 * 1024 * 1024;
 let activeSearches = 0;
+// Bound the whole retrieval, including candidate scans, before allocating maps.
+// LLMs can issue several tools in parallel; semantic-only admission was too late.
+let runningRequests = 0;
+const waitingRequests: Array<() => void> = [];
+
+async function acquireSearchSlot(): Promise<void> {
+    if (runningRequests < 2) {
+        runningRequests++;
+        return;
+    }
+    if (waitingRequests.length >= 4) throw new Error('search_overloaded');
+    await new Promise<void>((resolve) => waitingRequests.push(resolve));
+}
+
+function releaseSearchSlot(): void {
+    const next = waitingRequests.shift();
+    if (next) next();
+    else runningRequests--;
+}
 
 const identity = (owner: string, item: MacDataItem) =>
     JSON.stringify([owner, item.source, item.id]);
@@ -133,7 +152,7 @@ async function allowedCandidates(
         let after = 0;
         for (;;) {
             // Never serialize the entire archive at once. Apply every sharing filter
-            // to complete metadata, then retain only identity/version and sort keys.
+            // to its metadata facts, then retain only identity/version and sort keys.
             const docs = await getSqliteDatabase()!.request<
                 Array<Omit<Candidate['doc'], 'occurredAt'> & { item: MacDataItem; cursor: number }>
             >('search.candidates', undefined, [owner, sources, input.from, input.to, after]);
@@ -156,6 +175,15 @@ async function allowedCandidates(
 
 /** Authorized union is ranked once; current permissions and source revisions are rechecked before hydration. */
 export async function searchServerDataPages(ctx: Scope, input: SearchInput) {
+    await acquireSearchSlot();
+    try {
+        return await searchAuthorizedDataPages(ctx, input);
+    } finally {
+        releaseSearchSlot();
+    }
+}
+
+async function searchAuthorizedDataPages(ctx: Scope, input: SearchInput) {
     const db = getSqliteDatabase();
     if (!db) throw new Error('Server search requires SQLite');
     const current = await dataPageSlicesFor(ctx.userId, ctx.notebookId);
@@ -176,13 +204,15 @@ export async function searchServerDataPages(ctx: Scope, input: SearchInput) {
             .sort((a, b) => a[1].doc.occurredAt - b[1].doc.occurredAt || a[0].localeCompare(b[0]))
             .map(([id]) => id);
     } else if (parsed.expression) {
-        const hard = await db.request<Array<{ id: string }>>('search.hardFilter', undefined, [
-            parsed.requiredExpression,
-            parsed.excludedExpression,
-            [...allowed.keys()],
-        ]);
-        const eligible = new Set(hard.map((row) => row.id));
-        for (const id of allowed.keys()) if (!eligible.has(id)) allowed.delete(id);
+        if (parsed.requiredExpression || parsed.excludedExpression) {
+            const hard = await db.request<Array<{ id: string }>>('search.hardFilter', undefined, [
+                parsed.requiredExpression,
+                parsed.excludedExpression,
+                [...allowed.keys()],
+            ]);
+            const eligible = new Set(hard.map((row) => row.id));
+            for (const id of allowed.keys()) if (!eligible.has(id)) allowed.delete(id);
+        }
         lexical = (
             await db.request<Array<{ id: string; score: number }>>('search.lexical', undefined, [
                 parsed.expression,

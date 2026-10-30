@@ -47,6 +47,8 @@ CREATE TABLE IF NOT EXISTS embedding_jobs(
     generation TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, retry_at INTEGER NOT NULL DEFAULT 0,
     lease_until INTEGER NOT NULL DEFAULT 0, last_error TEXT
 );
+-- A reverse scan gives retry_at ASC,rowid DESC without sorting the backfill queue.
+CREATE INDEX IF NOT EXISTS embedding_jobs_ready ON embedding_jobs(retry_at DESC);
 CREATE TABLE IF NOT EXISTS search_embeddings(
     id TEXT NOT NULL REFERENCES search_documents(id) ON DELETE CASCADE, chunk INTEGER NOT NULL,
     user_id TEXT NOT NULL, revision TEXT NOT NULL, content_hash TEXT NOT NULL,
@@ -460,6 +462,38 @@ function dropCollection(name: string): boolean {
     db.query('DELETE FROM document_collections WHERE name=?').run(name);
     return true;
 }
+/** Keep the complete inputs to deviceItemMatchesFilter/homeItemVisibleToBots. */
+function searchFilterItem(item: MacDataItem): MacDataItem {
+    const extra = item.extra ?? {};
+    return {
+        id: item.id,
+        source: item.source,
+        revision: item.revision,
+        occurredAt: item.occurredAt,
+        body: '',
+        participants: [],
+        calendar: item.calendar,
+        mailbox: item.mailbox,
+        thread: item.thread,
+        extra: Object.fromEntries(
+            [
+                'calendarId',
+                'chatId',
+                'entityId',
+                'state',
+                'deviceClass',
+                'area',
+                'placeId',
+                'place',
+                'lat',
+                'lon',
+            ]
+                .filter((key) => extra[key] !== undefined)
+                .map((key) => [key, extra[key]]),
+        ),
+    };
+}
+
 function operation(op: string, name: string | undefined, args: unknown[]): unknown {
     if (op === 'search.candidates') {
         const [owner, sources, from, to, after = 0] = args as [
@@ -497,7 +531,9 @@ function operation(op: string, name: string | undefined, args: unknown[]): unkno
         }>;
         return rows.map(({ item_metadata, ...doc }) => ({
             ...doc,
-            item: JSON.parse(item_metadata),
+            // Candidates need sharing-filter facts, not repeated archive contact
+            // memberships or provenance. Hydrate full content only after ranking.
+            item: searchFilterItem(JSON.parse(item_metadata) as MacDataItem),
         }));
     }
     if (op === 'device.deleteBatch') {
