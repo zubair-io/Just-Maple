@@ -15,8 +15,8 @@ migration and hostnames were explicitly authorized; **do not merge to main**.
 | Storage               | `local`: 16 GiB root + 64 GiB managed `/var/lib/just-maple`, backup enabled                     |
 | LAN                   | DHCP `192.168.1.179/23`, gateway `192.168.1.1`; reserve this lease for permanent use            |
 | API                   | Non-root `just-maple-api`, bound to `127.0.0.1:7071`                                            |
-| Application release   | `/opt/just-maple/current` → `graph-window-20261030-01`                                          |
-| Runtime source        | API/web `e8c1f7c2e8871bec7e956918efcde849b060cc4d`; native/model pins retained                  |
+| Application release   | `/opt/just-maple/current` → `graph-window-20261030-02`                                          |
+| Runtime source        | API/web `210b4cfec40fb1b8acd441971ce4ead1fbee6345`; native/model pins retained                  |
 | Database              | `/var/lib/just-maple/production-20261029.sqlite`, WAL/FULL                                      |
 | Local files           | `/var/lib/just-maple/media`; existing Azure media storage/URLs retained                         |
 | Native search         | `just-maple-search`, private `/run/just-maple-search/worker.sock`                               |
@@ -586,3 +586,17 @@ an empty graph. No native inference/LLM was invoked for the snapshot load rehear
 Validation: 971 API tests passed/3 existing skips, 16 focused web tests, shared/web
 typechecks, API/paperbark builds and precommit passed. Draft PR314 is stacked on
 PR313 and remains unmerged.
+
+Final frontend correction: `graph-window-20261030-02`, source
+`210b4cfec40fb1b8acd441971ce4ead1fbee6345`, all 112 artifacts verified. The first
+package accidentally included stale paperbark output: the precommit hook builds the
+default web target and does **not** refresh `apps/api/dist/web/paperbark`. Always run
+`bun run build:web:paperbark` explicitly before packaging this deployment, then verify
+the rendered page. Release 02 contains the tested API fix and explicitly rebuilt web
+client. Final public/LAN graph checks pass (LAN 165–188 ms, public 902–1571 ms), with
+all 177,862 archive imports intact. The Mac client applied Update and visibly showed
+the loaded graph with From October 23 and only 7-day/30-day presets. No native binary
+change; other clients apply the web Update/reload. Snapshot test results above remain
+valid for the unchanged API code. Source/visual receipts are retained privately.
+Occasional slow generic device reads still occur in background jobs; this rollout
+addresses the reproduced graph/vector stalls, not a comprehensive performance audit.
