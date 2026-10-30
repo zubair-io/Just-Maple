@@ -9,7 +9,12 @@ import {
 } from '../../__tests__/helpers/fixtures';
 import { searchServerDataPages, decodeItemReference } from '../server-hybrid-search.service';
 import { upsertDeviceItems } from '../../repositories/device-item.repo';
-import type { MacDataItem } from '@maple/shared';
+import {
+    deviceItemMatchesFilter,
+    homeItemVisibleToBots,
+    type DeviceDataFilter,
+    type MacDataItem,
+} from '@maple/shared';
 import { serverSearchWorker } from '../server-search-worker.service';
 
 vi.mock('../server-search-worker.service', () => ({
@@ -71,7 +76,7 @@ describe('server hybrid query contract', () => {
             projected.every(
                 (doc) =>
                     doc.userId === userId &&
-                    doc.item.body === undefined &&
+                    doc.item.body === '' &&
                     doc.vectors === undefined &&
                     doc.searchText === undefined,
             ),
@@ -115,6 +120,186 @@ describe('server hybrid query contract', () => {
                 )
             ).results,
         ).toEqual([]);
+    });
+    it('pages a large archive without losing late matches or bypassing page filters', async () => {
+        const userId = (await createUserFixture())._id.toString();
+        const notebook = await createNotebookFixture({ createdBy: userId });
+        const page = await createPageFixture({ userId, notebookId: String(notebook._id) });
+        await testDb.collection('pages').updateOne(
+            { id: page.id },
+            {
+                $set: {
+                    type: 'devicedata',
+                    deviceSource: 'imessage',
+                    deviceFilter: { chats: [{ id: 'selected-chat', name: 'Selected' }] },
+                },
+            },
+        );
+        await upsertDeviceItems(
+            userId,
+            'archive',
+            Array.from({ length: 503 }, (_, index) => ({
+                ...makeItem(`imessage:batch-${index}`, 'Boundaryneedle package'),
+                occurredAt: 1000 + index,
+                thread: index === 502 ? 'Selected' : 'Hidden',
+                extra: { chatId: index === 502 ? 'selected-chat' : 'hidden-chat' },
+            })),
+        );
+        const db = getSqliteDatabase()!;
+        const request = vi.spyOn(db, 'request');
+        try {
+            const result = await searchServerDataPages(
+                { userId, notebookId: String(notebook._id), timeZone: 'UTC' },
+                { query: 'Boundaryneedle' },
+            );
+            expect(result.results.map((row) => row.id)).toEqual(['imessage:batch-502']);
+            expect(result.search.coverage.eligible).toBe(1);
+            const batches = request.mock.calls
+                .map((call, index) => ({ call, result: request.mock.results[index] }))
+                .filter(({ call }) => call[0] === 'search.candidates');
+            expect(batches).toHaveLength(2);
+            expect(batches[0]!.call[2]?.[4]).toBe(0);
+            expect(batches[1]!.call[2]?.[4]).toBeGreaterThan(0);
+            expect(await batches[0]!.result!.value).toHaveLength(500);
+            expect(await batches[1]!.result!.value).toHaveLength(3);
+        } finally {
+            request.mockRestore();
+        }
+    });
+    it('keeps every sharing and presence filter fact without copying archive memberships', async () => {
+        const scenarios: Array<{ item: MacDataItem; filter: DeviceDataFilter }> = [
+            {
+                item: { ...makeItem('chat', 'body'), extra: { chatId: 'selected' } },
+                filter: { chats: [{ id: 'selected', name: 'Selected' }] },
+            },
+            {
+                item: {
+                    ...makeItem('calendar', 'body'),
+                    source: 'calendar',
+                    calendar: 'Family',
+                    extra: { calendarId: 'family' },
+                },
+                filter: { calendars: [{ id: 'family', name: 'Family' }] },
+            },
+            {
+                item: { ...makeItem('mail', 'body'), source: 'mail', mailbox: 'Inbox' },
+                filter: { mailboxes: ['Inbox'] },
+            },
+            {
+                item: {
+                    ...makeItem('place', 'body'),
+                    source: 'location',
+                    extra: { placeId: 'private' },
+                },
+                filter: { includeAll: true, excludePlaceIds: ['private'] },
+            },
+            {
+                item: {
+                    ...makeItem('coordinates', 'body'),
+                    source: 'location',
+                    extra: { lat: 40, lon: -73 },
+                },
+                filter: { includeAll: true, excludePlaceIds: ['private'] },
+            },
+            {
+                item: {
+                    ...makeItem('home', 'body'),
+                    source: 'home',
+                    extra: { entityId: 'light.room', area: 'Kitchen' },
+                },
+                filter: { homeAreas: ['Kitchen'] },
+            },
+            {
+                item: {
+                    ...makeItem('presence', 'body'),
+                    source: 'home',
+                    extra: { entityId: 'binary_sensor.phone', deviceClass: 'occupancy' },
+                },
+                filter: { includeAll: true },
+            },
+            {
+                item: {
+                    ...makeItem('group', 'body'),
+                    source: 'home',
+                    extra: { entityId: 'group.people', state: 'home', area: 'Kitchen' },
+                },
+                filter: { homeAreas: ['Kitchen'] },
+            },
+        ];
+        await upsertDeviceItems(
+            'owner',
+            'device',
+            scenarios.map(({ item }) => ({
+                ...item,
+                extra: {
+                    ...item.extra,
+                    archiveMembers: [
+                        { key: 'person', name: 'Private contact', handles: ['private'] },
+                    ],
+                },
+            })),
+        );
+        const projected = await getSqliteDatabase()!.request<Array<{ item: MacDataItem }>>(
+            'search.candidates',
+            undefined,
+            ['owner', ['imessage', 'calendar', 'mail', 'location', 'home']],
+        );
+        const context = {
+            timeZone: 'UTC',
+            places: [{ id: 'private', name: 'Private', lat: 40, lon: -73 }],
+        };
+        expect(projected).toHaveLength(scenarios.length);
+        for (const { item, filter } of scenarios) {
+            const candidate = projected.find((row) => row.item.id === item.id)!.item;
+            expect(deviceItemMatchesFilter(candidate, filter, context)).toBe(
+                deviceItemMatchesFilter(item, filter, context),
+            );
+            expect(homeItemVisibleToBots(candidate, filter)).toBe(
+                homeItemVisibleToBots(item, filter),
+            );
+            expect(candidate.extra?.['archiveMembers']).toBeUndefined();
+            expect(candidate.body).toBe('');
+        }
+    });
+    it('bounds parallel searches before reading candidates and releases queued requests', async () => {
+        const userId = (await createUserFixture())._id.toString();
+        const notebook = await createNotebookFixture({ createdBy: userId });
+        const page = await createPageFixture({ userId, notebookId: String(notebook._id) });
+        await testDb
+            .collection('pages')
+            .updateOne({ id: page.id }, { $set: { type: 'devicedata', deviceSource: 'imessage' } });
+        const db = getSqliteDatabase()!;
+        const realRequest = db.request.bind(db);
+        let release!: () => void;
+        const gate = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        let started = 0;
+        const request = vi
+            .spyOn(db, 'request')
+            .mockImplementation(
+                async <T>(op: string, collection?: string, args: unknown[] = []): Promise<T> => {
+                    if (op === 'search.candidates') {
+                        started++;
+                        await gate;
+                    }
+                    return realRequest<T>(op, collection, args);
+                },
+            );
+        const ctx = { userId, notebookId: String(notebook._id), timeZone: 'UTC' };
+        const searches = Array.from({ length: 6 }, () => searchServerDataPages(ctx, { query: '' }));
+        try {
+            await vi.waitFor(() => expect(started).toBe(2));
+            await expect(searchServerDataPages(ctx, { query: '' })).rejects.toThrow(
+                'search_overloaded',
+            );
+        } finally {
+            release();
+            await Promise.all(searches);
+            request.mockRestore();
+        }
+        expect(started).toBe(6);
+        await expect(searchServerDataPages(ctx, { query: '' })).resolves.toHaveProperty('results');
     });
     it('rejects stale embedding publication after a source revision changes', async () => {
         await upsertDeviceItems('owner', 'device', [makeItem('imessage:item', 'first')]);

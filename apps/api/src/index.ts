@@ -1,3 +1,5 @@
+import { messageHistoryRoutes } from './routes/message-history';
+import { resumeMessageArchives, shutdownMessageArchives } from './services/message-archive.service';
 import process from 'node:process';
 import type { EventEmitter } from 'node:events';
 import { Elysia } from 'elysia';
@@ -96,6 +98,7 @@ async function main() {
         // Every 10 minutes: find promises and replies owed, for notebooks with a Follow-ups page
         startFollowUpScanning();
     }
+    if (config.backgroundJobsEnabled) await resumeMessageArchives();
     // Every minute: daily briefs and leave-now reminders
     if (config.backgroundJobsEnabled) startProactiveScheduler();
 
@@ -125,6 +128,7 @@ async function main() {
         .use(botRoutes)
         .use(macDataRoutes)
         .use(deviceDataRoutes)
+        .use(messageHistoryRoutes)
         .use(calendarProposalRoutes)
         .use(homeRoutes)
         .use(botActionRoutes)
@@ -246,6 +250,7 @@ async function main() {
         })
         .listen({
             port: config.port,
+            maxRequestBodySize: 128 * 1024 * 1024,
             hostname: config.host,
             error(error) {
                 if ((error as any).code === 'EADDRINUSE') {
@@ -277,6 +282,7 @@ async function main() {
             ]);
             clearTimeout(drainTimer);
             await server?.stop(true);
+            await shutdownMessageArchives();
             await Promise.all([
                 yjsDocumentService.shutdown(),
                 yjsWhiteboardService.shutdown(),

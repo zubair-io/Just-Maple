@@ -133,7 +133,13 @@
       </p>
     }
 
-    <div class="device-data-scroll min-h-0 flex-1 overflow-auto px-6 pb-6 max-md:px-4">
+    <div
+      [class]="
+        managedContent()
+          ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
+          : 'device-data-scroll min-h-0 flex-1 overflow-auto px-6 pb-6 max-md:px-4'
+      "
+    >
       @if (list().focused(); as item) {
         <article
           class="mt-4 rounded-xl border border-[var(--color-primary)] bg-[var(--color-surface)] p-4"
@@ -146,7 +152,10 @@
               </h2>
               <p class="m-0 mt-0.5 font-sans text-xs text-[var(--color-text-muted)]">
                 {{ item.sender }}{{ item.sender ? ' · ' : ''
-                }}{{ item.occurredAt * 1000 | date: 'EEE, MMM d, h:mm a'
+                }}{{
+                  item.extra?.['timestampUnknown']
+                    ? 'Date unknown'
+                    : (item.occurredAt * 1000 | date: 'EEE, MMM d, h:mm a')
                 }}{{ item.location ? ' · ' + item.location : '' }}
               </p>
             </div>
@@ -168,7 +177,13 @@
       }
       <ng-content />
 
-      @if (shown() === 0 && list().loaded() && !list().loading() && !needsAccess()) {
+      @if (
+        (!managedContent() || list().nothingShared()) &&
+        shown() === 0 &&
+        list().loaded() &&
+        !list().loading() &&
+        !needsAccess()
+      ) {
         <div
           class="py-12 text-center font-sans text-sm text-[var(--color-text-muted)]"
           data-testid="empty"
@@ -203,7 +218,7 @@
         </div>
       }
 
-      @if (list().canLoadMore()) {
+      @if (!managedContent() && list().canLoadMore()) {
         <div class="flex justify-center pt-4">
           <button
             type="button"

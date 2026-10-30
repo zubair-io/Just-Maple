@@ -220,7 +220,10 @@ export function hit(
     return {
         id: item.id,
         source: item.source,
-        when: formatInZone(new Date(item.occurredAt * 1000), timeZone),
+        when:
+            item.extra?.['timestampUnknown'] === true
+                ? 'Date unknown'
+                : formatInZone(new Date(item.occurredAt * 1000), timeZone),
         ...(item.endAt !== undefined
             ? { end: formatInZone(new Date(item.endAt * 1000), timeZone) }
             : {}),

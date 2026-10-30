@@ -161,6 +161,7 @@ export function injectDeviceDataList(source: MacDataSource, options: DeviceDataL
 
   return {
     source,
+    pageId,
     page,
     macStatus,
     search,
@@ -180,6 +181,10 @@ export function injectDeviceDataList(source: MacDataSource, options: DeviceDataL
 
     clearFocus(): void {
       router.navigate([], { relativeTo: route, queryParams: { item: null } });
+    },
+
+    refresh(): void {
+      void load(0, Math.max(pageSize, items().length));
     },
 
     loadMore(): void {

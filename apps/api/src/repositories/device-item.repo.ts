@@ -1,5 +1,10 @@
 import type { Collection } from 'mongodb';
-import { getDb } from '../db/client';
+import { getDb, getSqliteDatabase } from '../db/client';
+import {
+    messageMetadata,
+    matchingMessageIds,
+    invalidateMessageMetadata,
+} from './message-history.repo';
 import {
     DEVICE_DATA_RETENTION_DAYS,
     normalizePersonHandle,
@@ -118,6 +123,7 @@ export async function upsertDeviceItems(
         }),
         { ordered: false },
     );
+    if (items.some((item) => item.source === 'imessage')) invalidateMessageMetadata(userId);
     return items.length;
 }
 
@@ -178,6 +184,7 @@ export async function removeDeviceItems(
         deviceId: scope.deviceId,
         source: { $in: scope.sources },
     });
+    if (result.deletedCount > 0) invalidateMessageMetadata(userId);
     return result.deletedCount;
 }
 
@@ -190,6 +197,37 @@ export async function findDeviceItems(
     userId: string,
     query: DeviceItemQuery,
 ): Promise<{ items: MacDataItem[]; total: number }> {
+    // Full-history message reads must not hydrate every document through the compatibility adapter.
+    if (
+        getSqliteDatabase() &&
+        query.sources?.length === 1 &&
+        query.sources[0] === 'imessage' &&
+        !query.conditions
+    ) {
+        const matches = await matchingMessageIds(userId, query.search ?? '');
+        const rows = (await messageMetadata(userId)).filter(
+            (item) =>
+                (query.from === undefined || item.occurredAt >= query.from) &&
+                (query.to === undefined || item.occurredAt <= query.to) &&
+                (!matches || matches.has(item.id)) &&
+                (!query.match || query.match(item)),
+        );
+        const direction = query.order === 'asc' ? 1 : -1;
+        rows.sort(
+            (a, b) =>
+                (a.occurredAt - b.occurredAt) * direction || a.id.localeCompare(b.id) * direction,
+        );
+        const offset = Math.max(0, query.offset ?? 0);
+        const limit = Math.min(500, Math.max(1, query.limit ?? 100));
+        const ids = rows.slice(offset, offset + limit).map((item) => item.id);
+        const byId = new Map(
+            (await findDeviceItemsByIds(userId, ids)).map((item) => [item.id, item]),
+        );
+        return {
+            items: ids.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : [])),
+            total: rows.length,
+        };
+    }
     const filter: Record<string, unknown> = { ...query.conditions, userId };
     if (query.sources?.length) filter.source = { $in: query.sources };
     if (query.from !== undefined || query.to !== undefined) {
@@ -260,22 +298,29 @@ export async function findDeviceItems(
 export async function findDeviceItemFacets(
     userId: string,
 ): Promise<{ calendars: DeviceDataChoice[]; mailboxes: string[]; chats: DeviceDataChoice[] }> {
-    const rows = await getCollection()
-        .find(
-            { userId, source: { $in: ['calendar', 'mail', 'imessage'] } },
-            {
-                projection: {
-                    source: 1,
-                    occurredAt: 1,
-                    'item.calendar': 1,
-                    'item.mailbox': 1,
-                    'item.thread': 1,
-                    'item.extra.calendarId': 1,
-                    'item.extra.chatId': 1,
-                },
-            },
-        )
-        .toArray();
+    const sqlite = getSqliteDatabase();
+    const rows = sqlite
+        ? await sqlite.request<Pick<DeviceItemDocument, 'source' | 'occurredAt' | 'item'>[]>(
+              'device.facets',
+              undefined,
+              [userId],
+          )
+        : await getCollection()
+              .find(
+                  { userId, source: { $in: ['calendar', 'mail', 'imessage'] } },
+                  {
+                      projection: {
+                          source: 1,
+                          occurredAt: 1,
+                          'item.calendar': 1,
+                          'item.mailbox': 1,
+                          'item.thread': 1,
+                          'item.extra.calendarId': 1,
+                          'item.extra.chatId': 1,
+                      },
+                  },
+              )
+              .toArray();
     type Seen = { choice: DeviceDataChoice; at: number };
     const latest: Record<'calendar' | 'mail' | 'imessage', Map<string, Seen>> = {
         calendar: new Map(),
@@ -479,6 +524,12 @@ export async function countDeviceItems(
     userId: string,
     deviceId?: string,
 ): Promise<Record<string, number>> {
+    const sqlite = getSqliteDatabase();
+    if (sqlite)
+        return sqlite.request<Record<string, number>>('device.counts', undefined, [
+            userId,
+            deviceId,
+        ]);
     const sources: MacDataSource[] = [
         'imessage',
         'mail',
@@ -505,11 +556,27 @@ export async function deleteDeviceItems(
     userId: string,
     scope: { deviceId?: string; source?: MacDataSource } = {},
 ): Promise<number> {
+    const sqlite = getSqliteDatabase();
+    if (sqlite) {
+        let total = 0;
+        for (;;) {
+            const deleted = await sqlite.request<number>('device.deleteBatch', undefined, [
+                userId,
+                scope.deviceId,
+                scope.source,
+            ]);
+            total += deleted;
+            if (deleted < 1000) break;
+        }
+        invalidateMessageMetadata(userId);
+        return total;
+    }
     const result = await getCollection().deleteMany({
         userId,
         ...(scope.deviceId ? { deviceId: scope.deviceId } : {}),
         ...(scope.source ? { source: scope.source } : {}),
     });
+    if (result.deletedCount > 0) invalidateMessageMetadata(userId);
     return result.deletedCount;
 }
 
@@ -549,25 +616,32 @@ export async function retainContactMail(userId?: string): Promise<number> {
                   ).map((doc) => doc.userId),
               ),
           ];
+    const sqlite = getSqliteDatabase();
     let retained = 0;
     for (const owner of owners) {
         const emails = contactEmails(await findDeviceContactItems(owner));
         if (!emails.size) continue;
         let after = '';
         while (true) {
-            const batch = await getCollection()
-                .find(
-                    {
-                        userId: owner,
-                        source: 'mail',
-                        retainedContactMail: { $ne: true },
-                        _id: { $gt: after },
-                    },
-                    { projection: { _id: 1, item: 1 } },
-                )
-                .sort({ _id: 1 })
-                .limit(500)
-                .toArray();
+            const batch = sqlite
+                ? await sqlite.request<Pick<DeviceItemDocument, '_id' | 'item'>[]>(
+                      'device.mailRetentionBatch',
+                      undefined,
+                      [owner, after],
+                  )
+                : await getCollection()
+                      .find(
+                          {
+                              userId: owner,
+                              source: 'mail',
+                              retainedContactMail: { $ne: true },
+                              _id: { $gt: after },
+                          },
+                          { projection: { _id: 1, item: 1 } },
+                      )
+                      .sort({ _id: 1 })
+                      .limit(500)
+                      .toArray();
             if (!batch.length) break;
             const ids = batch
                 .filter((doc) => isContactMail(doc.item, emails))
@@ -592,16 +666,21 @@ export async function retainContactMail(userId?: string): Promise<number> {
 export async function purgeExpiredDeviceItems(now = Date.now()): Promise<string[]> {
     await retainContactMail();
     const cutoff = now / 1000 - DEVICE_DATA_RETENTION_DAYS * 24 * 60 * 60;
-    const expired = await getCollection()
-        .find(
-            {
-                source: { $nin: ['contacts', 'imessage'] },
-                retainedContactMail: { $ne: true },
-                occurredAt: { $lt: cutoff },
-            },
-            { projection: { _id: 1, id: 1, userId: 1, source: 1, endAt: 1 } },
-        )
-        .toArray();
+    const sqlite = getSqliteDatabase();
+    const expired = sqlite
+        ? await sqlite.request<
+              Pick<DeviceItemDocument, '_id' | 'id' | 'userId' | 'source' | 'endAt'>[]
+          >('device.expired', undefined, [cutoff])
+        : await getCollection()
+              .find(
+                  {
+                      source: { $nin: ['contacts', 'imessage'] },
+                      retainedContactMail: { $ne: true },
+                      occurredAt: { $lt: cutoff },
+                  },
+                  { projection: { _id: 1, id: 1, userId: 1, source: 1, endAt: 1 } },
+              )
+              .toArray();
     const doomed = expired.filter(
         (doc) =>
             (doc.source !== 'calendar' || (doc.endAt ?? 0) < cutoff) &&

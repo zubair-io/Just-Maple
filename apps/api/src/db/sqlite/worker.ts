@@ -1,3 +1,4 @@
+import type { MacDataItem } from '@maple/shared';
 import { Database, type SQLQueryBindings } from 'bun:sqlite';
 import { chmodSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -46,6 +47,8 @@ CREATE TABLE IF NOT EXISTS embedding_jobs(
     generation TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, retry_at INTEGER NOT NULL DEFAULT 0,
     lease_until INTEGER NOT NULL DEFAULT 0, last_error TEXT
 );
+-- A reverse scan gives retry_at ASC,rowid DESC without sorting the backfill queue.
+CREATE INDEX IF NOT EXISTS embedding_jobs_ready ON embedding_jobs(retry_at DESC);
 CREATE TABLE IF NOT EXISTS search_embeddings(
     id TEXT NOT NULL REFERENCES search_documents(id) ON DELETE CASCADE, chunk INTEGER NOT NULL,
     user_id TEXT NOT NULL, revision TEXT NOT NULL, content_hash TEXT NOT NULL,
@@ -459,16 +462,49 @@ function dropCollection(name: string): boolean {
     db.query('DELETE FROM document_collections WHERE name=?').run(name);
     return true;
 }
+/** Keep the complete inputs to deviceItemMatchesFilter/homeItemVisibleToBots. */
+function searchFilterItem(item: MacDataItem): MacDataItem {
+    const extra = item.extra ?? {};
+    return {
+        id: item.id,
+        source: item.source,
+        revision: item.revision,
+        occurredAt: item.occurredAt,
+        body: '',
+        participants: [],
+        calendar: item.calendar,
+        mailbox: item.mailbox,
+        thread: item.thread,
+        extra: Object.fromEntries(
+            [
+                'calendarId',
+                'chatId',
+                'entityId',
+                'state',
+                'deviceClass',
+                'area',
+                'placeId',
+                'place',
+                'lat',
+                'lon',
+            ]
+                .filter((key) => extra[key] !== undefined)
+                .map((key) => [key, extra[key]]),
+        ),
+    };
+}
+
 function operation(op: string, name: string | undefined, args: unknown[]): unknown {
     if (op === 'search.candidates') {
-        const [owner, sources, from, to] = args as [
+        const [owner, sources, from, to, after = 0] = args as [
             string,
             string[],
             number | undefined,
             number | undefined,
+            number?,
         ];
         if (!sources.length) return [];
-        const values: SQLQueryBindings[] = [owner, ...sources];
+        const values: SQLQueryBindings[] = [after, owner, ...sources];
         let dates = '';
         if (typeof from === 'number' && Number.isFinite(from)) {
             dates += ' AND occurred_at>=?';
@@ -480,11 +516,13 @@ function operation(op: string, name: string | undefined, args: unknown[]): unkno
         }
         const rows = db
             .query(
-                `SELECT id AS _id,user_id AS userId,source,revision,content_hash AS contentHash,item_metadata
-            FROM search_documents WHERE user_id=? AND source IN (${sources.map(() => '?').join(',')})${dates}`,
+                `SELECT row_id AS cursor,id AS _id,user_id AS userId,source,revision,content_hash AS contentHash,item_metadata
+            FROM search_documents NOT INDEXED WHERE row_id>? AND user_id=? AND source IN (${sources.map(() => '?').join(',')})${dates}
+            ORDER BY row_id LIMIT 500`,
             )
             .all(...values) as Array<{
             _id: string;
+            cursor: number;
             userId: string;
             source: string;
             revision: string;
@@ -493,8 +531,172 @@ function operation(op: string, name: string | undefined, args: unknown[]): unkno
         }>;
         return rows.map(({ item_metadata, ...doc }) => ({
             ...doc,
-            item: JSON.parse(item_metadata),
+            // Candidates need sharing-filter facts, not repeated archive contact
+            // memberships or provenance. Hydrate full content only after ranking.
+            item: searchFilterItem(JSON.parse(item_metadata) as MacDataItem),
         }));
+    }
+    if (op === 'device.deleteBatch') {
+        ensureCollection('device_items');
+        const filter = {
+            userId: String(args[0]),
+            ...(typeof args[1] === 'string' && args[1] ? { deviceId: args[1] } : {}),
+            ...(typeof args[2] === 'string' && args[2] ? { source: args[2] } : {}),
+        };
+        const candidate = candidateWhere(filter);
+        return db
+            .transaction(() => {
+                const rows = db
+                    .query(`SELECT _id FROM docs_device_items WHERE ${candidate.sql} LIMIT 1000`)
+                    .all(...candidate.values) as { _id: string }[];
+                for (const row of rows) {
+                    if (!row._id.startsWith('s:')) throw new Error('Invalid device item key');
+                    remove('device_items', { _id: row._id.slice(2) });
+                }
+                return rows.length;
+            })
+            .immediate();
+    }
+    if (op === 'device.mailRetentionBatch') {
+        ensureCollection('device_items');
+        return (
+            db
+                .query(
+                    `SELECT s.id AS _id,s.item_metadata FROM search_documents s JOIN docs_device_items d ON d._id='s:'||s.id
+            WHERE s.user_id=? AND s.source='mail' AND s.id>? AND COALESCE(json_extract(d.index_data,'$.retainedContactMail'),0)!=1
+            ORDER BY s.id LIMIT 500`,
+                )
+                .all(String(args[0]), String(args[1])) as { _id: string; item_metadata: string }[]
+        ).map((row) => ({ _id: row._id, item: JSON.parse(row.item_metadata) }));
+    }
+    if (op === 'device.expired') {
+        ensureCollection('device_items');
+        return db
+            .query(
+                `SELECT s.id AS _id,s.item_id AS id,s.user_id AS userId,s.source,json_extract(d.index_data,'$.endAt') AS endAt
+            FROM search_documents s JOIN docs_device_items d ON d._id='s:'||s.id
+            WHERE s.source NOT IN ('contacts','imessage') AND s.occurred_at<?
+                AND COALESCE(json_extract(d.index_data,'$.retainedContactMail'),0)!=1`,
+            )
+            .all(Number(args[0]));
+    }
+    if (op === 'device.counts') {
+        ensureCollection('device_items');
+        const device = typeof args[1] === 'string' && args[1] ? args[1] : undefined;
+        const rows = db
+            .query(
+                `SELECT ${field('source')} AS source,count(*) AS n
+            FROM docs_device_items WHERE ${field('userId')}=?
+            ${device ? `AND ${field('deviceId')}=?` : ''} GROUP BY ${field('source')}`,
+            )
+            .all(...(device ? [String(args[0]), device] : [String(args[0])])) as {
+            source: string;
+            n: number;
+        }[];
+        return Object.fromEntries(rows.map((row) => [row.source, row.n]));
+    }
+    if (op === 'device.facets') {
+        const rows = db
+            .query(
+                `SELECT source,max(occurred_at) AS occurredAt,calendar,mailbox,thread,calendarId,chatId FROM (
+            SELECT source,occurred_at,json_extract(item_metadata,'$.calendar') AS calendar,
+                json_extract(item_metadata,'$.mailbox') AS mailbox,json_extract(item_metadata,'$.thread') AS thread,
+                json_extract(item_metadata,'$.extra.calendarId') AS calendarId,json_extract(item_metadata,'$.extra.chatId') AS chatId
+            FROM search_documents WHERE user_id=? AND source IN ('calendar','mail','imessage'))
+            GROUP BY source,calendar,mailbox,thread,calendarId,chatId`,
+            )
+            .all(String(args[0])) as {
+            source: string;
+            occurredAt: number;
+            calendar: string | null;
+            mailbox: string | null;
+            thread: string | null;
+            calendarId: string | null;
+            chatId: string | null;
+        }[];
+        return rows.map(
+            ({ source, occurredAt, calendar, mailbox, thread, calendarId, chatId }) => ({
+                source,
+                occurredAt,
+                item: { calendar, mailbox, thread, extra: { calendarId, chatId } },
+            }),
+        );
+    }
+    if (op === 'messages.metadata' || op === 'messages.native') {
+        const native = op === 'messages.native';
+        const items: MacDataItem[] = [];
+        const people = new Map<string, unknown>();
+        const shapes: Omit<MacDataItem, 'id' | 'occurredAt'>[] = [];
+        const shapeIndex = new Map<string, number>();
+        const compact: [string, number, number][] = [];
+        const rows = db
+            .query(
+                `SELECT item_metadata,${native ? 'body' : "'' AS body"} FROM search_documents WHERE user_id=? AND source='imessage' ${native ? "AND item_id LIKE 'imessage:%'" : ''}`,
+            )
+            .iterate(String(args[0]));
+        for (const row of rows as Iterable<{ item_metadata: string; body: string }>) {
+            const item = JSON.parse(row.item_metadata) as MacDataItem;
+            if (native) {
+                items.push({ ...item, body: row.body });
+                continue;
+            }
+            const extra = item.extra ?? {};
+            const memberKeys: string[] = [];
+            if (Array.isArray(extra['archiveMembers']))
+                for (const person of extra['archiveMembers']) {
+                    if (person && typeof person === 'object' && typeof person.key === 'string') {
+                        people.set(person.key, person);
+                        memberKeys.push(person.key);
+                    }
+                }
+            const shape = {
+                source: 'imessage',
+                revision: '',
+                title: item.title,
+                thread: item.thread,
+                participants: item.participants,
+                body: '',
+                extra: {
+                    chatId: extra['chatId'],
+                    archiveDataset: extra['archiveDataset'],
+                    archivePlatform: extra['archivePlatform'],
+                    archiveIsGroup: extra['archiveIsGroup'],
+                    archiveAutomated: extra['archiveAutomated'],
+                    archiveMemberKeys: memberKeys,
+                },
+            } satisfies Omit<MacDataItem, 'id' | 'occurredAt'>;
+            const key = JSON.stringify(shape);
+            let index = shapeIndex.get(key);
+            if (index === undefined) {
+                index = shapes.length;
+                shapes.push(shape);
+                shapeIndex.set(key, index);
+            }
+            compact.push([item.id, item.occurredAt, index]);
+        }
+        // Intern repeated archive memberships to bound the cross-process payload and API memory.
+        return native ? items : { rows: compact, shapes, people: [...people.values()] };
+    }
+    if (op === 'messages.previews') {
+        const ids = (args[1] as string[]).slice(0, 500).map((id) => `${String(args[0])}:${id}`);
+        if (!ids.length) return [];
+        // The scope index otherwise scans the entire library for every preview batch.
+        return db
+            .query(
+                `SELECT item_id AS id,substr(body,1,160) AS body,item_metadata AS metadata
+            FROM search_documents INDEXED BY sqlite_autoindex_search_documents_1 WHERE user_id=? AND source='imessage' AND id IN (${ids.map(() => '?').join(',')})`,
+            )
+            .all(String(args[0]), ...ids);
+    }
+    if (op === 'messages.matching') {
+        return (
+            db
+                .query(
+                    `SELECT d.item_id FROM device_search_fts JOIN search_documents d ON d.row_id=device_search_fts.rowid
+            WHERE d.user_id=? AND d.source='imessage' AND device_search_fts MATCH ?`,
+                )
+                .all(String(args[0]), String(args[1])) as { item_id: string }[]
+        ).map((row) => row.item_id);
     }
     if (op.startsWith('search.')) return searchStore.run(op, args);
     if (op === 'ping') {
@@ -698,6 +900,7 @@ function operation(op: string, name: string | undefined, args: unknown[]): unkno
 const input = createInterface({ input: process.stdin, crlfDelay: Infinity });
 input.on('line', (line) => {
     let request: Request | undefined;
+    const started = performance.now();
     try {
         request = decode<Request>(line);
         const value =
@@ -723,6 +926,12 @@ input.on('line', (line) => {
                 },
             }) + '\n',
         );
+    } finally {
+        const elapsed = Math.round(performance.now() - started);
+        if (elapsed >= 1000)
+            console.error(
+                `[SQLite] Slow operation ${request?.operation ?? 'decode'}${request?.collection ? ` (${request.collection})` : ''}: ${elapsed}ms`,
+            );
     }
 });
 process.stdin.on('end', () => {

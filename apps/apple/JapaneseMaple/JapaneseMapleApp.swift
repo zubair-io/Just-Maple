@@ -31,6 +31,15 @@ struct JapaneseMapleApp: App {
                     }
                 }
         }
+        #if os(macOS)
+        .commands {
+            CommandGroup(after: .appSettings) {
+                Button("Server Settings…") {
+                    NotificationCenter.default.post(name: ServerConfigService.openSettings, object: nil)
+                }
+            }
+        }
+        #endif
     }
 
     private func handleDeepLink(url: URL) {
