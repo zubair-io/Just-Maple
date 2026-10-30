@@ -123,7 +123,7 @@ export async function upsertDeviceItems(
         }),
         { ordered: false },
     );
-    invalidateMessageMetadata(userId);
+    if (items.some((item) => item.source === 'imessage')) invalidateMessageMetadata(userId);
     return items.length;
 }
 
@@ -184,7 +184,7 @@ export async function removeDeviceItems(
         deviceId: scope.deviceId,
         source: { $in: scope.sources },
     });
-    invalidateMessageMetadata(userId);
+    if (result.deletedCount > 0) invalidateMessageMetadata(userId);
     return result.deletedCount;
 }
 
@@ -576,7 +576,7 @@ export async function deleteDeviceItems(
         ...(scope.deviceId ? { deviceId: scope.deviceId } : {}),
         ...(scope.source ? { source: scope.source } : {}),
     });
-    invalidateMessageMetadata(userId);
+    if (result.deletedCount > 0) invalidateMessageMetadata(userId);
     return result.deletedCount;
 }
 
