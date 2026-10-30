@@ -19,6 +19,12 @@ nonisolated struct IMessageReader {
         var lastRowId: Int64
         /// Apple-epoch nanoseconds of the previous pass, used to pick up edits and unsends.
         var lastScan: Int64
+        /// Missing on the former 30-day checkpoint: rewind Messages once, never Mail.
+        var historyVersion: Int? = nil
+        var editCursor: Int64? = nil
+        var editUntil: Int64? = nil
+        var editMaxRowId: Int64? = nil
+        var backfilling: Bool? = nil
     }
 
     let databaseURL: URL
@@ -48,7 +54,9 @@ nonisolated struct IMessageReader {
         var state =
             checkpoint.flatMap { try? JSONDecoder().decode(Checkpoint.self, from: Data($0.utf8)) }
             ?? Checkpoint(lastRowId: 0, lastScan: 0)
-        let windowStart = Self.appleNanos(now.addingTimeInterval(-macDataInitialWindow))
+        if state.historyVersion != 2 {
+            state = Checkpoint(lastRowId: 0, lastScan: 0, historyVersion: 2, backfilling: true)
+        }
         let scanStart = Self.appleNanos(now)
 
         var optional: [String] = []
@@ -71,46 +79,62 @@ nonisolated struct IMessageReader {
             LEFT JOIN handle h ON h.ROWID = m.handle_id
             LEFT JOIN chat_message_join cmj ON cmj.message_id = m.ROWID
             LEFT JOIN chat c ON c.ROWID = cmj.chat_id
-            WHERE m.date >= ? \(reactionFilter)
+            WHERE 1 = 1 \(reactionFilter)
             """
 
         var items: [MacDataItem] = []
         var participantsByChat: [Int64: [String]] = [:]
 
-        // 1. Messages already imported that were edited or unsent since the last pass.
+        // Edits are paged too. Freeze the scan bounds until every page is committed;
+        // an interruption or more than 2,000 edits must not lose the remaining edits.
+        var moreEdits = false
         if state.lastScan > 0, !editColumns.isEmpty {
-            let edited = editColumns.map { "m.\($0) > ?" }.joined(separator: " OR ")
+            let upper = state.editUntil ?? scanStart
+            let maxRow = state.editMaxRowId ?? state.lastRowId
+            let edited = editColumns.map { "(m.\($0) > ? AND m.\($0) <= ?)" }.joined(separator: " OR ")
+            var bindings: [Any?] = [state.editCursor ?? 0, maxRow]
+            for _ in editColumns { bindings.append(contentsOf: [state.lastScan, upper]) }
             let rows = try db.rows(
-                "\(select) AND m.ROWID <= ? AND (\(edited)) LIMIT 5000",
-                [windowStart, state.lastRowId] + editColumns.map { _ in state.lastScan })
+                "\(select) AND m.ROWID > ? AND m.ROWID <= ? AND (\(edited)) ORDER BY m.ROWID LIMIT \(Self.batchSize)",
+                bindings)
             for row in rows {
                 if let item = try makeItem(row, db: db, names: names, participantsByChat: &participantsByChat) {
                     items.append(item)
                 }
             }
+            moreEdits = rows.count == Self.batchSize
+            state.editCursor = moreEdits ? rows.last?["rowid"]?.int : nil
+            state.editUntil = moreEdits ? upper : nil
+            state.editMaxRowId = moreEdits ? maxRow : nil
+            if !moreEdits { state.lastScan = upper }
+        } else {
+            state.lastScan = scanStart
         }
 
-        // 2. New messages, paged by row id.
-        var cursor = state.lastRowId
-        while true {
-            let rows = try db.rows(
-                "\(select) AND m.ROWID > ? ORDER BY m.ROWID LIMIT \(Self.batchSize)",
-                [windowStart, cursor])
-            for row in rows {
-                guard let rowid = row["rowid"]?.int else { continue }
-                cursor = max(cursor, rowid)
-                if let item = try makeItem(row, db: db, names: names, participantsByChat: &participantsByChat) {
-                    items.append(item)
-                }
+        // One bounded history page per transaction. The engine uploads between pages;
+        // the durable cursor resumes the complete history after a quit or interruption.
+        let rows = try db.rows(
+            "\(select) AND m.ROWID > ? ORDER BY m.ROWID LIMIT \(Self.batchSize)",
+            [state.lastRowId])
+        for row in rows {
+            guard let rowid = row["rowid"]?.int else { continue }
+            state.lastRowId = max(state.lastRowId, rowid)
+            if let item = try makeItem(row, db: db, names: names, participantsByChat: &participantsByChat) {
+                items.append(item)
             }
-            if rows.count < Self.batchSize { break }
         }
 
-        state.lastRowId = max(state.lastRowId, cursor)
-        state.lastScan = scanStart
+        if state.backfilling == true {
+            for index in items.indices {
+                items[index].extra = items[index].extra ?? [:]
+                items[index].extra?["historyBackfill"] = .bool(true)
+            }
+            state.backfilling = rows.count == Self.batchSize || moreEdits
+        }
         let encoded = String(decoding: try JSONEncoder().encode(state), as: UTF8.self)
         return MacDataReadResult(
-            items: items, removedIds: [], presentIds: nil, reconcileWindow: nil, checkpoint: encoded
+            items: items, removedIds: [], presentIds: nil, reconcileWindow: nil, checkpoint: encoded,
+            hasMore: rows.count == Self.batchSize || moreEdits
         )
     }
 
@@ -158,7 +182,7 @@ nonisolated struct IMessageReader {
                 ? (row["chat_identifier"]?.string ?? handle).map(named)
                 : participants.map(named).joined(separator: ", "))
         let edited = row["date_edited"]?.int ?? 0
-        let revision = "\(edited)-\(retracted ? 1 : 0)-\(macDataStableHash(text))"
+        let revision = "history2-\(edited)-\(retracted ? 1 : 0)-\(macDataStableHash(text))"
 
         return MacDataItem(
             id: "imessage:\(guid)",

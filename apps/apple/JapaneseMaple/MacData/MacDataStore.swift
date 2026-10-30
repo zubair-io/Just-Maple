@@ -163,7 +163,16 @@ nonisolated final class MacDataStore: @unchecked Sendable {
         let at = now.timeIntervalSince1970
         return try db.transaction {
             var changes = 0
-            for item in result.items {
+            let names = MacDataContactNames(contacts: try items(source: .contacts))
+            for var item in result.items {
+                if item.source == .mail {
+                    let previous = try self.item(id: item.id)
+                    if previous?.extra?["retainedContactMail"] == .bool(true)
+                        || item.sender.map(names.containsEmail) == true {
+                        item.extra = item.extra ?? [:]
+                        item.extra?["retainedContactMail"] = .bool(true)
+                    }
+                }
                 guard item.source == source else {
                     throw MacDataError.invalid("A \(source.rawValue) pass returned a \(item.source.rawValue) item.")
                 }
@@ -188,15 +197,19 @@ nonisolated final class MacDataStore: @unchecked Sendable {
                 changes += 1
             }
 
+            // Promote mail already imported before this policy or before a contact was added.
+            try retainContactMail()
             var removed = Set(result.removedIds)
             if let present = result.presentIds, let window = result.reconcileWindow {
                 let stored = try db.rows(
-                    "SELECT id FROM items WHERE source=? AND occurred_at BETWEEN ? AND ?",
+                    "SELECT id FROM items WHERE source=? AND occurred_at BETWEEN ? AND ? AND NOT (source='mail' AND coalesce(json_extract(json, '$.extra.retainedContactMail'), 0)=1)",
                     [source.rawValue, window.lowerBound, window.upperBound]
                 ).compactMap { $0["id"]?.string }
                 removed.formUnion(stored.filter { !present.contains($0) })
             }
             for id in removed {
+                if let item = try self.item(id: id), item.source == .mail,
+                    item.extra?["retainedContactMail"] == .bool(true) { continue }
                 let exists = !(try db.rows("SELECT 1 FROM items WHERE id=?", [id])).isEmpty
                 guard exists else { continue }
                 try db.execute("DELETE FROM items WHERE id=?", [id])
@@ -266,19 +279,37 @@ nonisolated final class MacDataStore: @unchecked Sendable {
 
     // MARK: - Retention
 
-    /// Drops items that aged out of the 30-day window, matching the server's retention so
-    /// they aren't uploaded again: contacts are kept, and calendar events until they end.
+    /// Permanently retain imported mail whose sender is in Contacts. No source scan or
+    /// Mail checkpoint reset; shared addresses qualify even if a name is ambiguous.
+    private func retainContactMail() throws {
+        let names = MacDataContactNames(contacts: try items(source: .contacts))
+        let rows = try db.rows("SELECT json FROM items WHERE source='mail' AND coalesce(json_extract(json, '$.extra.retainedContactMail'), 0)!=1")
+        for row in rows {
+            guard let json = row["json"]?.string else { continue }
+            var item = try decoder.decode(MacDataItem.self, from: Data(json.utf8))
+            guard item.sender.map(names.containsEmail) == true else { continue }
+            item.extra = item.extra ?? [:]
+            item.extra?["retainedContactMail"] = .bool(true)
+            let updated = String(decoding: try encoder.encode(item), as: UTF8.self)
+            try db.execute("UPDATE items SET json=? WHERE id=?", [updated, item.id])
+        }
+    }
+
+    /// iMessages, contacts and archived contact mail never expire automatically.
+    /// Other items retain the rolling window, and calendar events until they end.
     /// Nothing is logged as removed, since the server drops them on its own. A Home
     /// Assistant entity's current state (`home:<entity>`, no `@`) is kept however old.
     @discardableResult
     func pruneExpired(now: Date = Date()) throws -> Int {
         let cutoff = now.timeIntervalSince1970 - macDataInitialWindow
         let expired = """
-            source != 'contacts' AND occurred_at < ?
+            source NOT IN ('contacts', 'imessage') AND occurred_at < ?
+            AND NOT (source='mail' AND coalesce(json_extract(json, '$.extra.retainedContactMail'), 0)=1)
             AND (source != 'calendar' OR coalesce(json_extract(json, '$.endAt'), 0) < ?)
             AND (source != 'home' OR instr(id, '@') > 0)
             """
         return try db.transaction {
+            try retainContactMail()
             let count = Int(
                 try db.rows("SELECT COUNT(*) AS n FROM items WHERE \(expired)", [cutoff, cutoff])
                     .first?["n"]?.int ?? 0)

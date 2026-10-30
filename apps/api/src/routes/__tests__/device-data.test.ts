@@ -17,7 +17,7 @@ vi.mock('../../services/proactive-bot.service', () => ({
 }));
 
 import { handleDeviceDataChanges } from '../../services/proactive-bot.service';
-import { conversationsFor, flushDeviceNews } from '../../services/device-data.service';
+import { conversationsFor, flushDeviceNews, isNews } from '../../services/device-data.service';
 import { purgeExpiredDeviceItems, upsertDeviceItems } from '../../repositories/device-item.repo';
 import { searchDeviceData } from '../../services/device-search.service';
 
@@ -481,6 +481,114 @@ describe.runIf(mongoAvailable)('device data routes', () => {
             .map((doc) => doc.id)
             .sort();
         expect(ids).toEqual(['calendar:long', 'contacts:1', 'mail:new']);
+    });
+
+    it('does not announce history imports as new messages, including recent history', () => {
+        expect(
+            isNews(
+                item('imessage:history', 'imessage', { extra: { historyBackfill: true } }),
+                'changed',
+            ),
+        ).toBe(false);
+        expect(isNews(item('imessage:live', 'imessage'), 'added')).toBe(true);
+    });
+
+    it('archives all iMessage history and sender-contact mail, with owner isolation and sticky retention', async () => {
+        await register('mac-device-1', ['imessage', 'mail', 'contacts']);
+        const old = now - 400 * 24 * 3600;
+        await upsertDeviceItems('another-owner', 'other-device', [
+            item('contacts:private', 'contacts', {
+                extra: { emails: [{ value: 'private@example.com' }] },
+            }),
+        ]);
+        await request(
+            {
+                deviceId: 'mac-device-1',
+                upserts: [
+                    item('imessage:history', 'imessage', { occurredAt: old }),
+                    item('mail:keep', 'mail', {
+                        sender: 'Coach <COACH@example.com>',
+                        occurredAt: old,
+                    }),
+                    item('mail:private', 'mail', {
+                        sender: 'private@example.com',
+                        occurredAt: old,
+                    }),
+                    item('mail:recipient-only', 'mail', {
+                        sender: 'unknown@example.com',
+                        participants: ['coach@example.com'],
+                        occurredAt: old,
+                    }),
+                    // A client cannot grant itself permanent mail retention.
+                    item('mail:spoof', 'mail', {
+                        sender: 'unknown@example.com',
+                        occurredAt: old,
+                        extra: { retainedContactMail: true },
+                    }),
+                ],
+                removals: [],
+            },
+            '/api/device-data/items',
+        );
+        // Contacts can arrive after mail. Shared addresses still qualify even when the author is ambiguous.
+        await request(
+            {
+                deviceId: 'mac-device-1',
+                upserts: [
+                    item('contacts:one', 'contacts', {
+                        title: 'Coach',
+                        extra: { emails: [{ value: 'coach@example.com' }] },
+                    }),
+                    item('contacts:two', 'contacts', {
+                        title: 'Other coach',
+                        extra: { emails: ['coach@example.com'] },
+                    }),
+                ],
+                removals: [],
+            },
+            '/api/device-data/items',
+        );
+        await purgeExpiredDeviceItems();
+        const ids = (await testDb!.collection('device_items').find({ userId }).toArray())
+            .map((doc) => doc.id)
+            .sort();
+        expect(ids).toEqual(['contacts:one', 'contacts:two', 'imessage:history', 'mail:keep']);
+        const hits = await searchDeviceData(
+            userId,
+            { sources: ['imessage'], query: 'Riverside' },
+            'UTC',
+        );
+        expect(hits.map((hit) => hit.id)).toContain('imessage:history');
+        await request(
+            {
+                deviceId: 'mac-device-1',
+                upserts: [],
+                removals: ['contacts:one', 'contacts:two', 'mail:keep'],
+            },
+            '/api/device-data/items',
+        );
+        // Changing the archived mail cannot clear its previous retention decision.
+        await request(
+            {
+                deviceId: 'mac-device-1',
+                upserts: [
+                    item('mail:keep', 'mail', {
+                        sender: 'changed@example.com',
+                        occurredAt: old,
+                        revision: '2',
+                    }),
+                ],
+                removals: [],
+            },
+            '/api/device-data/items',
+        );
+        await purgeExpiredDeviceItems();
+        expect(
+            await testDb!.collection('device_items').countDocuments({ userId, id: 'mail:keep' }),
+        ).toBe(1);
+        // Explicit “remove all” still means forget the user's data.
+        await request(null, '/api/device-data', 'DELETE');
+        expect(await testDb!.collection('device_items').countDocuments({ userId })).toBe(0);
     });
 
     it('keeps sources off after "remove all", even when devices register again', async () => {

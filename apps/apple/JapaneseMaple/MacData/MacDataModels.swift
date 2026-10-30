@@ -121,6 +121,7 @@ nonisolated struct MacDataReadResult: Sendable {
     var presentIds: Set<String>?
     var reconcileWindow: ClosedRange<Double>?
     var checkpoint: String
+    var hasMore: Bool = false
 }
 
 nonisolated enum MacDataPaths {
@@ -160,7 +161,7 @@ nonisolated func macDataStableHash(_ value: String) -> String {
     return String(hash, radix: 16)
 }
 
-/// Initial import reaches back this far, and the same window is kept locally and in the
-/// cloud: older items are pruned, except contacts and calendar events that haven't ended.
+/// Default initial/retention window for other sources. iMessages have no date limit;
+/// imported mail from contacts is archived permanently without a Mail backfill.
 nonisolated let macDataInitialWindow: TimeInterval = 30 * 24 * 60 * 60
 #endif
