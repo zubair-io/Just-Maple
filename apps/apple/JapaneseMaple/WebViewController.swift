@@ -147,12 +147,15 @@ class WebViewController: NSObject, ObservableObject, WKNavigationDelegate, WKUID
             guard let self else { return }
             await ServerConfigService.shared.resolveEndpoint()
             let config = ServerConfigService.shared
-            let endpoints = [config.getActiveServer().url, config.localURL].compactMap { $0 }
-            if let current = self.webView.url, endpoints.contains(where: { URL(string: $0)?.host == current.host }) {
+            let endpoints = [config.getActiveServer().url, config.localURL, self.loadingOrigin].compactMap { $0 }
+            if let current = self.webView.url, endpoints.contains(where: { origin in
+                guard let url = URL(string: origin) else { return false }
+                return url.scheme == current.scheme && url.host == current.host && url.port == current.port
+            }) {
                 // Keep the current page, editor state and offline database while changing transport.
                 _ = try? await self.webView.callAsyncJavaScript(
-                    "if (window.__mapleServerIdentity && window.__mapleServerIdentity.apiUrl !== apiUrl) { window.__mapleServerIdentity.apiUrl = apiUrl; window.dispatchEvent(new Event('maple:server-endpoint')); }",
-                    arguments: ["apiUrl": config.getAPIUrl()], in: nil, contentWorld: .page)
+                    "if (window.__mapleServerIdentity) { const changed = window.__mapleServerIdentity.apiUrl !== apiUrl; window.__mapleServerIdentity.apiUrl = apiUrl; window.__mapleServerIdentity.localUrl = localUrl; if (changed) window.dispatchEvent(new Event('maple:server-endpoint')); }",
+                    arguments: ["apiUrl": config.getAPIUrl(), "localUrl": config.localURL ?? ""], in: nil, contentWorld: .page)
             } else { self.reloadFromServer() }
         }
     }
