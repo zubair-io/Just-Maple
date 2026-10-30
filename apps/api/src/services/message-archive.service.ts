@@ -165,11 +165,22 @@ export function nativeMessageFingerprint(item: MacDataItem): string | null {
         item.extra?.['archiveTruncated']
     )
         return null;
+    const uniquePeers = [...new Set(normalized)];
+    const author =
+        uniquePeers.length > 1 && !item.isFromMe
+            ? normalizePersonHandle(
+                  typeof item.extra?.['senderHandle'] === 'string'
+                      ? item.extra['senderHandle']
+                      : item.sender,
+              )
+            : '';
+    if (author === null) return null;
     return hash(
         JSON.stringify([
             Math.floor(item.occurredAt),
             !!item.isFromMe,
-            [...new Set(normalized)],
+            uniquePeers,
+            author,
             item.body.normalize('NFKC').replace(/\s+/g, ' ').trim(),
         ]),
     );
