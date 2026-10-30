@@ -30,6 +30,7 @@ const MAC_ACCESS_COPY: Partial<Record<MacDataSource, { app: string; button: stri
 export class DeviceDataPanelComponent {
   readonly list = input.required<DeviceDataList>();
   readonly searchable = input(true);
+  readonly managedContent = input(false);
   readonly searchPlaceholder = input('Search');
 
   readonly info = computed(() => deviceSourceInfo(this.list().source));

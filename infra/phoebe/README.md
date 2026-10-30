@@ -340,3 +340,48 @@ A compatible frontend rollback returns the current symlink to
 database/environment. Mac rollback can restore the backed-up bundle without deleting
 its container/keychain, though it loses the new collection policy. Semantic indexing
 continues in the durable background queue. No main merge or DNS change.
+
+## Archived messages and conversation reader
+
+The Messages page has a contact/group sidebar and searches the owner's full imported
+history. Platform, date, contact-name and People/Groups filters narrow the view.
+Search results open with surrounding messages; the timeline loads earlier history
+without downloading every body into the browser. Each message retains its platform
+and sender. Existing page sharing rules apply before the directory, counts, previews
+or contact aliases are assembled.
+
+Owners can choose **Messages → Import archive**, select the `messages.db` produced
+by `message-archive`, review platform counts, choose an IANA timezone for dates with
+no offset and start the import. The server stores a private staging copy; the
+original file stays unchanged. Imports run in bounded batches and can be paused,
+resumed, or continued after restarting the API. Closing the dialog does not stop a
+running job. Reuse the archive name when importing an updated copy of the same
+archive. Keep distinct datasets under different names.
+
+Imports are additive in the existing `imessage` data source, with separate archive
+device IDs, platform provenance and curated person/group membership. Stable source
+IDs make repeat uploads idempotent. Only exact, unambiguous native iMessage overlaps
+with the same time, direction, complete peer handles and text are skipped. Ambiguous
+matches, different platforms and attachment-only records remain preserved. Imports
+do not take over the active Mac collector, reset Mail, send replies or create
+proactive news from old messages. Explicit “forget all data” first drains and pauses
+imports, then removes import jobs and their uploaded copies so they cannot recreate
+forgotten items. The original file on your computer stays untouched.
+
+Naive timestamps use the chosen timezone, retaining the original text and timezone.
+Missing/invalid times are marked **Date unknown**; DST folds use the earlier time and
+nonexistent DST times stay unknown. Text uses the existing 20,000-character cap;
+attachment references are retained without copying attachment files. The source
+staging copy preserves the full original archive. Messages do not expire. Keyword
+search is ready as batches commit; semantic vectors build through the existing
+server queue, so import completion does not imply complete semantic coverage.
+
+The upload limit is 100 MB. A separate read-only Bun process validates the expected
+SQLite tables/integrity and converts records without API credentials. Staged files
+live at `<database-directory>/message-imports/<job-id>/source.sqlite` (700 directory,
+600 file), overridable with `MESSAGE_ARCHIVE_DIR`. Import receipts/checkpoints live
+in the owner-scoped `message_archive_imports` collection. The NAS database snapshot
+contains imported records and checkpoints; the original staging files should also
+be retained for unfinished jobs. A resumed job whose source file is unavailable
+fails safely rather than inventing or deleting records. Do not remove staging files
+while jobs are active.

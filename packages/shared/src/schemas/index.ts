@@ -39,3 +39,5 @@ export * from './home';
 export * from './bot-action';
 export * from './reply-draft';
 export * from './follow-up';
+
+export * from './message-history';

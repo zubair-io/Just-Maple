@@ -5,3 +5,5 @@ export * from './device-data-filter';
 export * from './reply-draft';
 export * from './own-addresses';
 export * from './message-sender';
+
+export * from './message-history';

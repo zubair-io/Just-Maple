@@ -1,3 +1,4 @@
+import { invalidateMessageMetadata } from '../repositories/message-history.repo';
 import type { MacDataItem, MacDataSearchHit, MacDataSource } from '@maple/shared';
 import { findDeviceItemsForIndex, type DeviceItemDocument } from '../repositories/device-item.repo';
 import { redisPubSub } from './redis.service';
@@ -89,6 +90,7 @@ const indexes = new Map<string, UserIndex>();
 /** Marks a user's data as changed so every instance reloads it on the next search. */
 export async function bumpDeviceDataVersion(userId: string): Promise<void> {
     indexes.delete(userId);
+    invalidateMessageMetadata(userId);
     await redisPubSub
         .setKey(versionKey(userId), String(Date.now()), 7 * 24 * 60 * 60)
         .catch(() => {});
@@ -220,7 +222,10 @@ export function hit(
     return {
         id: item.id,
         source: item.source,
-        when: formatInZone(new Date(item.occurredAt * 1000), timeZone),
+        when:
+            item.extra?.['timestampUnknown'] === true
+                ? 'Date unknown'
+                : formatInZone(new Date(item.occurredAt * 1000), timeZone),
         ...(item.endAt !== undefined
             ? { end: formatInZone(new Date(item.endAt * 1000), timeZone) }
             : {}),

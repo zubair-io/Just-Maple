@@ -4,6 +4,7 @@ import { signal, type Type } from '@angular/core';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { of } from 'rxjs';
 import type { MacDataItem, Page } from '@maple/shared';
+import { MessageHistoryService } from '../services/message-history.service';
 import { MailViewComponent } from './mail-view/mail-view.component';
 import { IMessageViewComponent } from './imessage-view/imessage-view.component';
 import { ContactsViewComponent } from './contacts-view/contacts-view.component';
@@ -56,6 +57,30 @@ describe('device data views', () => {
     })),
     updateDataPage: vi.fn(async () => page),
   };
+  const history = {
+    directory: vi.fn(async () => ({
+      conversations: [
+        {
+          key: 'person:alice',
+          name: 'Alice Green',
+          kind: 'person',
+          platforms: ['imessage'],
+          count: 250,
+          matches: 250,
+          latestAt: 1760000000,
+          preview: 'Dinner at 7?',
+        },
+      ],
+      platforms: ['imessage'],
+      total: 250,
+    })),
+    messages: vi.fn(async () => ({
+      items: [item({ sender: 'raw@example.com', senderName: 'Alice Green', body: 'Dinner at 7?' })],
+      total: 250,
+      offset: 0,
+    })),
+    imports: vi.fn(async () => ({ imports: [] })),
+  };
   const page = { id: 'p1', notebookId: 'n1', title: 'Family texts' } as Page;
   const pageService = {
     pages: signal<Page[]>([page]),
@@ -76,6 +101,7 @@ describe('device data views', () => {
     TestBed.configureTestingModule({
       providers: [
         { provide: DeviceDataService, useValue: deviceData },
+        { provide: MessageHistoryService, useValue: history },
         { provide: PageService, useValue: pageService },
         { provide: MacDataService, useValue: macData },
         { provide: DialogService, useValue: { confirm: vi.fn(async () => true) } },
@@ -111,7 +137,15 @@ describe('device data views', () => {
         collector: null,
       });
       const { root, fixture } = await render(component as Type<IMessageViewComponent>);
-      const row = root.querySelector('tbody')!;
+      if (component === IMessageViewComponent) {
+        (root.querySelector('[data-testid=conversation]') as HTMLButtonElement).click();
+        fixture.detectChanges();
+        await wait();
+        fixture.detectChanges();
+      }
+      const row = root.querySelector(
+        component === IMessageViewComponent ? '[data-testid=message]' : 'tbody',
+      )!;
       expect(row.textContent).toContain('Alice Green');
       expect(row.textContent).not.toContain('raw@example.com');
       fixture.destroy();
@@ -129,12 +163,16 @@ describe('device data views', () => {
           lastUploadAt: new Date(Date.now() - 3 * 60_000).toISOString(),
         },
       });
-      const { root } = await render(IMessageViewComponent);
+      const { root, fixture } = await render(IMessageViewComponent);
       expect(listItems).toHaveBeenCalledWith(
         expect.objectContaining({ source: 'imessage', pageId: 'p1', order: 'desc', offset: 0 }),
       );
       expect(root.querySelector('h1')?.textContent).toContain('Family texts');
-      expect(root.querySelector('tbody')?.textContent).toContain('Dinner at 7?');
+      (root.querySelector('[data-testid=conversation]') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      await wait();
+      fixture.detectChanges();
+      expect(root.querySelector('[data-testid=message]')?.textContent).toContain('Dinner at 7?');
       expect(root.querySelector('[data-testid="collector"]')?.textContent).toContain(
         "Collected by Zubair's MacBook — last upload 3 min ago",
       );
@@ -143,13 +181,13 @@ describe('device data views', () => {
 
       // Paging continues where the list ends.
       const more = [...root.querySelectorAll('button')].find((b) =>
-        b.textContent?.includes('Load more'),
+        b.textContent?.includes('Load earlier messages'),
       )!;
-      expect(more.textContent).toContain('1 of 250');
+      expect(more).toBeTruthy();
       more.click();
       await wait();
-      expect(listItems).toHaveBeenLastCalledWith(
-        expect.objectContaining({ offset: 1, limit: 100 }),
+      expect(history.messages).toHaveBeenLastCalledWith(
+        expect.objectContaining({ conversation: 'person:alice', before: 'imessage:1', limit: 100 }),
       );
     });
 
@@ -160,13 +198,98 @@ describe('device data views', () => {
       input.value = 'dinner';
       input.dispatchEvent(new Event('input'));
       await wait(300);
-      expect(listItems).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'dinner' }));
+      expect(history.directory).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: 'dinner' }),
+      );
+    });
+
+    it('filters conversations by person or group and sends platform and date filters to the server', async () => {
+      history.directory.mockResolvedValueOnce({
+        conversations: [
+          {
+            key: 'person:alice',
+            name: 'Alice',
+            kind: 'person',
+            platforms: ['aim'],
+            count: 1,
+            matches: 1,
+            latestAt: 1,
+            preview: 'Hello',
+          },
+          {
+            key: 'group:friends',
+            name: 'Friends',
+            kind: 'group',
+            platforms: ['aim'],
+            count: 2,
+            matches: 2,
+            latestAt: 2,
+            preview: 'Picnic',
+          },
+        ],
+        platforms: ['aim'],
+        total: 3,
+      });
+      listItems.mockResolvedValue({ items: [], total: 3, collector: null });
+      const { root, fixture } = await render(IMessageViewComponent);
+      const groups = [...root.querySelectorAll('button')].find(
+        (b) => b.textContent?.trim() === 'Groups',
+      )!;
+      groups.click();
+      fixture.detectChanges();
+      expect(root.querySelectorAll('[data-testid=conversation]')).toHaveLength(1);
+      expect(root.querySelector('[data-testid=conversation]')?.textContent).toContain('Friends');
+      const select = root.querySelector('select')!;
+      select.value = 'aim';
+      select.dispatchEvent(new Event('change'));
+      const dates = root.querySelectorAll<HTMLInputElement>('input[type=date]');
+      dates[0]!.value = '2020-01-01';
+      dates[0]!.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+      await wait();
+      fixture.detectChanges();
+      expect(history.directory).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          platform: 'aim',
+          from: new Date('2020-01-01T00:00:00').getTime() / 1000,
+        }),
+      );
+    });
+
+    it('opens a search result with surrounding messages and keeps text safely escaped', async () => {
+      listItems.mockResolvedValue({ items: [], total: 1, collector: null });
+      history.messages.mockResolvedValueOnce({
+        items: [item({ body: 'Dinner <script>alert(1)</script>' })],
+        total: 1,
+        offset: 0,
+      });
+      const { root, fixture } = await render(IMessageViewComponent);
+      fixture.componentInstance.search.set('Dinner');
+      fixture.detectChanges();
+      await wait(280);
+      fixture.detectChanges();
+      (root.querySelector('[data-testid=conversation]') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      await wait();
+      fixture.detectChanges();
+      expect(root.querySelector('[data-testid=message] script')).toBeNull();
+      expect(root.querySelector('mark')?.textContent).toBe('Dinner');
+      const context = [...root.querySelectorAll('button')].find((b) =>
+        b.textContent?.includes('Show in conversation'),
+      )!;
+      context.click();
+      fixture.detectChanges();
+      await wait(280);
+      fixture.detectChanges();
+      expect(history.messages).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: '', around: 'imessage:1' }),
+      );
     });
 
     it('says which device to set up when nothing collects the source', async () => {
       listItems.mockResolvedValue({ items: [], total: 0, collector: null });
       const { root } = await render(IMessageViewComponent);
-      expect(root.querySelector('[data-testid="empty"]')?.textContent).toContain(
+      expect(root.querySelector('[data-testid="collector"]')?.textContent).toContain(
         'Not collected yet: open Maple on your Mac and turn on Messages',
       );
     });

@@ -1,3 +1,4 @@
+import { forgetUserMessageArchives } from '../services/message-archive.service';
 import { Elysia, t } from 'elysia';
 import { jwtPlugin, checkAuth, type AuthContext } from '../middleware/auth';
 import { findUserById } from '../repositories/user.repo';
@@ -443,6 +444,7 @@ export const deviceDataRoutes = new Elysia({ prefix: '/api' })
     // they're switched back on (their active sources are cleared).
     .delete('/device-data', async ({ auth, set }) => {
         if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
+        await forgetUserMessageArchives(auth.user._id);
         const removed = await deleteDeviceItems(auth.user._id);
         await deleteHomeExposure(auth.user._id);
         // Devices stay off until the user picks "Collect here" again.
