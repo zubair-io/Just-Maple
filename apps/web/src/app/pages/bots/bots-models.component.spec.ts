@@ -34,7 +34,7 @@ describe('provider models in bot settings', () => {
     userBots: signal([bot]),
     userBotsLoading: signal(false),
     webSearchAvailable: signal(false),
-    customBots: signal([]),
+    customBots: signal<CustomBot[]>([]),
     customBotsLoading: signal(false),
     loadTemplates: vi.fn(() => of([])),
     loadUserBots: vi.fn(() => of([])),
@@ -46,6 +46,8 @@ describe('provider models in bot settings', () => {
   };
   beforeEach(() => {
     service.loadModels.mockReset();
+    service.userBots.set([bot]);
+    service.customBots.set([]);
     service.updateBot.mockClear();
     service.updateCustomBot.mockClear();
     service.loadModels.mockReturnValue(
@@ -63,6 +65,22 @@ describe('provider models in bot settings', () => {
         { provide: DialogService, useValue: {} },
       ],
     });
+  });
+  it('shows a webhook bot once using its custom edit dialog, even when both lists contain it', () => {
+    const webhook = {
+      ...bot,
+      _id: 'webhook',
+      botType: 'custom' as const,
+      invokeUrl: 'https://example.com/webhook',
+    } as CustomBot;
+    service.userBots.set([bot, webhook as EnrichedUserBot]);
+    service.customBots.set([webhook]);
+    const fixture = TestBed.createComponent(BotsComponent);
+    fixture.detectChanges();
+    expect(fixture.componentInstance.allBots().filter((b) => b._id === 'webhook')).toEqual([
+      expect.objectContaining({ botType: 'custom' }),
+    ]);
+    fixture.destroy();
   });
   it('edits the AI name and handle and displays the saved name on its card', async () => {
     const fixture = TestBed.createComponent(BotsComponent);
