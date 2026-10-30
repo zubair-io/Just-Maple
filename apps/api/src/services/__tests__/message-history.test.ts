@@ -330,5 +330,10 @@ describe('message history access and pagination', () => {
         expect(
             nativeMessageFingerprint({ ...native, extra: { archiveAttachment: true } }),
         ).toBeNull();
+        const group = { ...native, participants: ['+15185550123', '+15185550456'] };
+        expect(nativeMessageFingerprint({ ...group, sender: '+15185550123' })).not.toBe(
+            nativeMessageFingerprint({ ...group, sender: '+15185550456' }),
+        );
+        expect(nativeMessageFingerprint({ ...group, sender: 'Unknown name' })).toBeNull();
     });
 });
