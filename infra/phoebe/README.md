@@ -15,8 +15,8 @@ migration and hostnames were explicitly authorized; **do not merge to main**.
 | Storage               | `local`: 16 GiB root + 64 GiB managed `/var/lib/just-maple`, backup enabled                     |
 | LAN                   | DHCP `192.168.1.179/23`, gateway `192.168.1.1`; reserve this lease for permanent use            |
 | API                   | Non-root `just-maple-api`, bound to `127.0.0.1:7071`                                            |
-| Application release   | `/opt/just-maple/current` → `bot-render-20261030-01`                                            |
-| Runtime source        | API/web `ce82c5e01f473a72a768d2dd8aa4e2ac8523059a`; native/model pins retained                  |
+| Application release   | `/opt/just-maple/current` → `graph-window-20261030-02`                                          |
+| Runtime source        | API/web `210b4cfec40fb1b8acd441971ce4ead1fbee6345`; native/model pins retained                  |
 | Database              | `/var/lib/just-maple/production-20261029.sqlite`, WAL/FULL                                      |
 | Local files           | `/var/lib/just-maple/media`; existing Azure media storage/URLs retained                         |
 | Native search         | `just-maple-search`, private `/run/just-maple-search/worker.sock`                               |
@@ -542,3 +542,61 @@ branch. Roll back code to `search-bounded-20261030-02`, retaining live DB/env an
 optional source fields; portable fallbacks remain compatible. Private receipts and
 visual verification are in `/tmp/japanese-maple-render-20261030/` on the Mac,
 `/root/bot-render-20261030/` in CT131 and Phoebe's existing provisioning directory.
+
+## Graph date requests and bounded database reads (2026-10-30)
+
+The graph now opens with seven days selected; All is removed. Date changes send the
+selected window to the server, and older replies/errors cannot replace a newer
+selection. The API also defaults older clients to seven days and rejects malformed
+or reversed ranges. Contacts and ongoing events retain their existing semantics;
+notebook membership, page sharing and source filters still apply.
+
+SQLite graph reads now apply ordering, limits and body projection before decoding
+records. Item lookups use the primary-key index instead of scanning the owner's
+library; relation reads filter dated hub spans before the read limit. Search vector
+loading uses an additive `(user_id,generation,id,chunk)` index and seeks by the last
+item/chunk, replacing deep OFFSET scans. Stale vector/source checks are retained.
+This prevents a slow vector-loading loop from repeatedly occupying the same database
+worker needed by graph and other API requests.
+
+Pre-activation snapshot `just-maple-20261030T214912Z.sqlite` passed off-host
+integrity/SHA verification. Rehearsal receipts are in
+`/tmp/japanese-maple-graph-20261030/` on the operator Mac and
+`/root/graph-window-20261030/` in CT131. Deployment verification is recorded below. Roll back code to `bot-render-20261030-01`, restart only the API,
+and retain the live database/env and harmless additive index. Never restore a
+pre-change snapshot over accepted writes. DNS, Azure, native/model binaries, resource
+limits and other guests are outside this rollout.
+
+Activated `graph-window-20261030-01`, source
+`e8c1f7c2e8871bec7e956918efcde849b060cc4d`; all 209 manifest artifacts verified.
+Both hostnames passed authenticated seven/30-day graph reads, health and anonymous
+denial. LAN graph responses measured 171–349 ms; public 789–1411 ms. All 177,862
+archive imports remain present. Background embedding work continues (144,412 jobs
+at this verification); these measurements do not claim complete semantic coverage
+or a comprehensive latency guarantee.
+
+On an independent production snapshot under the API's memory/CPU limits, the old
+unindexed deep vector batch took 6,156 ms. The new seek batch took 7–10 ms. Loading
+137,302 chunks through the SQLite boundary took 4,660 ms while three concurrent
+graph reads took 186–222 ms, with 312.1 MiB service peak. Both graph implementations
+returned identical 1,055 nodes/1,051 links when measured correctly; the initial
+archived-source benchmark bundle was discarded after its dependency mismatch yielded
+an empty graph. No native inference/LLM was invoked for the snapshot load rehearsal.
+
+Validation: 971 API tests passed/3 existing skips, 16 focused web tests, shared/web
+typechecks, API/paperbark builds and precommit passed. Draft PR314 is stacked on
+PR313 and remains unmerged.
+
+Final frontend correction: `graph-window-20261030-02`, source
+`210b4cfec40fb1b8acd441971ce4ead1fbee6345`, all 112 artifacts verified. The first
+package accidentally included stale paperbark output: the precommit hook builds the
+default web target and does **not** refresh `apps/api/dist/web/paperbark`. Always run
+`bun run build:web:paperbark` explicitly before packaging this deployment, then verify
+the rendered page. Release 02 contains the tested API fix and explicitly rebuilt web
+client. Final public/LAN graph checks pass (LAN 165–188 ms, public 902–1571 ms), with
+all 177,862 archive imports intact. The Mac client applied Update and visibly showed
+the loaded graph with From October 23 and only 7-day/30-day presets. No native binary
+change; other clients apply the web Update/reload. Snapshot test results above remain
+valid for the unchanged API code. Source/visual receipts are retained privately.
+Occasional slow generic device reads still occur in background jobs; this rollout
+addresses the reproduced graph/vector stalls, not a comprehensive performance audit.

@@ -27,6 +27,7 @@ interface Candidate {
 }
 interface VectorEntry {
     id: string;
+    chunk: number;
     documentId: string;
     revision: string;
     contentHash: string;
@@ -100,14 +101,15 @@ async function loadOwner(owner: string, epoch: number): Promise<CachedOwner> {
             string,
             { documentId: string; revision: string; contentHash: string }
         >();
-        let offset = 0;
+        let count = 0;
+        let after: { id: string; chunk: number } | null = null;
         for (;;) {
             const entries = await db.request<VectorEntry[]>('search.vectorBatch', undefined, [
                 owner,
-                offset,
+                after,
             ]);
             if (!entries.length) break;
-            if ((offset + entries.length) * 4096 > MAX_CACHE_BYTES)
+            if ((count + entries.length) * 4096 > MAX_CACHE_BYTES)
                 throw new Error('vector_capacity');
             await serverSearchWorker.request({
                 op: 'load',
@@ -121,7 +123,9 @@ async function loadOwner(owner: string, epoch: number): Promise<CachedOwner> {
                     contentHash: row.contentHash,
                 }),
             );
-            offset += entries.length;
+            count += entries.length;
+            const last = entries[entries.length - 1]!;
+            after = { id: last.documentId, chunk: last.chunk };
         }
         await serverSearchWorker.request({ op: 'finish', owner, version: epoch });
         // Backfill may advance during the bounded load. Per-row revision checks

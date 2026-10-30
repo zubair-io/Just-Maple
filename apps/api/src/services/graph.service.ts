@@ -1186,7 +1186,7 @@ export async function getDataGraph(
 
     const shared = isNotebookShared(await findNotebookByIdUnsafe(notebookId));
     const [stored, allHubs, removed] = await Promise.all([
-        findGraphRelations(notebookId, ['active'], MAX_LINKS_READ),
+        findGraphRelations(notebookId, ['active'], MAX_LINKS_READ, options),
         findGraphNodes(notebookId),
         findGraphRelations(notebookId, ['removed'], 5_000),
     ]);
