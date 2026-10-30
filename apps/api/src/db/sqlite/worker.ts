@@ -502,9 +502,9 @@ function operation(op: string, name: string | undefined, args: unknown[]): unkno
         const device = typeof args[1] === 'string' && args[1] ? args[1] : undefined;
         const rows = db
             .query(
-                `SELECT json_extract(index_data,'$.source') AS source,count(*) AS n
-            FROM docs_device_items WHERE json_extract(index_data,'$.userId')=?
-            ${device ? "AND json_extract(index_data,'$.deviceId')=?" : ''} GROUP BY source`,
+                `SELECT ${field('source')} AS source,count(*) AS n
+            FROM docs_device_items WHERE ${field('userId')}=?
+            ${device ? `AND ${field('deviceId')}=?` : ''} GROUP BY ${field('source')}`,
             )
             .all(...(device ? [String(args[0]), device] : [String(args[0])])) as {
             source: string;

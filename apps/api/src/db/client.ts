@@ -123,6 +123,7 @@ export async function createIndexes(database: Db): Promise<void> {
 
     // Device data uploaded by the user's Mac and iPhone
     await database.collection('device_items').createIndex({ userId: 1, source: 1 });
+    await database.collection('device_items').createIndex({ userId: 1, deviceId: 1, source: 1 }); // Collector counts without loading bodies
     await database.collection('device_items').createIndex({ occurredAt: 1 }); // Retention
     await database.collection('device_items').createIndex({ userId: 1, threadKey: 1 });
     await database.collection('device_items').createIndex({ userId: 1, source: 1, occurredAt: -1 }); // Newest first (drafted replies' voice)
