@@ -407,6 +407,9 @@ export async function findDeviceItemsForGraph(
     source: MacDataSource,
     query: { from?: number; to?: number; updatedSince?: Date; limit: number; bodyChars: number },
 ): Promise<MacDataItem[]> {
+    const sqlite = getSqliteDatabase();
+    if (sqlite)
+        return sqlite.request<MacDataItem[]>('device.graph', undefined, [userId, source, query]);
     const filter: Record<string, unknown> = { userId, source };
     if (query.from !== undefined || query.to !== undefined) {
         filter.occurredAt = {
@@ -494,6 +497,17 @@ export async function findDeviceItemsByIds(
     const unique = [...new Set(ids)];
     const items: MacDataItem[] = [];
     for (let i = 0; i < unique.length; i += 500) {
+        const sqlite = getSqliteDatabase();
+        if (sqlite && bodyChars !== undefined) {
+            items.push(
+                ...(await sqlite.request<MacDataItem[]>('device.graphItems', undefined, [
+                    userId,
+                    unique.slice(i, i + 500),
+                    bodyChars,
+                ])),
+            );
+            continue;
+        }
         const docs = await getCollection()
             .find(
                 { _id: { $in: unique.slice(i, i + 500).map((id) => docId(userId, id)) } },

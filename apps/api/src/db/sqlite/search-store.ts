@@ -140,14 +140,16 @@ export function createSearchStore(db: Database) {
                 return true;
             }
             if (op === 'search.vectorBatch') {
-                const [owner, offset] = args as [string, number];
+                const [owner, after] = args as [string, { id: string; chunk: number } | null];
                 const rows = db
                     .query(
-                        `SELECT e.id,e.chunk,e.revision,e.content_hash AS contentHash,e.vector FROM search_embeddings e JOIN search_documents d ON d.id=e.id
-                    WHERE e.user_id=? AND e.generation=? AND e.revision=d.revision AND e.content_hash=d.content_hash
-                    ORDER BY e.id,e.chunk LIMIT 128 OFFSET ?`,
+                        `SELECT e.id,e.chunk,e.revision,e.content_hash AS contentHash,e.vector FROM search_embeddings e INDEXED BY search_embeddings_scan
+                    JOIN search_documents d INDEXED BY sqlite_autoindex_search_documents_1 ON d.id=e.id
+                    WHERE e.user_id=? AND e.generation=? AND (e.id,e.chunk)>(?,?)
+                    AND e.revision=d.revision AND e.content_hash=d.content_hash
+                    ORDER BY e.id,e.chunk LIMIT 128`,
                     )
-                    .all(owner, SEARCH_GENERATION, offset) as Array<{
+                    .all(owner, SEARCH_GENERATION, after?.id ?? '', after?.chunk ?? -1) as Array<{
                     id: string;
                     chunk: number;
                     revision: string;
@@ -157,6 +159,7 @@ export function createSearchStore(db: Database) {
                 return rows.map((row) => ({
                     id: JSON.stringify([row.id, row.chunk]),
                     documentId: row.id,
+                    chunk: row.chunk,
                     revision: row.revision,
                     contentHash: row.contentHash,
                     vector: Buffer.from(row.vector).toString('base64'),

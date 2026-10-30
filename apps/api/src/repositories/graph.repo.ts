@@ -1,4 +1,4 @@
-import { getDb } from '../db/client';
+import { getDb, getSqliteDatabase } from '../db/client';
 import {
     parseDataGraphItemNodeId,
     type DataGraphLinkKind,
@@ -615,7 +615,16 @@ export async function findGraphRelations(
     notebookId: string,
     statuses: GraphRelationStatus[] = ['active'],
     limit = 10_000,
+    range?: { from?: number; to?: number },
 ): Promise<GraphRelationDocument[]> {
+    const sqlite = getSqliteDatabase();
+    if (sqlite)
+        return sqlite.request<GraphRelationDocument[]>('graph.relations', undefined, [
+            notebookId,
+            statuses,
+            limit,
+            range,
+        ]);
     return relations()
         .find({ notebookId, status: { $in: statuses } })
         .sort({ updatedAt: -1 })

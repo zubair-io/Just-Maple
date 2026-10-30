@@ -104,7 +104,7 @@ export class GraphViewComponent {
   /** Only this open view: hiding never changes graph data or shared links. */
   readonly hiddenTopicIds = signal<ReadonlySet<string>>(new Set());
   /** yyyy-mm-dd, or empty for no bound. */
-  readonly fromDate = signal('');
+  readonly fromDate = signal(localDay(new Date(Date.now() - 7 * DAY * 1000)));
   readonly toDate = signal('');
   readonly hoveredId = signal<string | null>(null);
   readonly selectedId = signal<string | null>(null);
@@ -126,14 +126,14 @@ export class GraphViewComponent {
     const hidden = this.hiddenKinds();
     const hiddenTopics = this.hiddenTopicIds();
     const from = this.fromDate() ? Date.parse(`${this.fromDate()}T00:00:00`) / 1000 : null;
-    const to = this.toDate() ? Date.parse(`${this.toDate()}T00:00:00`) / 1000 + DAY : null;
+    const to = this.toDate() ? endOfLocalDay(this.toDate()) : null;
     const items = new Set(
       graph.nodes
         .filter((node) => node.kind === 'item' && !hidden.has(colorKey(node)))
         .filter((node) => {
           if (node.at === undefined) return true;
           if (from !== null && (node.endAt ?? node.at) < from) return false;
-          return to === null || node.at < to;
+          return to === null || node.at <= to;
         })
         .map((node) => node.id),
     );
@@ -214,13 +214,23 @@ export class GraphViewComponent {
   });
 
   constructor() {
-    // Load when the page's notebook is known; the load writes signals this doesn't read.
+    // A date change loads that window from the server, rather than downloading all history.
     effect(() => {
       const notebookId = this.notebookId();
+      const from = this.fromDate() || localDay(new Date(Date.now() - 7 * DAY * 1000));
+      const to = this.toDate();
       untracked(() => {
-        this.hiddenTopicIds.set(new Set());
-        if (notebookId) void this.service.load(notebookId);
+        if (notebookId)
+          void this.service.load(notebookId, {
+            from: Date.parse(`${from}T00:00:00`) / 1000,
+            // Use the next local midnight, including across daylight-saving changes.
+            ...(to ? { to: endOfLocalDay(to) } : {}),
+          });
       });
+    });
+    effect(() => {
+      this.notebookId();
+      untracked(() => this.hiddenTopicIds.set(new Set()));
     });
     // Hand the filtered graph to the canvas; the canvas holds no signals.
     effect(() => {
@@ -278,13 +288,8 @@ export class GraphViewComponent {
     });
   }
 
-  /** The last `days` days (and what's coming up), or everything. */
-  setRange(days: number | null): void {
-    if (days === null) {
-      this.fromDate.set('');
-      this.toDate.set('');
-      return;
-    }
+  /** The last `days` days, including upcoming events. */
+  setRange(days: number): void {
     const from = new Date(Date.now() - days * DAY * 1000);
     this.fromDate.set(localDay(from));
     this.toDate.set('');
@@ -372,4 +377,10 @@ export class GraphViewComponent {
 function localDay(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function endOfLocalDay(day: string): number {
+  const next = new Date(`${day}T00:00:00`);
+  next.setDate(next.getDate() + 1);
+  return next.getTime() / 1000 - 0.001;
 }

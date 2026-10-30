@@ -60,7 +60,7 @@ const graph: DataGraph = {
       source: 'mail',
       label: 'Pizza party',
       pageId: 'mail-page',
-      at: now - 40 * day,
+      at: now - 4 * day,
       ownerName: 'Sam',
     },
     { id: 'place:office', kind: 'place', label: 'Bright Smiles Dental' },
@@ -213,7 +213,13 @@ describe('GraphViewComponent', () => {
     const fixture = render();
     TestBed.flushEffects();
     expect(service.load).toHaveBeenCalledTimes(1);
-    expect(service.load).toHaveBeenCalledWith('nb1');
+    expect(service.load).toHaveBeenCalledWith('nb1', { from: expect.any(Number) });
+    expect(fixture.componentInstance.fromDate()).not.toBe('');
+    expect(
+      [...fixture.nativeElement.querySelectorAll('button')].some(
+        (b: any) => b.textContent.trim() === 'All',
+      ),
+    ).toBe(false);
     expect(text(fixture)).toContain('3 items · 3 links');
     const legend = [...fixture.nativeElement.querySelectorAll('[data-kind]')].map(
       (chip: HTMLElement) => chip.textContent!.trim(),
@@ -293,9 +299,15 @@ describe('GraphViewComponent', () => {
   });
 
   it('filters by date range', () => {
+    state.set({
+      ...graph,
+      nodes: graph.nodes.map((n) => (n.source === 'mail' ? { ...n, at: now - 40 * day } : n)),
+    });
     const fixture = render();
     const view = fixture.componentInstance;
     view.setRange(30);
+    fixture.detectChanges();
+    expect(service.load).toHaveBeenLastCalledWith('nb1', { from: expect.any(Number) });
     expect(view.view().nodes.map((n) => n.id)).toEqual([
       'item:u1:calendar:dentist',
       'item:u1:location:visit',
@@ -306,8 +318,9 @@ describe('GraphViewComponent', () => {
       `${to.getFullYear()}-${String(to.getMonth() + 1).padStart(2, '0')}-${String(to.getDate()).padStart(2, '0')}`,
     );
     expect(view.view().nodes.map((n) => n.id)).toEqual(['item:u1:location:visit']);
-    view.setRange(null);
-    expect(view.view().nodes).toHaveLength(5);
+    view.setRange(7);
+    fixture.detectChanges();
+    expect(view.view().nodes).toHaveLength(3);
   });
 
   it('lights up the hovered node and its neighbors', () => {

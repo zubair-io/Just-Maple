@@ -315,7 +315,10 @@ describe('server hybrid query contract', () => {
         expect(
             await db.request('search.publish', undefined, [job, [vector.toString('base64')]]),
         ).toBe(false);
-        const vectors = await db.request<unknown[]>('search.vectorBatch', undefined, ['owner', 0]);
+        const vectors = await db.request<unknown[]>('search.vectorBatch', undefined, [
+            'owner',
+            null,
+        ]);
         expect(vectors).toHaveLength(0);
     });
     it('drops an item edited during retrieval even when a client reuses its revision', async () => {
