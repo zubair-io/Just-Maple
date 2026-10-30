@@ -1,9 +1,8 @@
 import { Component, input, output, computed, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
-import { isBotUIFallbackContent, type Message } from '@maple/shared';
-import { BotUIComponent } from '../../atoms/bot-ui/bot-ui.component';
+import { type Message } from '@maple/shared';
+import { BotMessageContentComponent } from '../../atoms/bot-message-content/bot-message-content.component';
 import { ChatTypingComponent } from './chat-typing.component';
-import { ContentRendererComponent } from '../../atoms/content-renderer/content-renderer.component';
 import { ProfileAvatarComponent } from '../../atoms';
 
 @Component({
@@ -12,9 +11,8 @@ import { ProfileAvatarComponent } from '../../atoms';
   imports: [
     CommonModule,
     DatePipe,
-    ContentRendererComponent,
     ProfileAvatarComponent,
-    BotUIComponent,
+    BotMessageContentComponent,
     ChatTypingComponent,
   ],
   template: `
@@ -45,12 +43,7 @@ import { ProfileAvatarComponent } from '../../atoms';
 
           <!-- Bottom row: Message content -->
           <div class="message-body">
-            @if (!hideText()) {
-              <app-content-renderer [content]="message().content" />
-            }
-            @if (message().senderType === 'bot' && message().botUI; as ui) {
-              <app-bot-ui [response]="ui" (followUp)="followUp.emit($event)" />
-            }
+            <app-bot-message-content [message]="message()" (followUp)="followUp.emit($event)" />
             @if (message().revisedAt; as revisedAt) {
               <!-- A proactive bot rewrote its unread post with newer news -->
               <span class="edited">Updated {{ revisedAt | date: 'shortTime' }}</span>
@@ -292,11 +285,6 @@ export class ChatMessageComponent {
   readonly replyClicked = output<Message>();
   /** A bot UI button or form was used; its text should be sent as the user's next message. */
   readonly followUp = output<string>();
-  /** Bot replies made only of UI blocks carry a flattened text copy; show the blocks instead. */
-  readonly hideText = computed(() =>
-    isBotUIFallbackContent(this.message().content, this.message().botUI),
-  );
-
   readonly senderDisplay = computed(() => {
     const msg = this.message();
     if (msg.senderDisplayName) return msg.senderDisplayName;

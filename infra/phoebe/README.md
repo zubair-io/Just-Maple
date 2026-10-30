@@ -489,3 +489,26 @@ prefer retaining these AI-search bounds for this corpus. Do not restore old DB
 contents over accepted writes. Private incident receipts and snapshot benchmark
 copy remain in `/tmp/japanese-maple-lockup-20261030/` on the Mac,
 `/root/lockup-20261030/` in CT131 and Phoebe's existing provisioning directory.
+
+## Bot responses rendered from preserved source
+
+New bot messages retain `botResponseSource` alongside validated `botUI` and the
+portable rich-text fallback. Chat, thread replies and the thread's parent message
+parse that original source with the current shared parser when displayed, so later
+parser/renderer fixes apply without rewriting stored messages. Replies saved before
+source preservation still render their validated block data; legacy raw Response
+programs in rich-text code blocks are recovered on read/display without migration.
+
+The static parser also accepts a leading `Response(...)` without a `root =`
+assignment, concatenated statements and mislabelled fences such as `vbnet`. Ordinary
+code remains code. Only the existing flat Text/Card/Table/Button/Form/Source library
+is accepted, with collection/string limits and no runtime/tool provider. Model
+source cannot create server action/proposal/draft cards. Those cards are retained
+from validated server data and continue to load current access/state on interaction.
+Shared-draft privacy notices omit preserved raw output, revisions keep the previous
+source, and explicit message edits clear the old generated source/presentation.
+
+The server's processed fallback still supports notifications, text clients and
+conversation context. Original source was not retained on some older successfully
+processed replies; those keep their portable blocks rather than inventing source.
+No bulk history rewrite is required for this rendering change.

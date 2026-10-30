@@ -53,7 +53,11 @@
       <span class="parent-timestamp">{{ parentMessage().createdAt | date: 'short' }}</span>
     </div>
     <div class="parent-content-snippet">
-      <app-content-renderer [content]="parentMessage().content" />
+      <app-bot-message-content
+        [message]="parentMessage()"
+        [disabled]="actionPending()"
+        (followUp)="continueBot(parentMessage(), $event)"
+      />
     </div>
   </div>
 
@@ -130,16 +134,11 @@
             }
           </div>
           <div class="thread-message-content">
-            @if (!isBotUIFallbackContent(message.content, message.botUI)) {
-              <app-content-renderer [content]="message.content" />
-            }
-            @if (message.senderType === 'bot' && message.botUI; as ui) {
-              <app-bot-ui
-                [response]="ui"
-                [disabled]="actionPending()"
-                (followUp)="continueBot(message, $event)"
-              />
-            }
+            <app-bot-message-content
+              [message]="message"
+              [disabled]="actionPending()"
+              (followUp)="continueBot(message, $event)"
+            />
             @if (message.botModel) {
               <span class="text-xs text-[var(--color-text-muted)]">{{ message.botModel }}</span>
             }
