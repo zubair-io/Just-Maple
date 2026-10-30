@@ -137,6 +137,7 @@ describe('message archive import', () => {
         expect(directory.conversations.some((c) => c.kind === 'group')).toBe(true);
         const found = await messageDirectory(owner, { search: 'picnic', platform: 'aim' });
         expect(found.total).toBe(1);
+        expect(found.conversations[0]?.preview).toBe('Group picnic');
         const rows = await messageHistoryPage(owner, {
             conversation: found.conversations[0]!.key,
             search: 'picnic',

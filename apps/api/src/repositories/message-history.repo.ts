@@ -69,3 +69,35 @@ export async function matchingMessageIds(
               .map((row) => row.id);
     return new Set(ids);
 }
+
+/** Preview text is cut in SQL; do not hydrate full documents/vectors for the contact directory. */
+export async function messagePreviews(
+    userId: string,
+    ids: string[],
+): Promise<Map<string, MacDataItem>> {
+    const sqlite = getSqliteDatabase();
+    const found = new Map<string, MacDataItem>();
+    for (let offset = 0; offset < ids.length; offset += 500) {
+        const batch = ids.slice(offset, offset + 500);
+        if (sqlite) {
+            const rows = await sqlite.request<{ id: string; body: string; metadata: string }[]>(
+                'messages.previews',
+                undefined,
+                [userId, batch],
+            );
+            for (const row of rows)
+                found.set(row.id, { ...JSON.parse(row.metadata), body: row.body });
+        } else {
+            const rows = await getDb()
+                .collection<{ _id: string; userId: string; item: MacDataItem }>('device_items')
+                .find(
+                    { userId, _id: { $in: batch.map((id) => `${userId}:${id}`) } },
+                    { projection: { item: 1 } },
+                )
+                .toArray();
+            for (const row of rows)
+                found.set(row.item.id, { ...row.item, body: row.item.body.slice(0, 160) });
+        }
+    }
+    return found;
+}

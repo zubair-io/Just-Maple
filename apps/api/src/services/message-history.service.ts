@@ -13,7 +13,11 @@ import {
 } from '@maple/shared';
 import { findPageById } from '../repositories/page.repo';
 import { findDeviceItemsByIds } from '../repositories/device-item.repo';
-import { messageMetadata, matchingMessageIds } from '../repositories/message-history.repo';
+import {
+    messageMetadata,
+    matchingMessageIds,
+    messagePreviews,
+} from '../repositories/message-history.repo';
 import {
     describeAccess,
     itemMatcherFor,
@@ -217,13 +221,11 @@ export async function messageDirectory(
             preview: latest.id,
         });
     }
-    const previews = new Map(
-        (await findDeviceItemsByIds(data.ownerId, latestIds, 160)).map((item) => [
-            item.id,
-            item.body.slice(0, 160),
-        ]),
-    );
-    for (const summary of summaries) summary.preview = previews.get(summary.preview) ?? '';
+    const previews = await messagePreviews(data.ownerId, latestIds);
+    for (const summary of summaries) {
+        const current = previews.get(summary.preview);
+        summary.preview = current && data.match(current) ? current.body : '';
+    }
     summaries.sort((a, b) => b.latestAt - a.latestAt || a.name.localeCompare(b.name));
     return {
         conversations: summaries,
