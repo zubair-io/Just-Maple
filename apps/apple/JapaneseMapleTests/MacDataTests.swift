@@ -128,6 +128,21 @@ private func attributedBody(_ text: String) -> Data {
         #expect(try reader.read(checkpoint: lastEdits.checkpoint, now: now.addingTimeInterval(6)).items.isEmpty)
     }
 
+    @Test func includesNormalAppVariantsAndLegacyNullTypes() throws {
+        let (url, db) = try makeChatDB()
+        for id in 1...3 {
+            try insert(db, rowid: id, text: "Normal variant \(id)", at: now.addingTimeInterval(-400 * 86_400))
+        }
+        try db.execute("UPDATE message SET associated_message_type=2 WHERE ROWID=1")
+        try db.execute("UPDATE message SET associated_message_type=3 WHERE ROWID=2")
+        try db.execute("UPDATE message SET associated_message_type=NULL WHERE ROWID=3")
+        let result = try IMessageReader(databaseURL: url).read(
+            checkpoint: "{\"lastRowId\":999999,\"lastScan\":100,\"historyVersion\":2}", now: now)
+        #expect(result.items.map(\.body) == ["Normal variant 1", "Normal variant 2", "Normal variant 3"])
+        #expect(result.items.allSatisfy { $0.extra?["historyBackfill"] == .bool(true) })
+        #expect(!result.hasMore)
+    }
+
     @Test func laterPassesReturnOnlyNewAndEditedMessages() throws {
         let (url, db) = try makeChatDB()
         let reader = IMessageReader(databaseURL: url)

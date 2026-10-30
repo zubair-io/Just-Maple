@@ -19,7 +19,7 @@ nonisolated struct IMessageReader {
         var lastRowId: Int64
         /// Apple-epoch nanoseconds of the previous pass, used to pick up edits and unsends.
         var lastScan: Int64
-        /// Missing on the former 30-day checkpoint: rewind Messages once, never Mail.
+        /// Rewind legacy window/type-filter checkpoints once, never Mail.
         var historyVersion: Int? = nil
         var editCursor: Int64? = nil
         var editUntil: Int64? = nil
@@ -54,8 +54,8 @@ nonisolated struct IMessageReader {
         var state =
             checkpoint.flatMap { try? JSONDecoder().decode(Checkpoint.self, from: Data($0.utf8)) }
             ?? Checkpoint(lastRowId: 0, lastScan: 0)
-        if state.historyVersion != 2 {
-            state = Checkpoint(lastRowId: 0, lastScan: 0, historyVersion: 2, backfilling: true)
+        if state.historyVersion != 3 {
+            state = Checkpoint(lastRowId: 0, lastScan: 0, historyVersion: 3, backfilling: true)
         }
         let scanStart = Self.appleNanos(now)
 
@@ -68,9 +68,13 @@ nonisolated struct IMessageReader {
         if try db.columns("chat").contains("guid") { optional.append("c.guid AS chat_guid") }
         let editColumns = ["date_edited", "date_retracted"].filter(columns.contains)
         optional += editColumns.map { "m.\($0)" }
-        // Tapbacks and other reactions are stored as messages; they add noise, not content.
+        // Normal/app messages use 0, 2 or 3 (legacy rows can be NULL). Stickers,
+        // Tapbacks and poll votes have other types and are not separate message text.
+        // See imessage-exporter's Message::variant, which documents this distinction:
+        // https://github.com/ReagentX/imessage-exporter/blob/develop/imessage-database/src/tables/messages/message.rs
         let reactionFilter =
-            columns.contains("associated_message_type") ? "AND m.associated_message_type = 0" : ""
+            columns.contains("associated_message_type")
+            ? "AND (m.associated_message_type IS NULL OR m.associated_message_type IN (0, 2, 3))" : ""
         let select = """
             SELECT m.ROWID AS rowid, m.guid, m.text, m.date, m.is_from_me,
                    h.id AS handle, c.ROWID AS chat_id, c.chat_identifier, c.display_name
