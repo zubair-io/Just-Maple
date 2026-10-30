@@ -30,6 +30,7 @@ import { NotificationService } from '../../services/notification.service';
 import { PageService } from '../../services/page.service';
 import { MessageService } from '../../services/message.service';
 import { DeviceDataService } from '../../services/device-data.service';
+import { UiStateService } from '../../services/ui-state.service';
 import { DEVICE_DATA_SOURCES, deviceSourceInfo } from '../../utils/device-sources';
 import {
   ShareModalComponent,
@@ -106,6 +107,7 @@ export class ChatViewComponent implements OnInit, OnDestroy {
     return page ? `type-${page.type}` : this.activeTab();
   });
   readonly switcherOpen = signal<boolean>(false);
+  readonly uiState = inject(UiStateService);
   readonly pageSearchQuery = signal<string>('');
   readonly newPageDropdownOpen = signal<boolean>(false);
 
@@ -375,6 +377,11 @@ export class ChatViewComponent implements OnInit, OnDestroy {
       this.switcherOpen.set(false);
       this.newPageDropdownOpen.set(false);
     });
+  }
+
+  openPagesSidebar(): void {
+    this.switcherOpen.set(false);
+    this.uiState.openSidebar();
   }
 
   selectTab(tab: string): void {
