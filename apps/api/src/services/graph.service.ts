@@ -1,5 +1,10 @@
 import {
     dataGraphItemNodeId,
+    contactIdentityIndex,
+    resolveMessageSender,
+    normalizePersonHandle,
+    type ContactIdentityIndex,
+    type MessageSender,
     dataGraphReasonWeight,
     dataGraphRelationFamily,
     isNotebookShared,
@@ -1217,6 +1222,23 @@ export async function getDataGraph(
     }
     // Hidden items (another filter, deleted) just aren't shown; nothing is deleted here.
     const visible = await visibleItems([...itemIds], slices);
+    const contactsByOwner = new Map<string, MacDataItem[]>();
+    for (const { item, slice } of visible.values()) {
+        if (item.source === 'contacts')
+            contactsByOwner.set(slice.ownerId, [
+                ...(contactsByOwner.get(slice.ownerId) ?? []),
+                item,
+            ]);
+    }
+    const indexes = new Map<string, ContactIdentityIndex>();
+    const senderOf = (entry: VisibleItem) => {
+        if (!indexes.has(entry.slice.ownerId))
+            indexes.set(
+                entry.slice.ownerId,
+                contactIdentityIndex(contactsByOwner.get(entry.slice.ownerId) ?? []),
+            );
+        return resolveMessageSender(entry.item, indexes.get(entry.slice.ownerId)!);
+    };
     // Interactions count only what this reader sees.
     const relations = mergeTwins(
         readable
@@ -1264,7 +1286,7 @@ export async function getDataGraph(
     const example = (id: string): DataGraphExample | null => {
         const entry = visible.get(id);
         if (!entry) return null;
-        const node = itemNode(id, entry.item, entry.slice, viewerId);
+        const node = itemNode(id, entry.item, entry.slice, viewerId, senderOf(entry));
         return {
             id,
             label: node.label,
@@ -1289,10 +1311,56 @@ export async function getDataGraph(
     const links = [...byPair].map(([pair, line]) => toLink(pair, line.a, line.b, line.reasons));
     const linked = new Set(links.flatMap((link) => [link.source, link.target]));
     const nodes: DataGraphNode[] = [];
+    const peopleByContact = new Map<string, Set<string>>();
+    const peopleByHandle = new Map<string, Set<string>>();
+    const peopleByOwner = new Map<string, Set<string>>();
+    const addPerson = (index: Map<string, Set<string>>, key: string, id: string) => {
+        const ids = index.get(key) ?? new Set<string>();
+        ids.add(id);
+        index.set(key, ids);
+    };
+    for (const hub of hubById.values()) {
+        if (hub.kind !== 'person' || !linked.has(hub.id)) continue;
+        const cards = cardsOf(hub)
+            .map((card) => visible.get(card))
+            .filter((card): card is VisibleItem => !!card);
+        for (const card of cards)
+            addPerson(
+                peopleByContact,
+                dataGraphItemNodeId(card.slice.ownerId, card.item.id),
+                hub.id,
+            );
+        for (const handle of personNode(hub, cards, shared, viewerId).handles ?? []) {
+            const normalized = normalizePersonHandle(handle);
+            if (normalized) addPerson(peopleByHandle, normalized, hub.id);
+        }
+        if (hub.ownerId) addPerson(peopleByOwner, hub.ownerId, hub.id);
+    }
     for (const id of linked) {
         const entry = kept.get(id);
         if (entry) {
-            nodes.push(itemNode(id, entry.item, entry.slice, viewerId));
+            const sender = senderOf(entry);
+            const candidates = sender?.ambiguous
+                ? undefined
+                : entry.item.isFromMe
+                  ? peopleByOwner.get(entry.slice.ownerId)
+                  : sender?.contactId
+                    ? peopleByContact.get(
+                          dataGraphItemNodeId(entry.slice.ownerId, sender.contactId),
+                      )
+                    : sender?.handle
+                      ? peopleByHandle.get(sender.handle)
+                      : undefined;
+            nodes.push(
+                itemNode(
+                    id,
+                    entry.item,
+                    entry.slice,
+                    viewerId,
+                    sender,
+                    candidates?.size === 1 ? [...candidates][0] : undefined,
+                ),
+            );
             continue;
         }
         const hub = hubById.get(id)!;
@@ -1325,8 +1393,16 @@ function itemNode(
     item: MacDataItem,
     slice: DataPageSlice,
     viewerId: string,
+    sender?: MessageSender | null,
+    senderPersonId?: string,
 ): DataGraphNode {
+    const messageLabel = sender
+        ? item.source === 'mail'
+            ? `${sender.name} · ${item.title?.trim() || '(no subject)'}`
+            : sender.name
+        : undefined;
     const label =
+        messageLabel ||
         item.title?.trim() ||
         item.sender?.replace(/<[^>]+>/, '').trim() ||
         item.location?.trim() ||
@@ -1342,6 +1418,9 @@ function itemNode(
         ...(item.source !== 'contacts' ? { at: item.occurredAt } : {}),
         ...(item.endAt !== undefined ? { endAt: item.endAt } : {}),
         ...(item.body ? { snippet: item.body.slice(0, 200) } : {}),
+        ...(sender ? { senderName: sender.name } : {}),
+        ...(sender?.handle ? { senderHandle: sender.handle } : {}),
+        ...(senderPersonId ? { senderPersonId } : {}),
         ...(item.location ? { location: item.location } : {}),
     };
 }

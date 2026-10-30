@@ -70,6 +70,18 @@
         {{ kind.label }}
       </button>
     }
+    @if (hiddenTopicIds().size) {
+      <button
+        type="button"
+        class="graph-chip ml-auto"
+        (click)="showHiddenTopics()"
+        title="Restore topics hidden in this view"
+        aria-label="Show hidden topics"
+      >
+        <span class="material-symbols-rounded text-base" aria-hidden="true">visibility</span>
+        Show hidden topics ({{ hiddenTopicIds().size }})
+      </button>
+    }
   </div>
 
   <div class="relative flex min-h-0 flex-1 max-md:flex-col">
@@ -141,6 +153,19 @@
               {{ node.label }}
             </h2>
           </div>
+          @if (node.kind === 'topic') {
+            <button
+              type="button"
+              class="graph-tool"
+              (click)="hideTopic(node.id)"
+              aria-label="Hide topic from this view"
+              title="Hide topic from this view"
+            >
+              <span class="material-symbols-rounded text-lg" aria-hidden="true"
+                >visibility_off</span
+              >
+            </button>
+          }
           <button
             type="button"
             class="graph-tool"
@@ -151,6 +176,25 @@
           </button>
         </div>
 
+        @if (node.senderName) {
+          <div class="font-sans text-xs text-[var(--color-text-muted)]" data-testid="sender">
+            From
+            @if (node.senderPersonId) {
+              <button
+                type="button"
+                class="border-none bg-transparent p-0 text-[var(--color-primary)] hover:underline"
+                (click)="select(node.senderPersonId, true)"
+              >
+                {{ node.senderName }}
+              </button>
+            } @else {
+              <span>{{ node.senderName }}</span>
+            }
+            @if (node.senderHandle) {
+              <span class="block break-all">{{ node.senderHandle }}</span>
+            }
+          </div>
+        }
         @if (node.at !== undefined) {
           <p class="m-0 font-sans text-xs text-[var(--color-text-main)]">
             {{ node.at * 1000 | date: 'EEE, MMM d, y, h:mm a' }}

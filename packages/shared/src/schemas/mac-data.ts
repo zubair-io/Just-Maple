@@ -26,6 +26,9 @@ export const MacDataItemSchema = Type.Object({
     endAt: Type.Optional(Type.Number()),
     title: Type.Optional(Type.String()), // Thread name, email subject or event title
     sender: Type.Optional(Type.String()),
+    /** Reader-specific contact display metadata; raw sender/participants remain unchanged. */
+    senderName: Type.Optional(Type.String()),
+    senderContactId: Type.Optional(Type.String()),
     participants: Type.Array(Type.String()),
     thread: Type.Optional(Type.String()),
     body: Type.String(),

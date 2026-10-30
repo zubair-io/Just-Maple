@@ -101,6 +101,8 @@ export class GraphViewComponent {
 
   readonly kinds = GRAPH_KINDS;
   readonly hiddenKinds = signal<ReadonlySet<string>>(new Set());
+  /** Only this open view: hiding never changes graph data or shared links. */
+  readonly hiddenTopicIds = signal<ReadonlySet<string>>(new Set());
   /** yyyy-mm-dd, or empty for no bound. */
   readonly fromDate = signal('');
   readonly toDate = signal('');
@@ -122,6 +124,7 @@ export class GraphViewComponent {
     const graph = this.service.graph();
     if (!graph) return { nodes: [] as DataGraphNode[], links: [] as DataGraphLink[] };
     const hidden = this.hiddenKinds();
+    const hiddenTopics = this.hiddenTopicIds();
     const from = this.fromDate() ? Date.parse(`${this.fromDate()}T00:00:00`) / 1000 : null;
     const to = this.toDate() ? Date.parse(`${this.toDate()}T00:00:00`) / 1000 + DAY : null;
     const items = new Set(
@@ -136,7 +139,9 @@ export class GraphViewComponent {
     );
     const hubs = new Map(
       graph.nodes
-        .filter((node) => node.kind !== 'item' && !hidden.has(node.kind))
+        .filter(
+          (node) => node.kind !== 'item' && !hidden.has(node.kind) && !hiddenTopics.has(node.id),
+        )
         .map((node) => [node.id, node]),
     );
     const shown = (id: string) => items.has(id) || hubs.has(id);
@@ -212,7 +217,10 @@ export class GraphViewComponent {
     // Load when the page's notebook is known; the load writes signals this doesn't read.
     effect(() => {
       const notebookId = this.notebookId();
-      if (notebookId) untracked(() => void this.service.load(notebookId));
+      untracked(() => {
+        this.hiddenTopicIds.set(new Set());
+        if (notebookId) void this.service.load(notebookId);
+      });
     });
     // Hand the filtered graph to the canvas; the canvas holds no signals.
     effect(() => {
@@ -248,6 +256,17 @@ export class GraphViewComponent {
         this.canvas = null;
       });
     });
+  }
+
+  hideTopic(id: string): void {
+    if (this.nodesById().get(id)?.kind !== 'topic') return;
+    this.hiddenTopicIds.update((ids) => new Set([...ids, id]));
+    if (this.hoveredId() === id) this.hoveredId.set(null);
+    this.select(null);
+  }
+
+  showHiddenTopics(): void {
+    this.hiddenTopicIds.set(new Set());
   }
 
   toggleKind(key: string): void {

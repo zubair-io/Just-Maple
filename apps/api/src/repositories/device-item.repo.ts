@@ -58,6 +58,14 @@ function getCollection(): Collection<DeviceItemDocument> {
 
 const docId = (userId: string, id: string) => `${userId}:${id}`;
 
+/** Contact identities for presentation. The caller must apply current viewer/page permissions. */
+export async function findDeviceContactItems(userId: string): Promise<MacDataItem[]> {
+    const docs = await getCollection()
+        .find({ userId, source: 'contacts' }, { projection: { item: 1 } })
+        .toArray();
+    return docs.map((doc) => doc.item);
+}
+
 export function searchTextFor(item: MacDataItem): string {
     return [item.title, item.sender, item.location, item.calendar, ...item.participants, item.body]
         .filter((part): part is string => !!part)

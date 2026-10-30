@@ -126,6 +126,10 @@ export const DataGraphNodeSchema = Type.Object({
     at: Type.Optional(Type.Number()),
     endAt: Type.Optional(Type.Number()),
     snippet: Type.Optional(Type.String()),
+    senderName: Type.Optional(Type.String()),
+    senderHandle: Type.Optional(Type.String()),
+    /** A visible person in this graph, when the sender can be identified unambiguously. */
+    senderPersonId: Type.Optional(Type.String()),
     location: Type.Optional(Type.String()),
     // People: what their contact card says (only cards the reader may see).
     handles: Type.Optional(Type.Array(Type.String())),

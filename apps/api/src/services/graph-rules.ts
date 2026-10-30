@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
 import {
     dataGraphItemNodeId,
+    normalizePersonHandle,
     deviceItemChoiceId,
     type DataGraphMadeBy,
     type MacDataItem,
@@ -166,18 +167,7 @@ function bestPlace<P extends { id: string; keys: Set<string> }>(
 // MARK: - People
 
 /** A phone number or email address as one comparable handle, or null. */
-export function normalizeHandle(raw: string | undefined): string | null {
-    if (!raw) return null;
-    const angle = raw.match(/<([^>]+)>/);
-    const text = (angle ? angle[1]! : raw)
-        .trim()
-        .toLowerCase()
-        .replace(/^mailto:/, '');
-    if (text.includes('@')) return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text) ? text : null;
-    const digits = text.replace(/\D/g, '');
-    if (digits.length < 7) return null;
-    return `+${digits.length === 10 ? `1${digits}` : digits}`;
-}
+export const normalizeHandle = normalizePersonHandle;
 
 /** The display name in "Name <address>", or the whole text when it isn't a handle. */
 function nameIn(raw: string | undefined): string | null {
@@ -226,7 +216,17 @@ class UnionFind {
 /** The handles an item involves, besides the user. */
 function itemHandles(item: MacDataItem): { from: string[]; with: string[] } {
     if (item.source === 'imessage') {
-        return { from: [], with: item.participants.map(normalizeHandle).filter(isString) };
+        const sender = item.isFromMe
+            ? null
+            : normalizeHandle(
+                  typeof item.extra?.senderHandle === 'string'
+                      ? item.extra.senderHandle
+                      : item.sender,
+              );
+        return {
+            from: sender ? [sender] : [],
+            with: item.participants.map(normalizeHandle).filter(isString),
+        };
     }
     if (item.source === 'mail') {
         const sender = item.isFromMe ? null : normalizeHandle(item.sender);
