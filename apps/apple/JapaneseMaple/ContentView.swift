@@ -26,14 +26,6 @@ struct ContentView: View {
                 WebViewContainer(webViewController: webViewController)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .ignoresSafeArea(.container)
-                    .overlay(alignment: .topTrailing) {
-                        Button { showServerSettings = true } label: {
-                            Image(systemName: "server.rack").padding(10)
-                        }
-                        .buttonStyle(.bordered)
-                        .accessibilityLabel("Server settings")
-                        .padding(8)
-                    }
             } else {
                 ServerSettingsView()
             }
