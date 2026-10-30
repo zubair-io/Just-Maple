@@ -4,11 +4,26 @@
       <!-- Switcher dropdown container -->
       <div headerContext class="relative" (keydown.escape)="switcherOpen.set(false)">
         <button
+          type="button"
+          (click)="openPagesSidebar()"
+          aria-label="Open pages"
+          aria-controls="notebook-sidebar"
+          [attr.aria-expanded]="uiState.sidebarOpen()"
+          class="flex md:hidden items-center gap-1.5 max-w-full h-9 px-2 font-sans font-bold text-lg tracking-tight text-[var(--color-text-main)] bg-transparent border-1.5 border-transparent hover:bg-[var(--color-surface-hover)] rounded-lg cursor-pointer transition-all outline-none"
+        >
+          <span class="truncate">{{ notebook.label }}</span>
+          <span
+            class="material-symbols-rounded text-base text-[var(--color-text-muted)] mt-0.5"
+            aria-hidden="true"
+            >expand_more</span
+          >
+        </button>
+        <button
           (click)="switcherOpen.set(!switcherOpen())"
           aria-haspopup="menu"
           [attr.aria-expanded]="switcherOpen()"
           aria-label="Switch notebook"
-          class="flex items-center gap-1.5 max-w-full h-9 px-2 font-sans font-bold text-lg tracking-tight text-[var(--color-text-main)] bg-transparent border-1.5 border-transparent hover:bg-[var(--color-surface-hover)] rounded-lg cursor-pointer transition-all outline-none"
+          class="hidden md:flex items-center gap-1.5 max-w-full h-9 px-2 font-sans font-bold text-lg tracking-tight text-[var(--color-text-main)] bg-transparent border-1.5 border-transparent hover:bg-[var(--color-surface-hover)] rounded-lg cursor-pointer transition-all outline-none"
         >
           <span class="truncate">{{ notebook.label }}</span>
           <span class="material-symbols-rounded text-base text-[var(--color-text-muted)] mt-0.5"
@@ -18,87 +33,16 @@
 
         <!-- Dropdown items -->
         @if (switcherOpen()) {
-          <div class="fixed inset-0 z-40 bg-transparent" (click)="switcherOpen.set(false)"></div>
+          <div
+            class="hidden md:block fixed inset-0 z-40 bg-transparent"
+            (click)="switcherOpen.set(false)"
+          ></div>
 
           <div
             role="menu"
             aria-label="Notebook navigation"
-            class="absolute top-[42px] left-0 z-50 w-60 max-h-[calc(100dvh-96px)] overflow-y-auto bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-1.5 shadow-lg flex flex-col gap-0.5 animate-maple-modal-in"
+            class="absolute top-[42px] left-0 z-50 w-60 max-h-[calc(100dvh-96px)] overflow-y-auto bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-1.5 shadow-lg hidden md:flex flex-col gap-0.5 animate-maple-modal-in"
           >
-            <div role="group" aria-label="Notebook sections" class="md:hidden">
-              <p
-                class="px-2.5 pt-1 pb-1.5 m-0 text-[10px] font-sans uppercase tracking-wider text-[var(--color-text-muted)]"
-              >
-                {{ notebook.label }}
-              </p>
-              <button
-                role="menuitemradio"
-                [attr.aria-checked]="selectedHeaderTab() === 'overview'"
-                (click)="selectTab('overview')"
-                class="flex items-center justify-between w-full h-9 px-2.5 text-sm bg-transparent border-none rounded-lg cursor-pointer text-left hover:bg-[var(--color-surface-hover)] text-[var(--color-text-main)]"
-              >
-                Overview
-                @if (selectedHeaderTab() === 'overview') {
-                  <span
-                    class="material-symbols-rounded text-base text-[var(--color-primary)]"
-                    aria-hidden="true"
-                    >check</span
-                  >
-                }
-              </button>
-              @for (tab of dynamicTabs(); track tab.id) {
-                <button
-                  role="menuitemradio"
-                  [attr.aria-checked]="selectedHeaderTab() === tab.id"
-                  (click)="selectTab(tab.id)"
-                  class="flex items-center justify-between w-full h-9 px-2.5 text-sm bg-transparent border-none rounded-lg cursor-pointer text-left hover:bg-[var(--color-surface-hover)] text-[var(--color-text-main)]"
-                >
-                  {{ tab.label }}
-                  @if (selectedHeaderTab() === tab.id) {
-                    <span
-                      class="material-symbols-rounded text-base text-[var(--color-primary)]"
-                      aria-hidden="true"
-                      >check</span
-                    >
-                  }
-                </button>
-              }
-              <div class="h-px bg-[var(--color-border)] my-1.5 mx-1.5"></div>
-            </div>
-            <div role="group" aria-label="Notebook pages" class="md:hidden">
-              <p
-                class="px-2.5 pt-1 pb-1.5 m-0 text-[10px] font-sans uppercase tracking-wider text-[var(--color-text-muted)]"
-              >
-                Pages
-              </p>
-              @for (page of navigationPages(); track page.id) {
-                <button
-                  role="menuitem"
-                  [attr.aria-current]="routePageId() === page.id ? 'page' : null"
-                  [title]="page.title || 'Untitled page'"
-                  (click)="onFileClicked(page.id)"
-                  class="flex items-center gap-2 w-full min-h-9 px-2.5 py-2 text-sm text-[var(--color-text-main)] bg-transparent hover:bg-[var(--color-surface-hover)] border-none rounded-lg cursor-pointer text-left"
-                  [class.bg-[var(--color-surface-hover)]]="routePageId() === page.id"
-                >
-                  <span
-                    class="material-symbols-rounded text-base text-[var(--color-text-muted)] flex-none"
-                    aria-hidden="true"
-                    >{{ pageIcon(page) }}</span
-                  >
-                  <span class="flex-1 min-w-0 truncate">{{ page.title || 'Untitled page' }}</span>
-                  @if (routePageId() === page.id) {
-                    <span
-                      class="material-symbols-rounded text-base text-[var(--color-primary)] flex-none"
-                      aria-hidden="true"
-                      >check</span
-                    >
-                  }
-                </button>
-              } @empty {
-                <p class="px-2.5 py-2 m-0 text-xs text-[var(--color-text-muted)]">No pages yet</p>
-              }
-              <div class="h-px bg-[var(--color-border)] my-1.5 mx-1.5"></div>
-            </div>
             <p
               class="px-2.5 pt-1 pb-1.5 m-0 text-[10px] font-sans uppercase tracking-wider text-[var(--color-text-muted)]"
             >

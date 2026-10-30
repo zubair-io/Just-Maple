@@ -6,7 +6,7 @@
 
   <!-- Sidebar stays hidden until explicitly opened. -->
   @if (sidebarOpen()) {
-    <div class="fixed inset-y-0 left-0 z-50 h-full">
+    <div id="notebook-sidebar" class="fixed inset-y-0 left-0 z-50 h-full">
       <app-sidebar
         [selectedNotebookId]="selectedNotebookId()"
         (newPage)="onNewPage($event)"
