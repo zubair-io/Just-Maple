@@ -7,7 +7,8 @@ struct ServerSettingsView: View {
     @State private var error: String?
     @State private var saving = false
     @State private var discoveredLocal = ServerConfigService.shared.localURL
-    @State private var connectedLocally = false
+    @State private var connectedLocally = ServerConfigService.shared.localURL != nil
+        && ServerConfigService.shared.getAPIUrl() == ServerConfigService.shared.localURL
     private let isWelcome = !ServerConfigService.shared.hasConfiguredServer
 
     var body: some View {

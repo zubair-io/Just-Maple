@@ -175,17 +175,21 @@ nonisolated final class ServerConfigService: @unchecked Sendable {
            (try? Self.normalizeAddress(candidate.publicUrl)) == snapshot.primary {
             resolved = local
         }
-        return lock.withLock {
+        let result = lock.withLock { () -> (endpoint: String, changed: Bool) in
+            let previous = effectiveURL ?? getActiveServer().getAPIUrl()
             guard endpointGeneration == snapshot.generation,
                   getConfiguredURL() == snapshot.primary,
                   defaults.string(forKey: "maple.server.instanceId") == expected else {
-                return effectiveURL ?? getActiveServer().getAPIUrl()
+                return (previous, false)
             }
             defaults.set(local, forKey: "maple.server.localURL")
             effectiveURL = resolved
             lastProbe = now()
-            return resolved ?? snapshot.primary
+            let endpoint = resolved ?? snapshot.primary
+            return (endpoint, endpoint != previous)
         }
+        if result.changed { NotificationCenter.default.post(name: Self.connectionDidChange, object: nil) }
+        return result.endpoint
     }
 
     /// Invalidate in-flight probes so a late LAN success cannot undo a failed request.
