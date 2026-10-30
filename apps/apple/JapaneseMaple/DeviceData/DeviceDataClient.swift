@@ -281,14 +281,32 @@ actor DeviceDataClient {
         }
         let base = selected.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         guard let url = URL(string: base + path) else { throw DeviceDataError.server(0, "Bad server URL") }
-        var request = URLRequest(url: url, timeoutInterval: 60)
+        let safeRead = method == "GET" || method == "HEAD"
+        let attemptedLocal = selected == ServerConfigService.shared.localURL
+        var request = URLRequest(url: url, timeoutInterval: attemptedLocal && safeRead ? 5 : 60)
         request.httpMethod = method
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONEncoder().encode(body)
         }
-        let (data, response) = try await session.data(for: request)
+        let result: (Data, URLResponse)
+        do {
+            result = try await session.data(for: request)
+        } catch {
+            guard attemptedLocal, let transportError = error as? URLError,
+                  transportError.code != .cancelled else { throw error }
+            ServerConfigService.shared.reportEndpointFailure(selected)
+            guard safeRead, var fallback = URLComponents(url: url, resolvingAgainstBaseURL: false),
+                  let primary = URLComponents(string: ServerConfigService.shared.getActiveServer().getAPIUrl()) else { throw error }
+            fallback.scheme = primary.scheme
+            fallback.host = primary.host
+            fallback.port = primary.port
+            request.url = fallback.url
+            request.timeoutInterval = 60
+            result = try await session.data(for: request)
+        }
+        let (data, response) = result
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {
             throw DeviceDataError.server(status, String(decoding: data.prefix(300), as: UTF8.self))

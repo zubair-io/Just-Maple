@@ -41,8 +41,13 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: ServerConfigService.connectionDidChange).receive(on: RunLoop.main)) { _ in
             webViewController.refreshConnection()
         }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active { webViewController.refreshConnection() }
+        .task(id: scenePhase) {
+            // Path monitoring cannot detect a local server or Wi-Fi route going stale.
+            // Probe only while active, without running a background polling loop.
+            while scenePhase == .active && !Task.isCancelled {
+                webViewController.refreshConnection(force: true)
+                do { try await Task.sleep(for: .seconds(15)) } catch { return }
+            }
         }
         #if os(iOS)
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("FolderPickerRequested"))) { _ in

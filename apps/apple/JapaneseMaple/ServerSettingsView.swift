@@ -7,7 +7,8 @@ struct ServerSettingsView: View {
     @State private var error: String?
     @State private var saving = false
     @State private var discoveredLocal = ServerConfigService.shared.localURL
-    @State private var connectedLocally = false
+    @State private var connectedLocally = ServerConfigService.shared.localURL != nil
+        && ServerConfigService.shared.getAPIUrl() == ServerConfigService.shared.localURL
     private let isWelcome = !ServerConfigService.shared.hasConfiguredServer
 
     var body: some View {
@@ -41,7 +42,7 @@ struct ServerSettingsView: View {
                         Text(discoveredLocal).textSelection(.enabled)
                         Text(connectedLocally ? "Connected locally" : "Using the primary address")
                             .foregroundStyle(.secondary)
-                        Text("Provided by your server. JapaneseMaple uses it automatically when reachable. An administrator can change it in the server’s network settings.")
+                        Text("Provided by your server. JapaneseMaple uses it automatically when reachable and switches to the primary address if the local connection stops responding. An administrator can change it in the server’s network settings.")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                 }
@@ -64,10 +65,15 @@ struct ServerSettingsView: View {
             .toolbar {
                 if !isWelcome { Button("Cancel") { dismiss() } }
             }
+            .onReceive(NotificationCenter.default.publisher(for: ServerConfigService.connectionDidChange)) { _ in
+                let config = ServerConfigService.shared
+                discoveredLocal = config.localURL
+                connectedLocally = discoveredLocal != nil && config.getAPIUrl() == discoveredLocal
+            }
             .task {
                 guard !isWelcome else { return }
                 let config = ServerConfigService.shared
-                let endpoint = await config.resolveEndpoint()
+                let endpoint = await config.resolveEndpoint(force: true)
                 discoveredLocal = config.localURL
                 connectedLocally = discoveredLocal != nil && endpoint == discoveredLocal
             }

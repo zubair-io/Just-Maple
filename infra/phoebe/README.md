@@ -657,3 +657,28 @@ and `/root/mobile-pages-20261030/` in CT131. Draft PR316 is stacked on PR315, un
 Roll back code to `bot-identity-20261030-02` and restart only API to select its web
 folder; retain live database/env. No DNS, data, native binary, model, resource-limit
 or other guest change.
+
+## Automatic local/public connection recovery
+
+JapaneseMaple build 65 keeps the saved primary server/account identity while routing
+API and realtime traffic through the server-advertised, identity-verified local
+address. While active it probes every 15 seconds (two-second anonymous identity
+requests); network changes also trigger discovery. It switches transport in place
+so an already open page/editor is retained. Failed local HTTP reads and realtime
+handshakes have a five-second deadline, then retry/connect through the primary
+address. Concurrent read failures all recover; writes/uploads are never replayed
+automatically after an uncertain failure. Native collectors receive the same route.
+A reported LAN failure suppresses local retries for 30 seconds, then active probes
+can restore a verified LAN connection. No foreground polling runs while inactive.
+
+If the initial local web document fails, the app rebuilds its public bootstrap and
+retries the same route over the primary address. A full outage still requires a
+working route to resume server operations. This does not migrate browser storage
+between origins or convert the hosted app into the separate local/iCloud app.
+
+Validation: focused web transport/realtime tests; native server-resolution and
+collector-upload tests; signed macOS/iOS builds; live trusted-HTTPS LAN preference,
+simulated local outage/public fallback and local recovery using isolated settings.
+Broader legacy realtime/kanban tests have 27 failures reproduced unchanged on the
+parent commit (old mocks/API expectations and missing IndexedDB); they are not
+claimed as passing.
