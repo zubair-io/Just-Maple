@@ -19,7 +19,11 @@ import {
     findDeviceItemFacets,
     countDeviceItems,
 } from '../../repositories/device-item.repo';
-import { invalidateMessageMetadata } from '../../repositories/message-history.repo';
+import {
+    messageMetadata,
+    invalidateMessageMetadata,
+} from '../../repositories/message-history.repo';
+import { bumpDeviceDataVersion } from '../device-search.service';
 import { messageDirectory, messageHistoryPage } from '../message-history.service';
 import {
     nativeMessageFingerprint,
@@ -277,6 +281,20 @@ describe('message history access and pagination', () => {
         expect((await messageDirectory(owner, { from: 1577898004, to: 1577898006 })).total).toBe(3);
         expect((await messageDirectory(owner, { search: '" OR *' })).total).toBe(0);
     });
+    it('keeps the metadata cache through unrelated uploads and vector version updates, and refreshes real message changes', async () => {
+        await upsertDeviceItems(owner, 'mac', [message('imessage:1', 'Hello')]);
+        const first = await messageMetadata(owner);
+        await bumpDeviceDataVersion(owner);
+        await upsertDeviceItems(owner, 'mac', [message('mail:1', 'Email', { source: 'mail' })]);
+        expect(await messageMetadata(owner)).toBe(first);
+        await upsertDeviceItems(owner, 'mac', [
+            message('imessage:1', 'Updated', { revision: '2', thread: 'Renamed' }),
+        ]);
+        const next = await messageMetadata(owner);
+        expect(next).not.toBe(first);
+        expect(next[0]?.thread).toBe('Renamed');
+    });
+
     it('keeps legacy message headers, collector counts and sharing choices on metadata-only reads', async () => {
         await upsertDeviceItems(
             owner,
