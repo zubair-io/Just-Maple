@@ -10,7 +10,7 @@ export const PageContentSchema = Type.Object({
 
 export type PageContent = Static<typeof PageContentSchema>;
 
-// Page type - for Just Maple Local, only 'memo' is used
+// Page type - for Just Maple, only 'memo' is used
 export const PageTypeSchema = Type.Union([Type.Literal('memo')]);
 
 export type PageType = Static<typeof PageTypeSchema>;

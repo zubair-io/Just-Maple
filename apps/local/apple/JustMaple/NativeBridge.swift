@@ -1,6 +1,6 @@
 //
 //  NativeBridge.swift
-//  LocalMaple
+//  JustMaple
 //
 //  Created by Zubair Lawrence on 11/30/25.
 //
@@ -452,7 +452,7 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
         case .apiRequest(let payload):
             send(.apiResponse(NativeToWebMessage.ApiResponseResult(requestId: payload.requestId,
                 status: 0, statusText: "Unavailable", durationMs: 0,
-                body: "Network request blocks are unavailable in Just Maple Local.")))
+                body: "Network request blocks are unavailable in Just Maple.")))
 
         case .unknown:
             print("[Bridge] Unknown message type")
@@ -639,7 +639,7 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
                 let introURL = defaultURL.appendingPathComponent("Welcome.md")
                 if !fm.fileExists(atPath: introURL.path) {
                     let intro = """
-                    # Welcome to Just Maple Local
+                    # Welcome to Just Maple
 
                     This is your **iCloud notebook**. Notes you create here sync automatically across all your Apple devices.
 

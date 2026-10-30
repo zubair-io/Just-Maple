@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import LocalMaple
+@testable import JustMaple
 
 struct LocalDocumentStoreTests {
     private func fixture() throws -> URL {

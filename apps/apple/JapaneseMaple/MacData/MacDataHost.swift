@@ -168,7 +168,7 @@ final class MacDataHost: NSObject, WKScriptMessageHandlerWithReply {
         runActions()
     }
 
-    /// Adds events the user confirmed in Just Maple; registers first if needed.
+    /// Adds events the user confirmed in JapaneseMaple; registers first if needed.
     private func runActions() {
         Task {
             if await engine.registration == nil { await engine.uploadPending() }

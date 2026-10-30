@@ -44,7 +44,7 @@ nonisolated enum HomeAssistantError: LocalizedError, Equatable {
         case .authInvalid:
             "Home Assistant didn't accept the access token. Create a new long-lived access token and try again."
         case .notAdmin:
-            "Just Maple couldn't read which entities are exposed. Use a token from an administrator account."
+            "JapaneseMaple couldn't read which entities are exposed. Use a token from an administrator account."
         case .unreachable(let detail):
             "Couldn't reach Home Assistant (\(detail)). Check the address and that this Mac is on your home network."
         case .timedOut:

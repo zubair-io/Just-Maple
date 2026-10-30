@@ -247,7 +247,7 @@ struct CalendarActionTests {
         try await runner(server, calendar, MemoryLedger()).run()
         let result = try #require(await server.reports.first?.result)
         #expect(result.ok == false)
-        #expect(result.error?.contains("wasn't added by Just Maple") == true)
+        #expect(result.error?.contains("wasn't added by JapaneseMaple") == true)
         #expect(calendar.foreign == ["EK-9"])
     }
 

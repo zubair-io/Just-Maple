@@ -1,6 +1,6 @@
 //
 //  CustomSchemeHandler.swift
-//  LocalMaple
+//  JustMaple
 //
 //  Custom URL scheme handler to serve local files via app:// protocol
 //  This allows Angular Router to work without file:// restrictions

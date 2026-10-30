@@ -97,7 +97,7 @@ export class RecorderWorkspaceService {
 
   private request(command: Command): Promise<RecorderResponse> {
     if (!this.connected)
-      return Promise.reject(new Error('Open Just Maple’s Apple app to use the local recorder.'));
+      return Promise.reject(new Error('Open JapaneseMaple’s Apple app to use the local recorder.'));
     const sequence = ++this.sequence;
     const requestId = `recorder-${Date.now()}-${sequence}`;
     return new Promise((resolve, reject) => {

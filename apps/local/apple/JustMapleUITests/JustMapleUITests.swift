@@ -1,6 +1,6 @@
 import XCTest
 
-final class LocalMapleUITests: XCTestCase {
+final class JustMapleUITests: XCTestCase {
     func testBundledEditorAndRecorderLaunch() {
         let app = XCUIApplication()
         app.launch()

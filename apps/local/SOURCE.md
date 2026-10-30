@@ -2,7 +2,7 @@
 
 - Base editor/shell: `zubair-io/Sugar-Maple`, commit `3e06248`.
 - Imported tracked `src/web/` into `web/` and `src/SugarMaple/` into `apple/`, renamed
-  to LocalMaple. The unrelated ingestion service in `_SugarMaple` was not used.
+  to JustMaple. The unrelated ingestion service in `_SugarMaple` was not used.
 - Adaptations: separate identity and build target, bundled assets/fonts, local-only
   navigation/bridge scope, correlated file operations, safe document writes,
   recoverable save queue, native recorder workspace and current local test setup.

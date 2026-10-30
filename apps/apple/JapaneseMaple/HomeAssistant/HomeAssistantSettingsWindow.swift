@@ -110,7 +110,7 @@ final class HomeAssistantSettingsModel {
         token = ""
         hasSavedToken = false
         url = ""
-        message = "Removed. Just Maple no longer connects to Home Assistant."
+        message = "Removed. JapaneseMaple no longer connects to Home Assistant."
         failed = false
         onChange()
     }
@@ -125,7 +125,7 @@ final class HomeAssistantSettingsModel {
                 settings: settings, token: token, factory: factory)
             if count == 0 {
                 message =
-                    "Connected, but nothing is exposed to assistants. In Home Assistant, go to Settings → Voice assistants → Expose and choose what Just Maple may see."
+                    "Connected, but nothing is exposed to assistants. In Home Assistant, go to Settings → Voice assistants → Expose and choose what JapaneseMaple may see."
             } else {
                 message = "Connected. \(count) \(count == 1 ? "entity is" : "entities are") exposed to assistants."
             }
@@ -150,7 +150,7 @@ struct HomeAssistantSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(
-                "Just Maple reads only the entities you expose to assistants in Home Assistant (Settings → Voice assistants → Expose), and changes one only after you tap to confirm."
+                "JapaneseMaple reads only the entities you expose to assistants in Home Assistant (Settings → Voice assistants → Expose), and changes one only after you tap to confirm."
             )
             .font(.callout)
             .foregroundStyle(.secondary)

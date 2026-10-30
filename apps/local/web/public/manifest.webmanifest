@@ -1,6 +1,6 @@
 {
-  "name": "Just Maple Local",
-  "short_name": "Maple Local",
+  "name": "Just Maple",
+  "short_name": "Just Maple",
   "theme_color": "#d94e3b",
   "background_color": "#fdfbf7",
   "display": "standalone",
