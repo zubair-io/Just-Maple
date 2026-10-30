@@ -15,7 +15,7 @@ migration and hostnames were explicitly authorized; **do not merge to main**.
 | Storage               | `local`: 16 GiB root + 64 GiB managed `/var/lib/just-maple`, backup enabled                     |
 | LAN                   | DHCP `192.168.1.179/23`, gateway `192.168.1.1`; reserve this lease for permanent use            |
 | API                   | Non-root `just-maple-api`, bound to `127.0.0.1:7071`                                            |
-| Application release   | `/opt/just-maple/current` → `message-history-20261030-01`                                       |
+| Application release   | `/opt/just-maple/current` → `japanese-maple-20261030-02`                                        |
 | Runtime source        | `c2b4550c394f06fdec6012f53d8cf927ee882919`; native/model pins retained                          |
 | Database              | `/var/lib/just-maple/production-20261029.sqlite`, WAL/FULL                                      |
 | Local files           | `/var/lib/just-maple/media`; existing Azure media storage/URLs retained                         |
@@ -309,3 +309,34 @@ ingestion/lexical coverage, with semantic coverage still building. SQLite was
 continue changing. Final post-import NAS snapshot `just-maple-20261030T053200Z.sqlite`
 passed the backup service's integrity/SHA checks. No DNS change, source-database
 modification or main merge.
+
+## Client/frontend rollout — October 30, 2026
+
+Frontend source `3fff5ce5580555814a089027a23e0aad2dd28ec3` is deployed as
+`japanese-maple-20261030-02`. The retention API remains at `c2b4550c`; database,
+environment and native/model pins are preserved. All **111** current manifest
+artifacts passed SHA-256 checks. Pre-deployment NAS snapshot
+`just-maple-20261030T053758Z.sqlite` passed integrity/SHA verification. Public/LAN
+identity, authenticated reads, anonymous denial, CORS, WebSockets and development-auth
+exclusion passed after activation. API/search/tunnel/Nginx remain active.
+
+Signed JapaneseMaple **1.0.0 (64)** was installed on physical iPhone **Artemis**
+(`com.just.maple.JapaneseMaple`); the installed app listing confirms build 64.
+Opening it was blocked by iOS while the phone was locked, so phone launch verification
+awaits unlocking. No uninstall or data-container reset was used.
+
+Mac build **64** is installed and running from
+`/Users/riabuz/Applications/JapaneseMaple.app`, with its signature verified and the
+previous user bundle preserved under `/tmp/japanese-maple-deploy-20261030/mac-backups/`.
+It retained sign-in, uses the primary Phoebe domain and automatically discovers the
+LAN hostname; the native settings visibly report **Connected locally**. Its Messages
+checkpoint is version 3 with backfill complete, and the local staging cache has
+64,698 messages and 10,700 emails. The separate root-owned
+`/Applications/JapaneseMaple.app` remains build 63: replacing it requires administrator
+authentication. Use the updated user-installed copy. No App Store/TestFlight release.
+
+A compatible frontend rollback returns the current symlink to
+`message-history-20261030-01` and restarts only the API while preserving the live
+database/environment. Mac rollback can restore the backed-up bundle without deleting
+its container/keychain, though it loses the new collection policy. Semantic indexing
+continues in the durable background queue. No main merge or DNS change.
