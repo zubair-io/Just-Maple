@@ -237,6 +237,61 @@ describe('GraphViewComponent', () => {
     expect(fixture.componentInstance.view().nodes).toHaveLength(5);
   });
 
+  it('hides only the selected topic in this view and can restore it without removing data', () => {
+    const fixture = render();
+    const component = fixture.componentInstance;
+    component.select('topic:soccer');
+    fixture.detectChanges();
+    (
+      fixture.nativeElement.querySelector(
+        '[aria-label="Hide topic from this view"]',
+      ) as HTMLButtonElement
+    ).click();
+    fixture.detectChanges();
+    expect(component.view().nodes.some((node) => node.id === 'topic:soccer')).toBe(false);
+    expect(component.view().nodes.some((node) => node.id === 'item:u1:mail:party')).toBe(true);
+    expect(component.view().links.some((link) => link.id === 'nb1|e|f')).toBe(false);
+    expect(component.selected()).toBeNull();
+    expect(state()?.nodes).toHaveLength(5);
+    expect(state()?.links).toHaveLength(3);
+    expect(service.removeReason).not.toHaveBeenCalled();
+    expect(service.removeLink).not.toHaveBeenCalled();
+    (
+      fixture.nativeElement.querySelector('[aria-label="Show hidden topics"]') as HTMLButtonElement
+    ).click();
+    fixture.detectChanges();
+    expect(component.view().nodes).toHaveLength(5);
+    expect(component.view().links).toHaveLength(3);
+    component.hideTopic('place:office');
+    expect(component.hiddenTopicIds().size).toBe(0);
+  });
+
+  it('opens the matched person from a message’s From name', () => {
+    state.set({
+      ...people,
+      nodes: [
+        ...people.nodes,
+        {
+          id: 'item:u1:imessage:message',
+          kind: 'item',
+          source: 'imessage',
+          label: 'Jen Lawrence',
+          senderName: 'Jen Lawrence',
+          senderHandle: '+15185550123',
+          senderPersonId: 'person:jen',
+        },
+      ],
+    });
+    const fixture = render();
+    fixture.componentInstance.select('item:u1:imessage:message');
+    fixture.detectChanges();
+    const sender = fixture.nativeElement.querySelector('[data-testid="sender"]') as HTMLElement;
+    expect(sender.textContent).toContain('Jen Lawrence');
+    expect(sender.textContent).toContain('+15185550123');
+    sender.querySelector('button')!.click();
+    expect(fixture.componentInstance.selected()?.id).toBe('person:jen');
+  });
+
   it('filters by date range', () => {
     const fixture = render();
     const view = fixture.componentInstance;

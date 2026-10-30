@@ -16,7 +16,9 @@
             <td class="max-w-[14rem]">
               <span class="clamp">{{ item.thread }}</span>
             </td>
-            <td class="nowrap" [class.muted]="item.isFromMe">{{ item.sender }}</td>
+            <td class="nowrap" [class.muted]="item.isFromMe">
+              {{ item.senderName || item.sender }}
+            </td>
             <td class="w-1/2 whitespace-pre-line">{{ item.body }}</td>
           </tr>
         }

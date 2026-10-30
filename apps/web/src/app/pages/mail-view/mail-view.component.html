@@ -14,7 +14,7 @@
           <tr [class.font-semibold]="item.isRead === false">
             <td class="nowrap muted">{{ item.occurredAt * 1000 | date: 'MMM d, h:mm a' }}</td>
             <td class="max-w-[14rem]">
-              <span class="clamp">{{ item.sender }}</span>
+              <span class="clamp">{{ item.senderName || item.sender }}</span>
             </td>
             <td class="w-1/2">
               <div>{{ item.title }}</div>
