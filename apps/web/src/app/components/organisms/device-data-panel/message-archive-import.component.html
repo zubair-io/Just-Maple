@@ -1,0 +1,181 @@
+<div
+  class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
+  (keydown.escape)="close.emit()"
+>
+  <section
+    role="dialog"
+    cdkTrapFocus
+    [cdkTrapFocusAutoCapture]="true"
+    aria-modal="true"
+    aria-labelledby="archive-title"
+    class="flex max-h-[90dvh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg)] shadow-xl"
+  >
+    <header class="flex items-center justify-between border-b border-[var(--color-border)] p-5">
+      <h2 id="archive-title" class="m-0 text-base! font-semibold">Import message archive</h2>
+      <button
+        type="button"
+        aria-label="Close import"
+        (click)="close.emit()"
+        class="flex size-8 items-center justify-center rounded-lg hover:bg-[var(--color-surface-hover)]"
+      >
+        <span class="material-symbols-rounded" aria-hidden="true">close</span>
+      </button>
+    </header>
+    <div class="min-h-0 space-y-4 overflow-auto p-5 text-sm">
+      <p class="m-0 text-[var(--color-text-muted)]">
+        Choose the <strong>messages.db</strong> from your message archive. Its conversations will
+        appear alongside iMessage. Your original file stays unchanged.
+      </p>
+      @if (!running()) {
+        <label
+          class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--color-border)] px-4 py-2 font-medium hover:bg-[var(--color-surface-hover)]"
+        >
+          <span class="material-symbols-rounded text-lg" aria-hidden="true">upload_file</span
+          >{{ busy() ? 'Reading archive…' : 'Choose messages.db' }}
+          <input
+            type="file"
+            class="sr-only"
+            accept=".db,.sqlite,.sqlite3"
+            [disabled]="busy()"
+            (change)="choose($event)"
+          />
+        </label>
+      }
+      @if (error()) {
+        <p
+          role="alert"
+          class="rounded-lg bg-[var(--color-surface)] p-3 text-[var(--color-primary)]"
+        >
+          {{ error() }}
+        </p>
+      }
+      @if (job(); as job) {
+        <div class="rounded-xl border border-[var(--color-border)] p-4">
+          <p class="m-0 font-semibold">{{ job.filename }}</p>
+          <p class="mb-0 mt-1 text-xs text-[var(--color-text-muted)]">
+            {{ job.total | number }} records · {{ job.people | number }} people ·
+            {{ job.groups | number }} groups
+          </p>
+        </div>
+        @if (job.status === 'ready' || job.status === 'paused' || job.status === 'failed') {
+          <label class="block text-xs font-medium"
+            >Archive name
+            <input
+              class="mt-1 block h-9 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm"
+              [ngModel]="dataset()"
+              (ngModelChange)="dataset.set($event)"
+              [disabled]="lockedSettings()"
+            />
+            <span class="mt-1 block font-normal text-[var(--color-text-muted)]"
+              >Reuse this name when importing an updated copy of the same archive.</span
+            >
+          </label>
+          <label class="block text-xs font-medium"
+            >Timezone for dates without one
+            <input
+              class="mt-1 block h-9 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm"
+              [ngModel]="timeZone()"
+              (ngModelChange)="timeZone.set($event)"
+              [disabled]="lockedSettings()"
+              placeholder="America/New_York"
+            />
+          </label>
+          <fieldset class="rounded-lg border border-[var(--color-border)] p-3">
+            <legend class="px-1 text-xs font-medium">Platforms to import</legend>
+            <div class="grid grid-cols-2 gap-2">
+              @for (entry of job.platforms; track entry.platform) {
+                <label class="flex items-center gap-2 text-xs"
+                  ><input
+                    type="checkbox"
+                    [checked]="platforms().includes(entry.platform)"
+                    [disabled]="lockedSettings()"
+                    (change)="toggle(entry.platform, $any($event.target).checked)"
+                  />{{ platformNames[entry.platform] || entry.platform }}
+                  <span class="ml-auto text-[var(--color-text-muted)]">{{
+                    entry.count | number
+                  }}</span></label
+                >
+              }
+            </div>
+          </fieldset>
+          <p class="m-0 text-xs leading-relaxed text-[var(--color-text-muted)]">
+            Exact, unambiguous overlaps with existing iMessages are skipped. Repeating an import is
+            safe. Attachment references are kept; attachment files aren’t copied.
+          </p>
+        }
+        @if (job.undated) {
+          <p class="m-0 text-xs text-[var(--color-text-muted)]">
+            {{ job.undated | number }} records have no date. They’ll be kept and marked “Date
+            unknown”.
+          </p>
+        }
+        @if (job.status !== 'ready') {
+          <div
+            role="status"
+            aria-live="polite"
+            class="space-y-2 rounded-xl bg-[var(--color-surface)] p-4"
+          >
+            <p class="m-0 font-semibold">
+              {{
+                job.status === 'complete'
+                  ? 'Import complete'
+                  : job.status === 'paused'
+                    ? 'Import paused'
+                    : job.status === 'failed'
+                      ? 'Import needs attention'
+                      : 'Importing conversations…'
+              }}
+            </p>
+            <progress
+              class="block h-2 w-full accent-[var(--color-primary)]"
+              [value]="job.processed"
+              [max]="job.total || 1"
+              aria-label="Import progress"
+            ></progress>
+            <p class="m-0 text-xs text-[var(--color-text-muted)]">
+              {{ job.processed | number }} / {{ job.total | number }} scanned ·
+              {{ job.stored | number }} added or updated · {{ job.duplicates | number }} already
+              present
+            </p>
+            @if (job.error) {
+              <p class="m-0 text-xs">{{ job.error }}</p>
+            }
+            @if (running()) {
+              <p class="m-0 text-xs text-[var(--color-text-muted)]">
+                You can close this window. The import keeps running on your server.
+              </p>
+            }
+          </div>
+        }
+      }
+    </div>
+    <footer class="flex justify-end gap-2 border-t border-[var(--color-border)] p-4">
+      <button
+        type="button"
+        (click)="close.emit()"
+        class="rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm"
+      >
+        {{ running() ? 'Continue in background' : 'Close' }}
+      </button>
+      @if (running()) {
+        <button
+          type="button"
+          (click)="pause()"
+          [disabled]="busy()"
+          class="rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm disabled:opacity-50"
+        >
+          Pause
+        </button>
+      } @else if (job() && job()?.status !== 'complete') {
+        <button
+          type="button"
+          (click)="start()"
+          [disabled]="busy() || !platforms().length"
+          class="rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+        >
+          {{ job()?.status === 'ready' ? 'Import messages' : 'Resume import' }}
+        </button>
+      }
+    </footer>
+  </section>
+</div>

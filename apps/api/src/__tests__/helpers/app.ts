@@ -1,3 +1,4 @@
+import { messageHistoryRoutes } from '../../routes/message-history';
 import { Elysia } from 'elysia';
 import { cors } from '@elysiajs/cors';
 import { authRoutes } from '../../routes/auth';
@@ -36,6 +37,7 @@ export function createTestApp() {
         .use(notificationRoutes)
         .use(botRoutes)
         .use(deviceDataRoutes)
+        .use(messageHistoryRoutes)
         .use(calendarProposalRoutes)
         .use(homeRoutes)
         .use(botActionRoutes)

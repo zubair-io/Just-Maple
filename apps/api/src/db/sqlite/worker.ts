@@ -1,3 +1,4 @@
+import type { MacDataItem } from '@maple/shared';
 import { Database, type SQLQueryBindings } from 'bun:sqlite';
 import { chmodSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -495,6 +496,62 @@ function operation(op: string, name: string | undefined, args: unknown[]): unkno
             ...doc,
             item: JSON.parse(item_metadata),
         }));
+    }
+    if (op === 'messages.metadata' || op === 'messages.native') {
+        const native = op === 'messages.native';
+        const items: MacDataItem[] = [];
+        const people = new Map<string, unknown>();
+        const rows = db
+            .query(
+                `SELECT item_metadata,${native ? 'body' : "'' AS body"} FROM search_documents WHERE user_id=? AND source='imessage' ${native ? "AND item_id LIKE 'imessage:%'" : ''}`,
+            )
+            .iterate(String(args[0]));
+        for (const row of rows as Iterable<{ item_metadata: string; body: string }>) {
+            const item = JSON.parse(row.item_metadata) as MacDataItem;
+            if (native) {
+                items.push({ ...item, body: row.body });
+                continue;
+            }
+            const extra = item.extra ?? {};
+            const memberKeys: string[] = [];
+            if (Array.isArray(extra['archiveMembers']))
+                for (const person of extra['archiveMembers']) {
+                    if (person && typeof person === 'object' && typeof person.key === 'string') {
+                        people.set(person.key, person);
+                        memberKeys.push(person.key);
+                    }
+                }
+            items.push({
+                id: item.id,
+                source: 'imessage',
+                revision: '',
+                occurredAt: item.occurredAt,
+                title: item.title,
+                thread: item.thread,
+                participants: item.participants,
+                body: '',
+                extra: {
+                    chatId: extra['chatId'],
+                    archiveDataset: extra['archiveDataset'],
+                    archivePlatform: extra['archivePlatform'],
+                    archiveIsGroup: extra['archiveIsGroup'],
+                    archiveAutomated: extra['archiveAutomated'],
+                    archiveMemberKeys: memberKeys,
+                },
+            });
+        }
+        // Intern repeated archive memberships to bound the cross-process payload and API memory.
+        return native ? items : { items, people: [...people.values()] };
+    }
+    if (op === 'messages.matching') {
+        return (
+            db
+                .query(
+                    `SELECT d.item_id FROM device_search_fts JOIN search_documents d ON d.row_id=device_search_fts.rowid
+            WHERE d.user_id=? AND d.source='imessage' AND device_search_fts MATCH ?`,
+                )
+                .all(String(args[0]), String(args[1])) as { item_id: string }[]
+        ).map((row) => row.item_id);
     }
     if (op.startsWith('search.')) return searchStore.run(op, args);
     if (op === 'ping') {

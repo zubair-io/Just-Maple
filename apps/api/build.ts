@@ -1,6 +1,7 @@
 const entries = [
     ['src/index.ts', 'index.js'],
     ['src/db/sqlite/worker.ts', 'sqlite-worker.js'],
+    ['src/workers/message-archive.ts', 'message-archive-worker.js'],
     ['scripts/sqlite/migrate.ts', 'migrate.js'],
     ['scripts/sqlite/backup.ts', 'backup.js'],
     ['scripts/sqlite/smoke.ts', 'smoke.js'],

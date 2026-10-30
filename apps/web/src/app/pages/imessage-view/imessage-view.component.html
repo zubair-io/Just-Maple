@@ -1,28 +1,313 @@
-<app-device-data-panel [list]="list">
-  @if (list.items().length) {
-    <table class="device-data-table">
-      <thead>
-        <tr>
-          <th scope="col">Time</th>
-          <th scope="col">Conversation</th>
-          <th scope="col">From</th>
-          <th scope="col">Message</th>
-        </tr>
-      </thead>
-      <tbody>
-        @for (item of list.items(); track item.id) {
-          <tr>
-            <td class="nowrap muted">{{ item.occurredAt * 1000 | date: 'MMM d, h:mm a' }}</td>
-            <td class="max-w-[14rem]">
-              <span class="clamp">{{ item.thread }}</span>
-            </td>
-            <td class="nowrap" [class.muted]="item.isFromMe">
-              {{ item.senderName || item.sender }}
-            </td>
-            <td class="w-1/2 whitespace-pre-line">{{ item.body }}</td>
-          </tr>
+<app-device-data-panel [list]="list" [searchable]="false" [managedContent]="true">
+  <div
+    [class.hidden]="list.nothingShared()"
+    class="flex min-h-0 flex-1 flex-col font-sans text-[var(--color-text-main)]"
+  >
+    <div
+      class="flex flex-wrap items-end gap-2 border-b border-[var(--color-border)] bg-[var(--color-surface)] p-3"
+    >
+      <label class="min-w-40 flex-1 text-xs text-[var(--color-text-muted)]"
+        >Search all messages
+        <input
+          type="search"
+          [ngModel]="search()"
+          (ngModelChange)="search.set($event)"
+          placeholder="Search words or a phrase"
+          class="mt-1 h-9 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-sm text-[var(--color-text-main)]"
+        />
+      </label>
+      <label class="text-xs text-[var(--color-text-muted)]"
+        >Platform
+        <select
+          [ngModel]="platform()"
+          (ngModelChange)="platform.set($event)"
+          class="mt-1 block h-9 max-w-40 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-2 text-sm text-[var(--color-text-main)]"
+        >
+          <option value="">All platforms</option>
+          @for (value of platforms(); track value) {
+            <option [value]="value">{{ platformNames[value] || value }}</option>
+          }
+        </select>
+      </label>
+      <label class="text-xs text-[var(--color-text-muted)]"
+        >From
+        <input
+          type="date"
+          [ngModel]="fromDate()"
+          (ngModelChange)="fromDate.set($event)"
+          class="mt-1 block h-9 w-36 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-2 text-xs text-[var(--color-text-main)]"
+        />
+      </label>
+      <label class="text-xs text-[var(--color-text-muted)]"
+        >Through
+        <input
+          type="date"
+          [ngModel]="toDate()"
+          (ngModelChange)="toDate.set($event)"
+          class="mt-1 block h-9 w-36 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-2 text-xs text-[var(--color-text-main)]"
+        />
+      </label>
+      <button
+        type="button"
+        (click)="refresh()"
+        aria-label="Refresh conversations"
+        title="Refresh conversations"
+        class="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-border)] hover:bg-[var(--color-surface-hover)]"
+      >
+        <span class="material-symbols-rounded" aria-hidden="true">refresh</span>
+      </button>
+      @if (list.canManage()) {
+        <button
+          type="button"
+          (click)="importOpen.set(true)"
+          class="h-9 rounded-lg bg-[var(--color-primary)] px-3 text-xs font-semibold text-white hover:bg-[var(--color-primary-hover)]"
+        >
+          Import archive
+        </button>
+      }
+      <label class="flex w-full items-center gap-2 text-xs text-[var(--color-text-muted)]"
+        ><input
+          type="checkbox"
+          [ngModel]="includeAutomated()"
+          (ngModelChange)="includeAutomated.set($event)"
+        />Include automated conversations</label
+      >
+    </div>
+    @if (error()) {
+      <p role="alert" class="m-0 border-b border-[var(--color-border)] p-3 text-sm">
+        {{ error() }}
+      </p>
+    }
+    <div class="flex min-h-0 flex-1">
+      <aside
+        aria-label="Conversations"
+        [class]="showConversation() ? 'hidden md:flex' : 'flex'"
+        class="min-h-0 w-full flex-none flex-col border-r border-[var(--color-border)] md:flex md:w-72 lg:w-80"
+      >
+        <div class="border-b border-[var(--color-border)] p-3">
+          <label class="sr-only" for="message-contact-search">Filter contacts</label>
+          <input
+            id="message-contact-search"
+            type="search"
+            [ngModel]="contactSearch()"
+            (ngModelChange)="contactSearch.set($event)"
+            placeholder="Filter contacts or groups"
+            class="h-9 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm"
+          />
+          <div class="mt-2 flex gap-1" aria-label="Conversation type">
+            @for (value of ['all', 'person', 'group']; track value) {
+              <button
+                type="button"
+                (click)="kind.set($any(value))"
+                [attr.aria-pressed]="kind() === value"
+                [class.bg-[var(--color-surface-hover)]]="kind() === value"
+                class="flex-1 rounded-lg px-2 py-1.5 text-xs hover:bg-[var(--color-surface-hover)]"
+              >
+                {{ value === 'all' ? 'All' : value === 'person' ? 'People' : 'Groups' }}
+              </button>
+            }
+          </div>
+        </div>
+        <div
+          class="min-h-0 flex-1 overflow-y-auto"
+          aria-live="polite"
+          [attr.aria-busy]="directoryLoading()"
+        >
+          @if (directoryLoading()) {
+            <p class="px-4 text-xs text-[var(--color-text-muted)]">Loading conversations…</p>
+          }
+          @for (conversation of visibleConversations(); track conversation.key) {
+            <button
+              type="button"
+              (click)="select(conversation.key)"
+              [attr.aria-pressed]="selected() === conversation.key"
+              [class.bg-[var(--color-surface-hover)]]="selected() === conversation.key"
+              class="flex w-full gap-3 border-b border-[var(--color-border)] p-3 text-left hover:bg-[var(--color-surface-hover)]"
+              data-testid="conversation"
+            >
+              <span
+                class="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-[var(--color-surface)] text-xs font-semibold text-[var(--color-primary)]"
+                aria-hidden="true"
+              >
+                @if (conversation.kind === 'group') {
+                  <span class="material-symbols-rounded text-lg">group</span>
+                } @else {
+                  {{ initials(conversation.name) }}
+                }
+              </span>
+              <span class="min-w-0 flex-1">
+                <span class="flex items-baseline justify-between gap-2"
+                  ><span class="truncate text-sm font-semibold">{{ conversation.name }}</span
+                  ><span class="flex-none text-[10px] text-[var(--color-text-muted)]">{{
+                    conversation.latestAt
+                      ? (conversation.latestAt * 1000 | date: 'MMM d, y')
+                      : 'Undated'
+                  }}</span></span
+                >
+                <span class="mt-0.5 block truncate text-xs text-[var(--color-text-muted)]">{{
+                  conversation.preview || '(attachment or empty message)'
+                }}</span>
+                <span class="mt-1 block truncate text-[10px] text-[var(--color-text-muted)]">
+                  @for (value of conversation.platforms; track value; let last = $last) {
+                    {{ platformNames[value] || value }}{{ last ? '' : ' · ' }}
+                  }
+                  · {{ conversation.matches | number
+                  }}{{ search() ? ' matches' : ' messages' }}</span
+                >
+              </span>
+            </button>
+          } @empty {
+            @if (!directoryLoading()) {
+              <p data-testid="empty" class="p-4 text-center text-sm text-[var(--color-text-muted)]">
+                {{
+                  contactSearch() || search() || platform() || fromDate() || toDate()
+                    ? 'No conversations match these filters.'
+                    : 'No messages here yet. Import an archive or connect your Mac.'
+                }}
+              </p>
+            }
+          }
+        </div>
+      </aside>
+      <section
+        aria-label="Conversation"
+        [class]="showConversation() ? 'flex' : 'hidden md:flex'"
+        class="min-h-0 min-w-0 flex-1 flex-col md:flex"
+      >
+        @if (current(); as conversation) {
+          <header class="flex items-center gap-3 border-b border-[var(--color-border)] px-4 py-3">
+            <button
+              type="button"
+              (click)="showConversation.set(false)"
+              aria-label="Back to conversations"
+              class="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-[var(--color-surface-hover)] md:hidden"
+            >
+              <span class="material-symbols-rounded" aria-hidden="true">arrow_back</span>
+            </button>
+            <div class="min-w-0 flex-1">
+              <h2 class="m-0 truncate text-sm! font-semibold">{{ conversation.name }}</h2>
+              <p class="m-0 mt-0.5 text-xs text-[var(--color-text-muted)]">
+                {{ total() | number }} {{ search() ? 'matching messages' : 'messages' }} ·
+                {{ conversation.kind === 'group' ? 'Group conversation' : 'Message history' }}
+              </p>
+            </div>
+            @if (around()) {
+              <button
+                type="button"
+                (click)="latest()"
+                class="rounded-lg border border-[var(--color-border)] px-3 py-2 text-xs"
+              >
+                Back to latest
+              </button>
+            }
+          </header>
+          <div
+            #timeline
+            class="min-h-0 flex-1 overflow-y-auto px-4 py-5 md:px-6"
+            [attr.aria-busy]="loading()"
+          >
+            @if (canLoadEarlier()) {
+              <div class="mb-5 text-center">
+                <button
+                  type="button"
+                  (click)="earlier()"
+                  [disabled]="loading()"
+                  class="rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2 text-xs disabled:opacity-50"
+                >
+                  Load earlier messages
+                </button>
+              </div>
+            }
+            @if (loading()) {
+              <p role="status" class="text-center text-xs text-[var(--color-text-muted)]">
+                Loading messages…
+              </p>
+            }
+            @for (item of items(); track item.id; let i = $index) {
+              @if (i === 0 || day(item) !== day(items()[i - 1]!)) {
+                <p class="my-6 text-center text-xs font-medium text-[var(--color-text-muted)]">
+                  {{
+                    day(item) === 'unknown'
+                      ? 'Date unknown'
+                      : (item.occurredAt * 1000 | date: 'EEEE, MMMM d, y')
+                  }}
+                </p>
+              }
+              <article
+                [class.items-end]="item.isFromMe"
+                [class.items-start]="!item.isFromMe"
+                class="mb-3 flex flex-col"
+                data-testid="message"
+                [attr.data-message-id]="item.id"
+              >
+                <div
+                  class="mb-1 flex max-w-[90%] flex-wrap items-baseline gap-x-2 px-1 text-[11px] text-[var(--color-text-muted)]"
+                >
+                  <span class="font-semibold text-[var(--color-text-main)]">{{
+                    item.isFromMe ? 'You' : item.senderName || item.sender || conversation.name
+                  }}</span>
+                  <span>{{ platformNames[itemPlatform(item)] || itemPlatform(item) }}</span>
+                  @if (day(item) !== 'unknown') {
+                    <time
+                      [attr.datetime]="item.occurredAt * 1000 | date: 'yyyy-MM-ddTHH:mm:ssZZZZZ'"
+                      >{{ item.occurredAt * 1000 | date: 'h:mm a' }}</time
+                    >
+                  }
+                </div>
+                <div
+                  [class.border-[var(--color-primary)]]="item.isFromMe"
+                  class="max-w-[90%] rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 md:max-w-[80%]"
+                >
+                  <p class="m-0 whitespace-pre-wrap break-words text-sm leading-relaxed">
+                    @for (part of highlight(item.body); track $index) {
+                      @if (part.match) {
+                        <mark class="rounded bg-amber-200 text-gray-950">{{ part.text }}</mark>
+                      } @else {
+                        {{ part.text }}
+                      }
+                    }
+                    @if (!item.body) {
+                      <span class="italic text-[var(--color-text-muted)]">{{
+                        item.extra?.['archiveAttachment']
+                          ? 'Attachment (file not included)'
+                          : 'Empty message'
+                      }}</span>
+                    }
+                  </p>
+                  @if (search()) {
+                    <button
+                      type="button"
+                      (click)="context(item)"
+                      class="mt-2 text-xs font-medium text-[var(--color-primary)] underline underline-offset-2"
+                    >
+                      Show in conversation
+                    </button>
+                  }
+                </div>
+              </article>
+            } @empty {
+              @if (!loading()) {
+                <p class="text-center text-sm text-[var(--color-text-muted)]">
+                  No messages match these filters.
+                </p>
+              }
+            }
+          </div>
+        } @else {
+          <div
+            class="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center text-[var(--color-text-muted)]"
+          >
+            <span class="material-symbols-rounded text-4xl" aria-hidden="true">forum</span>
+            <p class="m-0 text-sm">Choose a person or group to read your messages.</p>
+            <p class="m-0 max-w-xs text-xs leading-relaxed">
+              Search across your history, then open a result in its conversation.
+            </p>
+          </div>
         }
-      </tbody>
-    </table>
+      </section>
+    </div>
+  </div>
+  @if (importOpen()) {
+    <app-message-archive-import (close)="importOpen.set(false)" (changed)="refresh()" />
   }
 </app-device-data-panel>
