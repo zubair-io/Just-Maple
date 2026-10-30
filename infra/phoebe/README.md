@@ -247,8 +247,8 @@ staging flag; never point them at production.
 Swift resolver tests passed. macOS test-build, iOS build, API/frontend builds and
 formatting passed. Earlier checks include 139 shared, 12 Rust and 17 Chromium E2E
 passes (136 existing skips), native paraphrases/isolation/revocation/crash recovery,
-binary fidelity and a staging guest reboot. Full Apple test launch needs development
-signing. Existing frontend suite failures and API rootDir/type diagnostics reproduce
+binary fidelity and a staging guest reboot. Signed focused macOS tests now pass after the account refresh; broader Apple UI
+validation remains pending. Existing frontend suite failures and API rootDir/type diagnostics reproduce
 on the clean base; these changes added no unique API type errors.
 
 Production passed trusted public/LAN HTTPS, anonymous denial, authenticated reads,
@@ -294,13 +294,18 @@ All 208 manifest artifacts were checked during activation. Public/LAN authentica
 reads, identity, CORS, WebSocket, anonymous denial and development-auth exclusion
 passed after activation; API/search/tunnel/Nginx are active.
 
-Imported **64,611 unique available Messages items**, December 10, 2019 through
-October 30, 2026 UTC, through the Mac's existing active collector in 328 message-only
-batches. Every item has a current search document; a historical FTS query passed.
-Apple Mail remained **10,700** items and its local checkpoint hash was unchanged;
-**12** already imported emails qualified for permanent contact-mail retention.
-At **05:25 UTC**, 64,277 semantic jobs remained, 334 message items had current
-embeddings, and no queued job had failed/retried. This is complete ingestion/lexical
-coverage, with semantic coverage still building. SQLite was 978,931,712 bytes plus
-13,048,072-byte WAL; available data space was 58,591,207,424 bytes. Counts and sizes
-continue changing. Post-import NAS snapshot `just-maple-20261030T052632Z.sqlite` also passed the backup service’s integrity/SHA checks. No DNS change, source-database modification or main merge.
+Imported **64,698 unique available Messages items**, December 10, 2019 through
+October 30, 2026 UTC, through the Mac's existing active collector in 329 message-only
+batches. Normal message types 0/2/3 and legacy NULL types are included; reactions,
+sticker reactions, votes and unreadable/empty records are excluded. The versioned
+checkpoint also repairs the former type filter. Every item has a current search
+document; a historical FTS query passed. Apple Mail remained **10,700** items and
+its local checkpoint hash was unchanged; **12** already imported emails qualified
+for permanent contact-mail retention.
+
+At **05:31 UTC**, 63,485 semantic jobs remained with zero retries. This is complete
+ingestion/lexical coverage, with semantic coverage still building. SQLite was
+979,660,800 bytes; available data space was 58,590,478,336 bytes. Counts and sizes
+continue changing. Final post-import NAS snapshot `just-maple-20261030T053200Z.sqlite`
+passed the backup service's integrity/SHA checks. No DNS change, source-database
+modification or main merge.
