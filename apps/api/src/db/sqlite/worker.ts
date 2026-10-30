@@ -497,6 +497,50 @@ function operation(op: string, name: string | undefined, args: unknown[]): unkno
             item: JSON.parse(item_metadata),
         }));
     }
+    if (op === 'device.deleteBatch') {
+        ensureCollection('device_items');
+        const filter = {
+            userId: String(args[0]),
+            ...(typeof args[1] === 'string' && args[1] ? { deviceId: args[1] } : {}),
+            ...(typeof args[2] === 'string' && args[2] ? { source: args[2] } : {}),
+        };
+        const candidate = candidateWhere(filter);
+        return db
+            .transaction(() => {
+                const rows = db
+                    .query(`SELECT _id FROM docs_device_items WHERE ${candidate.sql} LIMIT 1000`)
+                    .all(...candidate.values) as { _id: string }[];
+                for (const row of rows) {
+                    if (!row._id.startsWith('s:')) throw new Error('Invalid device item key');
+                    remove('device_items', { _id: row._id.slice(2) });
+                }
+                return rows.length;
+            })
+            .immediate();
+    }
+    if (op === 'device.mailRetentionBatch') {
+        ensureCollection('device_items');
+        return (
+            db
+                .query(
+                    `SELECT s.id AS _id,s.item_metadata FROM search_documents s JOIN docs_device_items d ON d._id='s:'||s.id
+            WHERE s.user_id=? AND s.source='mail' AND s.id>? AND COALESCE(json_extract(d.index_data,'$.retainedContactMail'),0)!=1
+            ORDER BY s.id LIMIT 500`,
+                )
+                .all(String(args[0]), String(args[1])) as { _id: string; item_metadata: string }[]
+        ).map((row) => ({ _id: row._id, item: JSON.parse(row.item_metadata) }));
+    }
+    if (op === 'device.expired') {
+        ensureCollection('device_items');
+        return db
+            .query(
+                `SELECT s.id AS _id,s.item_id AS id,s.user_id AS userId,s.source,json_extract(d.index_data,'$.endAt') AS endAt
+            FROM search_documents s JOIN docs_device_items d ON d._id='s:'||s.id
+            WHERE s.source NOT IN ('contacts','imessage') AND s.occurred_at<?
+                AND COALESCE(json_extract(d.index_data,'$.retainedContactMail'),0)!=1`,
+            )
+            .all(Number(args[0]));
+    }
     if (op === 'device.counts') {
         ensureCollection('device_items');
         const device = typeof args[1] === 'string' && args[1] ? args[1] : undefined;
