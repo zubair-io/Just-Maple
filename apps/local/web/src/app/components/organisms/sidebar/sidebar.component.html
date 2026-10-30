@@ -1,0 +1,292 @@
+<aside
+  class="w-72 flex-shrink-0 bg-[var(--color-sidebar)] border-r border-[var(--color-border)] flex flex-col h-full pt-[env(safe-area-inset-top)]"
+>
+  <!-- Header -->
+  <div class="flex flex-col border-b border-[var(--color-border)]">
+    <!-- Logo -->
+    <div class="px-4 pt-5 pb-1 flex items-center gap-2.5">
+      <span class="text-2xl">🍁</span>
+      <span class="font-serif font-bold text-lg tracking-tight text-[var(--color-text-main)]"
+        >Just Maple</span
+      >
+    </div>
+
+    <!-- New File Button -->
+    <div class="px-4 pb-4">
+      <button
+        (click)="onNewPage()"
+        [disabled]="!selectedFolderId()"
+        class="w-full flex items-center justify-center gap-2 py-2 bg-[var(--color-primary)] text-white rounded-md hover:bg-[var(--color-primary-hover)] transition-all text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[var(--color-primary)]"
+        title="New File"
+      >
+        <span class="material-symbols-rounded text-base">add</span>
+        <span>New File</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Folder item template -->
+  <ng-template #folderItem let-folder>
+    <li
+      cdkDropList
+      [cdkDropListData]="folder._id"
+      (cdkDropListDropped)="onPageDrop($event)"
+      (cdkDropListEntered)="onDropListEntered(folder._id)"
+      (cdkDropListExited)="onDropListExited()"
+      [cdkDropListSortingDisabled]="true"
+      class="rounded-md transition-colors"
+      [class.drag-hover]="dragHoverFolderId() === folder._id"
+    >
+      <!-- Folder Header -->
+      <div
+        (click)="toggleFolder(folder._id)"
+        class="group flex items-center justify-between px-2 py-1.5 text-sm cursor-pointer transition-colors"
+        [class.bg-[var(--color-surface)]]="selectedFolderId() === folder._id"
+        [class.shadow-sm]="selectedFolderId() === folder._id"
+        [class.ring-1]="selectedFolderId() === folder._id"
+        [class.ring-[var(--color-border)]]="selectedFolderId() === folder._id"
+        [class.hover:bg-[var(--color-surface-hover)]]="selectedFolderId() !== folder._id"
+      >
+        <div class="flex items-center gap-2 min-w-0 flex-1">
+          <span
+            class="material-symbols-rounded text-sm transition-colors flex-shrink-0"
+            [class.text-[var(--color-primary)]]="selectedFolderId() === folder._id"
+            [class.text-[var(--color-text-muted)]]="selectedFolderId() !== folder._id"
+          >
+            @if (folderService.isLocal(folder._id)) {
+              folder_open
+            } @else if (selectedFolderId() === folder._id) {
+              book_5
+            } @else {
+              book_2
+            }
+          </span>
+          @if (editingFolderId() === folder._id) {
+            <input
+              type="text"
+              [value]="editValue()"
+              (input)="editValue.set($any($event.target).value)"
+              (keydown)="onEditKeydown($event)"
+              (blur)="onEditBlur()"
+              (focus)="onEditInputFocus($event)"
+              class="flex-1 min-w-0 px-1 py-0.5 text-sm bg-[var(--color-input-bg)] border border-[var(--color-primary)] rounded outline-none"
+              maxlength="255"
+              #editInput
+            />
+          } @else {
+            <span
+              class="truncate"
+              [class.font-medium]="selectedFolderId() === folder._id"
+              [class.text-[var(--color-text-main)]]="selectedFolderId() === folder._id"
+              [class.text-[var(--color-text-muted)]]="selectedFolderId() !== folder._id"
+              (dblclick)="
+                selectedFolderId() === folder._id &&
+                  startEditingFolder(folder._id, folder.label, $event)
+              "
+              >{{ folder.label }}</span
+            >
+          }
+        </div>
+        @if ((getPagesForFolder()[folder._id || 'no_folder'] || []).length > 0) {
+          <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]">
+            {{ expandedFolders().has(folder._id) ? 'expand_less' : 'expand_more' }}
+          </span>
+        }
+      </div>
+
+      <!-- Page list -->
+      <ul
+        class="ml-4 pl-3 border-l border-[var(--color-border)] list-none"
+        [ngClass]="{
+          'mt-1 space-y-0.5': expandedFolders().has(folder._id),
+          'overflow-hidden max-h-0': !expandedFolders().has(folder._id),
+        }"
+      >
+        @if (expandedFolders().has(folder._id)) {
+          @for (page of getPagesForFolder()[folder._id || 'no_folder'] || []; track page.id) {
+            <li
+              cdkDrag
+              [cdkDragData]="page"
+              [cdkDragDisabled]="page.type === 'message' || isMobile()"
+            >
+              <a
+                [routerLink]="
+                  editingPageId() !== page.id ? getPageRouterLink(page, folder._id) : null
+                "
+                (click)="onSelectPage(page)"
+                class="flex items-center gap-1.5 px-2 py-1.5 text-sm cursor-pointer transition-colors"
+                [class.bg-[var(--color-surface-alt)]]="selectedPageId() === page.id"
+                [class.text-[var(--color-text-main)]]="selectedPageId() === page.id"
+                [class.font-medium]="selectedPageId() === page.id"
+                [class.border-l-2]="selectedPageId() === page.id"
+                [class.border-[var(--color-primary)]]="selectedPageId() === page.id"
+                [class.-ml-[2px]]="selectedPageId() === page.id"
+                [class.text-[var(--color-text-muted)]]="selectedPageId() !== page.id"
+                [class.hover:text-[var(--color-text-main)]]="selectedPageId() !== page.id"
+              >
+                <span class="material-symbols-rounded text-xs opacity-60 flex-shrink-0">
+                  @if (page.type === 'collectable') {
+                    brick
+                  } @else if (page.type === 'memo') {
+                    description
+                  } @else if (page.type === 'whiteboard') {
+                    draw
+                  } @else if (page.type === 'kanban') {
+                    view_kanban
+                  } @else if (page.type === 'message') {
+                    chat
+                  } @else {
+                    article
+                  }
+                </span>
+                @if (editingPageId() === page.id) {
+                  <input
+                    type="text"
+                    [value]="editValue()"
+                    (input)="editValue.set($any($event.target).value)"
+                    (keydown)="onEditKeydown($event)"
+                    (blur)="onEditBlur()"
+                    (focus)="onEditInputFocus($event)"
+                    (click)="$event.stopPropagation(); $event.preventDefault()"
+                    class="flex-1 min-w-0 px-1 py-0.5 text-sm bg-[var(--color-input-bg)] border border-[var(--color-primary)] rounded outline-none"
+                    maxlength="255"
+                    #editInput
+                  />
+                } @else {
+                  <span
+                    class="truncate"
+                    (dblclick)="
+                      selectedPageId() === page.id && startEditingPage(page.id, page.title, $event)
+                    "
+                    >{{ page.title }}</span
+                  >
+                }
+              </a>
+            </li>
+          }
+        }
+      </ul>
+    </li>
+  </ng-template>
+
+  <!-- Navigation -->
+  <div class="flex-1 overflow-y-auto px-3 py-4 pb-24">
+    <ul cdkDropListGroup class="space-y-0.5">
+      <!-- iCloud group (native app only) -->
+      @if (isNativeApp()) {
+        <div class="mb-2 px-2 flex items-center justify-between">
+          <span
+            class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider"
+            >iCloud</span
+          >
+          @if (groupedFolders().icloud.length > 0) {
+            <button
+              (click)="onCreateICloudFolder()"
+              class="text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] transition-colors p-0.5 rounded hover:bg-[var(--color-surface-hover)]"
+              title="New Folder"
+            >
+              <span class="material-symbols-rounded text-sm">create_new_folder</span>
+            </button>
+          }
+        </div>
+        @if (isCreatingICloudFolder()) {
+          <li class="px-2 py-1.5">
+            <div class="flex items-center gap-2">
+              <span class="material-symbols-rounded text-sm text-[var(--color-text-muted)]"
+                >create_new_folder</span
+              >
+              <input
+                type="text"
+                [value]="editValue()"
+                (input)="editValue.set($any($event.target).value)"
+                (keydown)="onEditKeydown($event)"
+                (blur)="onEditBlur()"
+                (focus)="onEditInputFocus($event)"
+                placeholder="Folder name"
+                class="flex-1 min-w-0 px-1 py-0.5 text-sm bg-[var(--color-input-bg)] border border-[var(--color-primary)] rounded outline-none"
+                maxlength="255"
+                #editInput
+              />
+            </div>
+          </li>
+        }
+        @if (groupedFolders().icloud.length === 0 && !isCreatingICloudFolder()) {
+          <div class="px-2 py-6 flex flex-col items-center gap-2">
+            <span
+              class="material-symbols-rounded text-2xl text-[var(--color-text-muted)] opacity-40"
+              >cloud</span
+            >
+            <span class="text-xs text-[var(--color-text-muted)]">No iCloud folders</span>
+            <button
+              (click)="onCreateICloudFolder()"
+              class="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-[var(--color-surface)] text-[var(--color-text-muted)] rounded-md hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-main)] transition-all border border-[var(--color-border)]"
+            >
+              <span class="material-symbols-rounded text-sm">create_new_folder</span>
+              <span>New Folder</span>
+            </button>
+          </div>
+        }
+        @for (folder of groupedFolders().icloud; track folder._id) {
+          <ng-container
+            [ngTemplateOutlet]="folderItem"
+            [ngTemplateOutletContext]="{ $implicit: folder }"
+          ></ng-container>
+        }
+      }
+
+      <!-- Local group -->
+      <div class="mb-2 px-2 flex items-center justify-between" [class.mt-4]="isNativeApp()">
+        <span class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider"
+          >Local Folders</span
+        >
+        @if (groupedFolders().local.length > 0 && folderService.isLocalFSSupported()) {
+          <button
+            (click)="onOpenLocalFolder()"
+            class="text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] transition-colors p-0.5 rounded hover:bg-[var(--color-surface-hover)]"
+            title="Open Folder"
+          >
+            <span class="material-symbols-rounded text-sm">folder_open</span>
+          </button>
+        }
+      </div>
+      @if (groupedFolders().local.length === 0) {
+        <div class="px-2 py-6 flex flex-col items-center gap-2">
+          <span class="material-symbols-rounded text-2xl text-[var(--color-text-muted)] opacity-40"
+            >folder_off</span
+          >
+          <span class="text-xs text-[var(--color-text-muted)]">No local folders</span>
+          @if (folderService.isLocalFSSupported()) {
+            <button
+              (click)="onOpenLocalFolder()"
+              class="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-[var(--color-surface)] text-[var(--color-text-muted)] rounded-md hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-main)] transition-all border border-[var(--color-border)]"
+            >
+              <span class="material-symbols-rounded text-sm">folder_open</span>
+              <span>Open Folder</span>
+            </button>
+          } @else {
+            <span class="text-xs text-[var(--color-text-muted)] text-center"
+              >Use Chrome or the native app to open local folders</span
+            >
+          }
+        </div>
+      }
+      @for (folder of groupedFolders().local; track folder._id) {
+        <ng-container
+          [ngTemplateOutlet]="folderItem"
+          [ngTemplateOutletContext]="{ $implicit: folder }"
+        ></ng-container>
+      }
+    </ul>
+  </div>
+
+  <!-- Footer -->
+  <div class="p-3 border-t border-[var(--color-border)] flex items-center justify-end">
+    <button
+      (click)="onSettings()"
+      class="text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] transition-colors p-1.5"
+      title="Settings"
+    >
+      <span class="material-symbols-rounded text-xl">settings</span>
+    </button>
+  </div>
+</aside>

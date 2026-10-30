@@ -1,0 +1,200 @@
+<div class="page-wrapper">
+  <div class="settings-header flex items-center gap-3 p-4 border-b border-[var(--color-border)]">
+    <button
+      (click)="goBack()"
+      class="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-[var(--color-surface-hover)] transition-colors"
+    >
+      <span class="material-symbols-rounded">arrow_back</span>
+    </button>
+    <h1 class="text-lg font-semibold text-[var(--color-text-main)]">Settings</h1>
+  </div>
+
+  <main class="page-content">
+    <!-- Theme Section -->
+    <section>
+      <h2
+        class="text-sm font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-4"
+      >
+        Appearance
+      </h2>
+      <div class="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4">
+        <p class="text-sm text-[var(--color-text-muted)] mb-4">
+          Choose a theme that works best for you
+        </p>
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          @for (theme of themeService.themes; track theme.id) {
+            <button
+              (click)="setTheme(theme.id)"
+              class="group relative flex flex-col items-center p-3 rounded-xl border-2 transition-all"
+              [class.border-[var(--color-primary)]]="themeService.currentThemeId() === theme.id"
+              [class.border-[var(--color-border)]]="themeService.currentThemeId() !== theme.id"
+              [class.bg-[var(--color-surface-alt)]]="themeService.currentThemeId() === theme.id"
+            >
+              <!-- Theme Preview -->
+              <div
+                class="w-full aspect-[4/3] rounded-lg overflow-hidden border border-[var(--color-border)] mb-2"
+                [style.background-color]="theme.preview.bg"
+              >
+                <div class="h-full flex flex-col p-1.5">
+                  <!-- Mini sidebar -->
+                  <div class="flex gap-1 h-full">
+                    <div
+                      class="w-1/4 rounded"
+                      [style.background-color]="theme.preview.surface"
+                    ></div>
+                    <!-- Mini content -->
+                    <div
+                      class="flex-1 rounded p-1 flex flex-col gap-1"
+                      [style.background-color]="theme.preview.surface"
+                    >
+                      <div
+                        class="h-1.5 w-3/4 rounded-full"
+                        [style.background-color]="theme.preview.text"
+                        style="opacity: 0.3"
+                      ></div>
+                      <div
+                        class="h-1 w-full rounded-full"
+                        [style.background-color]="theme.preview.text"
+                        style="opacity: 0.15"
+                      ></div>
+                      <div
+                        class="h-1 w-2/3 rounded-full"
+                        [style.background-color]="theme.preview.text"
+                        style="opacity: 0.15"
+                      ></div>
+                      <div class="flex-1"></div>
+                      <div
+                        class="h-2 w-1/3 rounded self-end"
+                        [style.background-color]="theme.preview.primary"
+                      ></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Theme Info -->
+              <div class="flex items-center gap-1.5">
+                <span
+                  class="material-symbols-rounded text-base"
+                  [class.text-[var(--color-primary)]]="themeService.currentThemeId() === theme.id"
+                  [class.text-[var(--color-text-muted)]]="
+                    themeService.currentThemeId() !== theme.id
+                  "
+                >
+                  {{ theme.icon }}
+                </span>
+                <span
+                  class="text-sm font-medium"
+                  [class.text-[var(--color-primary)]]="themeService.currentThemeId() === theme.id"
+                  [class.text-[var(--color-text-main)]]="themeService.currentThemeId() !== theme.id"
+                >
+                  {{ theme.name }}
+                </span>
+              </div>
+
+              <!-- Selected indicator -->
+              @if (themeService.currentThemeId() === theme.id) {
+                <span
+                  class="absolute top-2 right-2 w-5 h-5 rounded-full bg-[var(--color-primary)] text-white flex items-center justify-center"
+                >
+                  <span class="material-symbols-rounded text-sm">check</span>
+                </span>
+              }
+            </button>
+          }
+        </div>
+      </div>
+    </section>
+
+    <!-- Voice & Speech Section -->
+    <section class="mt-8">
+      <h2
+        class="text-sm font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-4"
+      >
+        Voice & Speech
+      </h2>
+      <div
+        class="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4 space-y-6"
+      >
+        <p class="text-sm text-[var(--color-text-muted)]">
+          Controls the "Read aloud" reader. The model (~80 MB) downloads on first use.
+        </p>
+
+        <!-- Voice -->
+        <div>
+          <label
+            for="reader-voice"
+            class="block text-sm font-medium text-[var(--color-text-main)] mb-2"
+          >
+            Voice
+          </label>
+          <select
+            id="reader-voice"
+            class="w-full sm:w-72 px-3 py-2 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text-main)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+            [value]="preferences.readerVoice()"
+            (change)="setVoice($any($event.target).value)"
+          >
+            @for (v of voiceOptions; track v) {
+              <option [value]="v">{{ voiceLabel(v) }}</option>
+            }
+          </select>
+        </div>
+
+        <!-- Device -->
+        <div>
+          <span class="block text-sm font-medium text-[var(--color-text-main)] mb-2">
+            Compute device
+          </span>
+          <div class="space-y-2">
+            @for (opt of deviceOptions; track opt.value) {
+              <label
+                class="flex items-start gap-3 p-3 rounded-md border border-[var(--color-border)] cursor-pointer hover:bg-[var(--color-surface-hover)]"
+                [class.border-[var(--color-primary)]]="preferences.readerDevice() === opt.value"
+              >
+                <input
+                  type="radio"
+                  name="reader-device"
+                  class="mt-1 accent-[var(--color-primary)]"
+                  [value]="opt.value"
+                  [checked]="preferences.readerDevice() === opt.value"
+                  (change)="setDevice(opt.value)"
+                />
+                <span class="flex-1">
+                  <span class="block text-sm font-medium text-[var(--color-text-main)]">
+                    {{ opt.label }}
+                  </span>
+                  <span class="block text-xs text-[var(--color-text-muted)] mt-0.5">
+                    {{ opt.hint }}
+                  </span>
+                </span>
+              </label>
+            }
+          </div>
+        </div>
+
+        <!-- Speed -->
+        <div>
+          <label
+            for="reader-speed"
+            class="flex items-center justify-between text-sm font-medium text-[var(--color-text-main)] mb-2"
+          >
+            <span>Playback speed</span>
+            <span class="tabular-nums text-[var(--color-text-muted)]">
+              {{ preferences.readerSpeed().toFixed(2) }}×
+            </span>
+          </label>
+          <input
+            id="reader-speed"
+            type="range"
+            min="0.5"
+            max="2"
+            step="0.05"
+            class="w-full accent-[var(--color-primary)]"
+            [value]="preferences.readerSpeed()"
+            (input)="setSpeed($any($event.target).value)"
+          />
+        </div>
+      </div>
+    </section>
+  </main>
+</div>

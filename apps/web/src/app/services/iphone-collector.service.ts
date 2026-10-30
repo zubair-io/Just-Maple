@@ -47,7 +47,7 @@ export class IPhoneCollectorService {
 
   private async call(action: string, params: Record<string, unknown> = {}): Promise<unknown> {
     const handler = window.webkit?.messageHandlers?.deviceCollectors;
-    if (!handler) throw new Error('This is only available in the Just Maple iPhone app.');
+    if (!handler) throw new Error('This is only available in the JapaneseMaple iPhone app.');
     return handler.postMessage({ action, ...params });
   }
 }

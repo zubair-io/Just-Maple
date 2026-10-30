@@ -208,7 +208,7 @@ export class MacDataService {
 
   private async call<T>(action: string, params: Record<string, unknown> = {}): Promise<T> {
     const handler = window.webkit?.messageHandlers?.macData;
-    if (!handler) throw new Error('This is only available in the Just Maple Mac app.');
+    if (!handler) throw new Error('This is only available in the JapaneseMaple Mac app.');
     // Drop undefined values: WebKit can't bridge them.
     const message = Object.fromEntries(
       Object.entries({ action, ...params }).filter(([, value]) => value !== undefined),

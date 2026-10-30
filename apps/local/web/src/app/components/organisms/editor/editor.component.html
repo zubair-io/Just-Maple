@@ -1,0 +1,58 @@
+<div class="editor-container">
+  @if (noteSaves.errorFor(pageId()); as saveError) {
+    <aside role="alert" class="border-b border-[var(--color-border)] p-3 text-sm">
+      {{ saveError }}
+      <button type="button" (click)="noteSaves.retry(pageId())" class="ml-3 underline">
+        Retry save
+      </button>
+    </aside>
+  }
+  @if (recoveredDraft() !== null) {
+    <aside class="border-b border-[var(--color-border)] p-3 text-sm">
+      Unsaved edits from the previous session are available. The file below is the current disk
+      version.
+      <button type="button" (click)="restoreDraft()" class="ml-3 underline">
+        Restore unsaved edits
+      </button>
+    </aside>
+  }
+  @if (error()) {
+    <div class="error-container">
+      <span class="error-icon">!</span>
+      <span class="error-text">{{ error() }}</span>
+    </div>
+  } @else {
+    <!-- Editor wrapper for centering and max-width -->
+    <div #editorWrapper class="editor-wrapper" [class.full-width]="isFullWidth()">
+      <div
+        #editorElement
+        class="editor-content"
+        [class.loading]="!isReady()"
+        [class.focused]="isFocused()"
+      ></div>
+    </div>
+
+    <!-- Floating Toolbar -->
+    <app-editor-toolbar [editor]="getEditor()" />
+
+    <!-- Reader controls (top-right) -->
+
+    @if (!isReady()) {
+      <div class="loading-overlay">
+        <div class="loading-spinner"></div>
+        <span>Loading...</span>
+      </div>
+    }
+
+    <!-- Page Link Search Modal -->
+    <app-page-link-search
+      [isOpen]="pageLinkSearchOpen()"
+      [mode]="pageLinkSearchMode()"
+      [folderId]="folderId()"
+      [excludePageId]="pageId()"
+      (closed)="closePageLinkSearch()"
+      (selected)="onPageLinkSelected($event)"
+      (createNew)="onPageLinkCreateNew($event)"
+    />
+  }
+</div>

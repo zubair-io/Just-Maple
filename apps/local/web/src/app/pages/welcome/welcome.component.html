@@ -1,0 +1,87 @@
+<div class="flex h-full flex-col items-center overflow-y-auto px-6 py-12">
+  <div class="w-full max-w-lg">
+    <!-- Header -->
+    <div class="mb-10 text-center">
+      <h1 class="mb-2 text-2xl font-bold text-[var(--color-text-main)]">Just Maple</h1>
+      <p class="text-[var(--color-text-muted)]">Write freely. Own your notes.</p>
+    </div>
+
+    <!-- Let's go -->
+    <div class="mb-8">
+      <h2
+        class="mb-4 text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]"
+      >
+        Let's go
+      </h2>
+      <div class="flex flex-col gap-3">
+        @if (icloudFolder(); as nb) {
+          <button
+            (click)="openICloudFolder()"
+            class="flex items-center gap-4 rounded-lg border border-[var(--color-border)] p-4 text-left transition-colors hover:bg-[var(--color-surface-hover)]"
+          >
+            <span
+              class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-sky-500/10 text-sky-500"
+            >
+              <span class="material-symbols-rounded text-xl">cloud</span>
+            </span>
+            <div>
+              <span class="text-sm font-medium text-[var(--color-text-main)]">{{ nb.label }}</span>
+              <p class="mt-0.5 text-xs text-[var(--color-text-muted)]">
+                Your iCloud folder — syncs across all your Apple devices
+              </p>
+            </div>
+          </button>
+        }
+
+        @if (isFileSystemSupported()) {
+          <button
+            (click)="openFolder()"
+            class="flex items-center gap-4 rounded-lg border border-[var(--color-border)] p-4 text-left transition-colors hover:bg-[var(--color-surface-hover)]"
+          >
+            <span
+              class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)]"
+            >
+              <span class="material-symbols-rounded text-xl">folder_open</span>
+            </span>
+            <div>
+              <span class="text-sm font-medium text-[var(--color-text-main)]">Open a Folder</span>
+              <p class="mt-0.5 text-xs text-[var(--color-text-muted)]">
+                Pick a folder on your device to start writing locally
+              </p>
+            </div>
+          </button>
+        }
+      </div>
+    </div>
+
+    <!-- Features -->
+    <div class="mb-8">
+      <p class="mb-2 text-[11px] text-[var(--color-text-muted)]">What you can do</p>
+      <div class="flex flex-wrap gap-1.5">
+        @for (feature of features; track feature.key) {
+          <button
+            (click)="toggleFeature(feature.key)"
+            class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] transition-colors cursor-pointer"
+            [class.bg-[var(--color-primary)]]="selectedFeature() === feature.key"
+            [class.text-white]="selectedFeature() === feature.key"
+            [class.bg-[var(--color-surface)]]="selectedFeature() !== feature.key"
+            [class.text-[var(--color-text-muted)]]="selectedFeature() !== feature.key"
+            [class.hover:bg-[var(--color-surface-hover)]]="selectedFeature() !== feature.key"
+          >
+            <span class="material-symbols-rounded text-sm">{{ feature.icon }}</span
+            >{{ feature.label }}
+          </button>
+        }
+      </div>
+
+      <!-- Feature detail -->
+      @if (selectedFeatureData(); as detail) {
+        <div
+          class="mt-3 rounded-lg bg-[var(--color-surface)] px-4 py-3 text-xs text-[var(--color-text-muted)]"
+        >
+          {{ detail.description }}
+        </div>
+      }
+    </div>
+  </div>
+</div>

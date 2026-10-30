@@ -1,0 +1,93 @@
+<div class="bubble-menu">
+  @if (mode() === 'format') {
+    <!-- Format toolbar -->
+    <button
+      class="bubble-btn"
+      [class.active]="isActive('bold')"
+      (click)="toggleBold()"
+      title="Bold"
+    >
+      <span class="material-symbols-rounded">format_bold</span>
+    </button>
+    <button
+      class="bubble-btn"
+      [class.active]="isActive('italic')"
+      (click)="toggleItalic()"
+      title="Italic"
+    >
+      <span class="material-symbols-rounded">format_italic</span>
+    </button>
+    <button
+      class="bubble-btn"
+      [class.active]="isActive('strike')"
+      (click)="toggleStrike()"
+      title="Strikethrough"
+    >
+      <span class="material-symbols-rounded">strikethrough_s</span>
+    </button>
+    <button
+      class="bubble-btn"
+      [class.active]="isActive('code')"
+      (click)="toggleCode()"
+      title="Code"
+    >
+      <span class="material-symbols-rounded">code</span>
+    </button>
+  } @else {
+    <!-- Todo toolbar -->
+    @if (activeTodo(); as todo) {
+      <div class="priority-group">
+        @for (p of priorities; track p.value) {
+          <button
+            class="bubble-btn priority-btn priority-{{ p.value }}"
+            [class.active]="todo.priority === p.value"
+            (click)="setPriority(p.value)"
+            [title]="p.title"
+          >
+            <span class="material-symbols-rounded">{{ p.icon }}</span>
+          </button>
+        }
+      </div>
+      <div class="divider"></div>
+      <div class="color-group">
+        @for (c of colors; track c.value) {
+          <button
+            class="bubble-btn color-btn"
+            [class.active]="todo.color === c.value"
+            (click)="setColor(c.value)"
+          >
+            <span class="color-dot" [style.background]="c.hex"></span>
+          </button>
+        }
+      </div>
+      <div class="divider"></div>
+      <div class="date-group">
+        <input
+          type="date"
+          class="date-input"
+          [value]="dueDateValue()"
+          (change)="setDueDate($event)"
+        />
+        @if (todo.dueDate) {
+          <button class="bubble-btn clear-date-btn" (click)="clearDueDate()" title="Clear date">
+            <span class="material-symbols-rounded">close</span>
+          </button>
+        }
+      </div>
+    }
+  }
+
+  <!-- Toggle button (only show when in a task item) -->
+  @if (isInTaskItem()) {
+    <div class="divider"></div>
+    <button
+      class="bubble-btn toggle-btn"
+      (click)="toggleMode()"
+      [title]="mode() === 'format' ? 'Todo settings' : 'Format text'"
+    >
+      <span class="material-symbols-rounded">
+        {{ mode() === 'format' ? 'checklist' : 'text_format' }}
+      </span>
+    </button>
+  }
+</div>

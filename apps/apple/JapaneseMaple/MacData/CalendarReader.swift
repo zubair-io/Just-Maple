@@ -28,11 +28,11 @@ nonisolated struct CalendarReader {
     static var accessProblem: String? {
         switch EKEventStore.authorizationStatus(for: .event) {
         case .denied:
-            return "Calendar access is turned off for Just Maple. Turn it on in System Settings → Privacy & Security → Calendars."
+            return "Calendar access is turned off for JapaneseMaple. Turn it on in System Settings → Privacy & Security → Calendars."
         case .restricted:
             return "Calendar access is restricted on this Mac, for example by Screen Time or a device profile."
         case .writeOnly:
-            return "Just Maple can only add events. In System Settings → Privacy & Security → Calendars, choose Full Access."
+            return "JapaneseMaple can only add events. In System Settings → Privacy & Security → Calendars, choose Full Access."
         default:
             return nil
         }
@@ -88,7 +88,7 @@ nonisolated struct CalendarReader {
                 of: "mailto:", with: "")
         }
         var body = event.notes ?? ""
-        // Events added from Just Maple carry a justmaple:// marker; it's not content.
+        // Events added from JapaneseMaple carry a justmaple:// marker; it's not content.
         if let url = event.url, url.scheme != "justmaple" {
             body += (body.isEmpty ? "" : "\n") + url.absoluteString
         }

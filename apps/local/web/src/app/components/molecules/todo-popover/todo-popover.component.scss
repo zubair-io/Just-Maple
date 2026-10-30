@@ -1,0 +1,17 @@
+// Minimal SCSS for styles that can't be expressed in Tailwind
+
+// Date input calendar picker styling
+input[type='date'] {
+  &::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    filter: invert(50%);
+  }
+}
+
+:host-context(.dark-mode) {
+  input[type='date'] {
+    &::-webkit-calendar-picker-indicator {
+      filter: invert(70%);
+    }
+  }
+}

@@ -1,0 +1,72 @@
+@if (folder()) {
+  <header
+    class="h-14 flex items-center justify-between px-4 md:px-6 py-4 flex-shrink-0 bg-[var(--color-bg)]/95 backdrop-blur-sm sticky top-0 z-10 border-b border-[var(--color-border)]"
+  >
+    <!-- Left side: Menu + Folder name -->
+    <div class="flex items-center gap-2 text-sm text-[var(--color-text-main)] min-w-0">
+      <!-- Menu button (mobile only) -->
+      <button
+        (click)="openSidebarOnMobile()"
+        class="md:hidden flex items-center justify-center w-8 h-8 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors flex-shrink-0"
+        title="Open menu"
+      >
+        <span class="material-symbols-rounded text-xl">menu</span>
+      </button>
+
+      <!-- Folder name -->
+      <div class="flex items-center gap-1.5 font-medium truncate">
+        <span
+          class="material-symbols-rounded text-base text-[var(--color-primary)] flex-shrink-0 !hidden md:!block"
+          >{{ isLocal() ? 'folder' : 'book_2' }}</span
+        >
+        <span class="truncate">{{ folder().label }}</span>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="flex items-center gap-3">
+      <div class="flex items-center gap-1">
+        <!-- Bots button (local folders only) -->
+        @if (isLocal()) {
+          <button
+            (click)="shareClicked.emit()"
+            class="flex items-center gap-1.5 px-2 md:px-3 py-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] text-xs font-medium rounded-lg transition-colors"
+            title="Manage Bots"
+          >
+            <span class="material-symbols-rounded text-sm">smart_toy</span>
+            <span class="!hidden md:!inline">Bots</span>
+          </button>
+        }
+
+        <!-- Share button (only when not shared, hide for local folders) -->
+        @if (!isLocal() && members().length <= 1) {
+          <button
+            (click)="shareClicked.emit()"
+            class="flex items-center gap-1.5 px-2 md:px-3 py-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] text-xs font-medium rounded-lg transition-colors"
+            title="Manage Sharing"
+          >
+            <span class="material-symbols-rounded text-sm">share</span>
+            <span class="!hidden md:!inline">Share</span>
+          </button>
+        }
+
+        <!-- Additional actions from content projection -->
+        @if (additionalActions()) {
+          <ng-container [ngTemplateOutlet]="additionalActions()!" />
+        }
+
+        <!-- Split button for new page -->
+        @if (showNewButton()) {
+          <div class="ml-1">
+            <app-new-page-button
+              [folderId]="folder()._id"
+              [showConversation]="true"
+              [isLocal]="isLocal()"
+              (newFromTemplate)="onNewFromTemplate()"
+            />
+          </div>
+        }
+      </div>
+    </div>
+  </header>
+}

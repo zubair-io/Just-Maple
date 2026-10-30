@@ -11,10 +11,10 @@ import { RouterLink } from '@angular/router';
     <header class="app-header" [class.home-header]="home()">
       <div class="toolbar">
         <div class="brand">
-          <a routerLink="/" aria-label="Just Maple home" class="brand-link">
+          <a routerLink="/" aria-label="JapaneseMaple home" class="brand-link">
             <img src="https://hornbeam.justmaple.app/data/assets/justmaple.svg" alt="" />
             @if (home()) {
-              <span>Just Maple</span>
+              <span>JapaneseMaple</span>
             }
           </a>
         </div>

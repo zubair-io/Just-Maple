@@ -30,7 +30,9 @@
     "e2e:ui": "bun run build:e2e && playwright test --ui",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "dev:token": "bun run --cwd apps/api dev:token"
+    "dev:token": "bun run --cwd apps/api dev:token",
+    "build:local": "bash apps/local/scripts/build-web.sh",
+    "test:local": "bun run --cwd apps/local/web test:unit && apps/local/scripts/test-core.sh"
   },
   "devDependencies": {
     "@playwright/test": "^1.57.0",

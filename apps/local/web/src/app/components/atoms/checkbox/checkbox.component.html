@@ -1,0 +1,21 @@
+<label
+  class="inline-flex items-center gap-2 cursor-pointer"
+  [class.opacity-50]="disabled()"
+  [class.cursor-not-allowed]="disabled()"
+>
+  <input
+    type="checkbox"
+    [checked]="checked()"
+    [disabled]="disabled()"
+    class="w-4 h-4 rounded border-[var(--color-border)] text-[var(--color-primary)] focus:ring-[var(--color-primary)]"
+  />
+  @if (label()) {
+    <span
+      class="text-sm text-[var(--color-text-main)]"
+      [class.line-through]="checked()"
+      [class.text-[var(--color-text-muted)]]="checked()"
+    >
+      {{ label() }}
+    </span>
+  }
+</label>

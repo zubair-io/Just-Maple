@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' app:; script-src 'self' app: 'unsafe-inline'; style-src 'self' app: 'unsafe-inline'; font-src 'self' app: data:; img-src 'self' app: data: blob:; media-src 'self' app: data: blob:; connect-src 'self' app:; worker-src 'self' app: blob:; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'self'"
+    />
+    <title>Just Maple</title>
+    <base href="/" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script>
+      document.addEventListener('gesturestart', (e) => e.preventDefault());
+      // Set up native bridge receiver early so Swift can send messages before Angular bootstraps.
+      // Messages are buffered and drained by NativeBridgeService once Angular is ready.
+      window.__nativeBridge__ = {
+        _buffer: [],
+        receive: function (msg) {
+          this._buffer.push(msg);
+        },
+      };
+    </script>
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#1a1a1a" />
+  </head>
+  <body>
+    <app-root></app-root>
+  </body>
+</html>

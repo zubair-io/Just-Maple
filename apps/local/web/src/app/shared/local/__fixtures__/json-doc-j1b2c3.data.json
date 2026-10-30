@@ -1,0 +1,15 @@
+{
+  "schema": {
+    "type": "object",
+    "properties": {
+      "apiKey": { "type": "string" },
+      "baseUrl": { "type": "string" },
+      "timeout": { "type": "number" }
+    }
+  },
+  "data": {
+    "apiKey": "sk-test-1234",
+    "baseUrl": "https://api.example.com",
+    "timeout": 5000
+  }
+}

@@ -1,0 +1,11 @@
+<div class="h-screen flex overflow-hidden bg-[var(--color-bg)]">
+  <app-sidebar
+    (newPage)="onNewPage()"
+    (selectPage)="onSelectPage($event)"
+    (selectFolder)="onSelectFolder($event)"
+    (settings)="onSettings()"
+  />
+  <main class="flex-1 h-full overflow-y-auto flex flex-col relative">
+    <ng-content />
+  </main>
+</div>
