@@ -141,12 +141,17 @@ class WebViewController: NSObject, ObservableObject, WKNavigationDelegate, WKUID
         NotificationCenter.default.removeObserver(self)
     }
 
-    func refreshConnection() {
-        guard ServerConfigService.shared.hasConfiguredServer else { return }
+    private var refreshingConnection = false
+
+    func refreshConnection(force: Bool = false) {
+        guard ServerConfigService.shared.hasConfiguredServer, !refreshingConnection else { return }
+        refreshingConnection = true
         Task { @MainActor [weak self] in
             guard let self else { return }
-            await ServerConfigService.shared.resolveEndpoint()
+            defer { self.refreshingConnection = false }
+            await ServerConfigService.shared.resolveEndpoint(force: force)
             let config = ServerConfigService.shared
+            self.installServerIdentity()
             let endpoints = [config.getActiveServer().url, config.localURL, self.loadingOrigin].compactMap { $0 }
             if let current = self.webView.url, endpoints.contains(where: { origin in
                 guard let url = URL(string: origin) else { return false }
@@ -169,20 +174,32 @@ class WebViewController: NSObject, ObservableObject, WKNavigationDelegate, WKUID
         }
     }
 
-    private func loadResolvedWebApp() {
-        // Get active server URL from ServerConfigService
-        let activeServer = ServerConfigService.shared.getActiveServer()
-        let serverURLString = ServerConfigService.shared.getEffectiveWebURL()
-        loadingOrigin = serverURLString
+    private func installServerIdentity() {
         // Install identity before Angular starts, including when loading the LAN origin.
-        let identityData = try! JSONSerialization.data(withJSONObject: ["serverUrl": activeServer.url,
-            "publicApiUrl": activeServer.getAPIUrl(), "apiUrl": ServerConfigService.shared.getAPIUrl(),
+        let identityData = try! JSONSerialization.data(withJSONObject: ["serverUrl": ServerConfigService.shared.getActiveServer().url,
+            "publicApiUrl": ServerConfigService.shared.getActiveServer().getAPIUrl(), "apiUrl": ServerConfigService.shared.getAPIUrl(),
             "localUrl": ServerConfigService.shared.localURL ?? ""])
         let identityJSON = String(decoding: identityData, as: UTF8.self)
         webView.configuration.userContentController.removeAllUserScripts()
         webView.configuration.userContentController.addUserScript(WKUserScript(
             source: "window.__mapleServerIdentity = \(identityJSON);",
             injectionTime: .atDocumentStart, forMainFrameOnly: true))
+    }
+
+    private func loadResolvedWebApp(preservingRoute route: URL? = nil) {
+        // Get active server URL from ServerConfigService
+        let activeServer = ServerConfigService.shared.getActiveServer()
+        let origin = ServerConfigService.shared.getEffectiveWebURL()
+        loadingOrigin = origin
+        var destination = URLComponents(string: origin)!
+        if let route {
+            let previous = URLComponents(url: route, resolvingAgainstBaseURL: false)
+            destination.percentEncodedPath = previous?.percentEncodedPath ?? ""
+            destination.percentEncodedQuery = previous?.percentEncodedQuery
+            destination.percentEncodedFragment = previous?.percentEncodedFragment
+        }
+        let serverURLString = destination.string ?? origin
+        installServerIdentity()
 
         print("[WebViewController] Active server: \(activeServer.name) - \(serverURLString)")
 
@@ -383,17 +400,26 @@ class WebViewController: NSObject, ObservableObject, WKNavigationDelegate, WKUID
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        print("[WebViewController] Failed to load: \(error.localizedDescription)")
-        loadOfflinePage()
+        handleNavigationFailure(error)
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        handleNavigationFailure(error)
+    }
+
+    private func handleNavigationFailure(_ error: Error) {
         if (error as NSError).code == NSURLErrorCancelled { return }
-        if let local = ServerConfigService.shared.localURL, loadingOrigin == local,
-           let primary = URL(string: ServerConfigService.shared.getActiveServer().url) {
+        if let local = ServerConfigService.shared.localURL, loadingOrigin == local {
+            let failedURL = (error as NSError).userInfo[NSURLErrorFailingURLErrorKey] as? URL ?? webView.url
+            let route = failedURL.flatMap { url -> URL? in
+                guard let origin = URL(string: local), url.scheme == origin.scheme,
+                      url.host == origin.host, url.port == origin.port else { return nil }
+                return url
+            }
+            ServerConfigService.shared.reportEndpointFailure(local)
             hasInitialized = false
-            loadingOrigin = primary.absoluteString
-            webView.load(URLRequest(url: primary, timeoutInterval: 10))
+            // Rebuild the bootstrap too, so the public page does not keep calling LAN.
+            loadResolvedWebApp(preservingRoute: route)
             return
         }
         print("[WebViewController] Provisional navigation failed: \(error.localizedDescription)")

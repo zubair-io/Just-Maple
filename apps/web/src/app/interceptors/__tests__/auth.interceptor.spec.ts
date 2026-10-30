@@ -71,6 +71,7 @@ describe('native LAN fallback', () => {
   });
   afterEach(() => {
     delete browser.__mapleServerIdentity;
+    vi.useRealTimers();
   });
   it('retries a failed LAN read over the public endpoint with the same account token', () => {
     const http = TestBed.inject(HttpClient);
@@ -94,6 +95,41 @@ describe('native LAN fallback', () => {
     expect(error).toHaveBeenCalledTimes(1);
     http.get('/api/notebooks').subscribe();
     backend.expectOne(`${primary}/api/notebooks`).flush({ notebooks: [] });
+    backend.verify();
+  });
+  it('cancels a stalled LAN read after five seconds and retries publicly', async () => {
+    vi.useFakeTimers();
+    const http = TestBed.inject(HttpClient);
+    const backend = TestBed.inject(HttpTestingController);
+    const result = vi.fn();
+    http.get('/api/notebooks').subscribe(result);
+    const stalled = backend.expectOne(`${local}/api/notebooks`);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(stalled.cancelled).toBe(true);
+    backend.expectOne(`${primary}/api/notebooks`).flush({ notebooks: [] });
+    expect(result).toHaveBeenCalledWith({ notebooks: [] });
+    backend.verify();
+  });
+  it('retries all concurrent failed reads even when another read already selected public', () => {
+    const http = TestBed.inject(HttpClient);
+    const backend = TestBed.inject(HttpTestingController);
+    http.get('/api/notebooks').subscribe();
+    http.get('/api/pages').subscribe();
+    const first = backend.expectOne(`${local}/api/notebooks`);
+    const second = backend.expectOne(`${local}/api/pages`);
+    first.error(new ProgressEvent('error'));
+    second.error(new ProgressEvent('error'));
+    backend.expectOne(`${primary}/api/notebooks`).flush({ notebooks: [] });
+    backend.expectOne(`${primary}/api/pages`).flush({ pages: [] });
+    backend.verify();
+  });
+  it('does not treat an application error as a failed LAN route', () => {
+    const http = TestBed.inject(HttpClient);
+    const backend = TestBed.inject(HttpTestingController);
+    http.get('/api/notebooks').subscribe({ error: vi.fn() });
+    backend.expectOne(`${local}/api/notebooks`).flush({}, { status: 503, statusText: 'Busy' });
+    expect(browser.__mapleServerIdentity?.apiUrl).toBe(local);
+    backend.expectNone(`${primary}/api/notebooks`);
     backend.verify();
   });
 });
