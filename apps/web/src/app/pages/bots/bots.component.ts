@@ -65,10 +65,12 @@ export class BotsComponent implements OnInit, OnDestroy {
 
   // Unified bot list
   readonly allBots = computed(() => {
-    const templateBots = this.userBots().map((bot) => ({
-      ...bot,
-      botType: 'template' as const,
-    }));
+    const templateBots = this.userBots()
+      .filter((bot) => bot.botType !== 'custom')
+      .map((bot) => ({
+        ...bot,
+        botType: 'template' as const,
+      }));
     const custom = this.customBots().map((bot) => ({
       ...bot,
       botType: 'custom' as const,
@@ -214,6 +216,7 @@ export class BotsComponent implements OnInit, OnDestroy {
   readonly showEditDialog = signal(false);
   readonly editingBot = signal<EnrichedUserBot | null>(null);
   readonly editApiKey = signal('');
+  readonly editHandle = signal('');
   readonly editDisplayName = signal('');
   readonly editBaseUrl = signal('');
   readonly editEnabled = signal(true);
@@ -245,6 +248,7 @@ export class BotsComponent implements OnInit, OnDestroy {
   // Edit custom bot dialog
   readonly showEditCustomBotDialog = signal(false);
   readonly editingCustomBot = signal<CustomBot | null>(null);
+  readonly editCustomBotHandle = signal('');
   readonly editCustomBotName = signal('');
   readonly editCustomBotDescription = signal('');
   readonly editCustomBotInvokeUrl = signal('');
@@ -387,7 +391,8 @@ export class BotsComponent implements OnInit, OnDestroy {
     this.editWebSearch.set(bot.config?.webSearch === true);
     this.editWebSearchProactive.set(bot.config?.webSearchProactive === true);
     this.editApiKey.set('');
-    this.editDisplayName.set(bot.displayName ?? '');
+    this.editHandle.set(bot.handle);
+    this.editDisplayName.set(bot.displayName || bot.templateName || '');
     this.editBaseUrl.set(bot.config?.baseUrl ?? '');
     this.editEnabled.set(bot.isEnabled);
     this.editError.set(null);
@@ -410,12 +415,18 @@ export class BotsComponent implements OnInit, OnDestroy {
     const bot = this.editingBot();
     if (!bot) return;
 
+    const handle = this.editHandle().trim().replace(/^@/, '').toLowerCase();
+    if (!/^[a-z0-9_-]{1,30}$/.test(handle)) {
+      this.editError.set('Use 1–30 letters, numbers, underscores or hyphens for the handle.');
+      return;
+    }
     this.isUpdating.set(true);
     this.editError.set(null);
 
     const updateData: UpdateUserBotInput = {
       isEnabled: this.editEnabled(),
-      displayName: this.editDisplayName().trim() || undefined,
+      handle,
+      displayName: this.editDisplayName().trim(),
     };
 
     updateData.config = {
@@ -607,6 +618,7 @@ export class BotsComponent implements OnInit, OnDestroy {
 
   editCustomBot(bot: CustomBot): void {
     this.editingCustomBot.set(bot);
+    this.editCustomBotHandle.set(bot.handle);
     this.editCustomBotName.set(bot.displayName || '');
     this.editCustomBotDescription.set(bot.description || '');
     this.editCustomBotInvokeUrl.set(bot.invokeUrl);
@@ -629,6 +641,17 @@ export class BotsComponent implements OnInit, OnDestroy {
     const bot = this.editingCustomBot();
     if (!bot) return;
 
+    const handle = this.editCustomBotHandle().trim().replace(/^@/, '').toLowerCase();
+    if (!/^[a-z0-9_-]{1,30}$/.test(handle)) {
+      this.editCustomBotError.set(
+        'Use 1–30 letters, numbers, underscores or hyphens for the handle.',
+      );
+      return;
+    }
+    if (!this.editCustomBotName().trim()) {
+      this.editCustomBotError.set('Enter a name for this bot.');
+      return;
+    }
     const invokeUrl = this.editCustomBotInvokeUrl().trim();
     if (!this.isValidWebhookUrl(invokeUrl)) {
       this.editCustomBotError.set(
@@ -644,7 +667,8 @@ export class BotsComponent implements OnInit, OnDestroy {
 
     this.botService
       .updateCustomBot(bot._id, {
-        name: this.editCustomBotName().trim() || undefined,
+        handle,
+        name: this.editCustomBotName().trim(),
         description: this.editCustomBotDescription().trim() || undefined,
         invokeUrl,
         permissions: {

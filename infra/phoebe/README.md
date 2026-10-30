@@ -15,8 +15,8 @@ migration and hostnames were explicitly authorized; **do not merge to main**.
 | Storage               | `local`: 16 GiB root + 64 GiB managed `/var/lib/just-maple`, backup enabled                     |
 | LAN                   | DHCP `192.168.1.179/23`, gateway `192.168.1.1`; reserve this lease for permanent use            |
 | API                   | Non-root `just-maple-api`, bound to `127.0.0.1:7071`                                            |
-| Application release   | `/opt/just-maple/current` → `graph-window-20261030-02`                                          |
-| Runtime source        | API/web `210b4cfec40fb1b8acd441971ce4ead1fbee6345`; native/model pins retained                  |
+| Application release   | `/opt/just-maple/current` → `bot-identity-20261030-02`                                          |
+| Runtime source        | API/web `ff6bc7d5af124dd09c23e9e5d776e8629e07e7aa`; native/model pins retained                  |
 | Database              | `/var/lib/just-maple/production-20261029.sqlite`, WAL/FULL                                      |
 | Local files           | `/var/lib/just-maple/media`; existing Azure media storage/URLs retained                         |
 | Native search         | `just-maple-search`, private `/run/just-maple-search/worker.sock`                               |
@@ -600,3 +600,35 @@ change; other clients apply the web Update/reload. Snapshot test results above r
 valid for the unchanged API code. Source/visual receipts are retained privately.
 Occasional slow generic device reads still occur in background jobs; this rollout
 addresses the reproduced graph/vector stalls, not a comprehensive performance audit.
+
+## Editable bot names and handles (2026-10-30)
+
+Activated `bot-identity-20261030-02`, source
+`ff6bc7d5af124dd09c23e9e5d776e8629e07e7aa`, with 112 verified artifacts. Both AI
+and webhook bot editors allow owners to change the name and handle. Cards show the
+saved name and mention suggestions invalidate on save. Webhook bots returned by
+both listing endpoints appear only once, with the proper custom editor.
+
+Handles normalize to lowercase and allow 1–30 letters/numbers/underscores/hyphens.
+Per-owner uniqueness includes concurrent saves. IDs, configurations, webhook secrets
+and permissions remain stable; historical message content is not rewritten. API
+regressions cover rename resolution, invalid/duplicate/cross-owner edits and races.
+
+Full API: 977 passed/3 existing skips. Focused bot UI/cache: 14 passed; shared/web
+typechecks, API/explicit paperbark builds and precommit pass. The unchanged legacy
+BotService tests still call removed getTagBots/tagBotsCacheVersion APIs and deprecated
+Vitest done callbacks; current mention-cache behavior has separate passing tests.
+
+Verified off-host snapshot `just-maple-20261030T221447Z.sqlite` before activation.
+Public/LAN health, authenticated bot reads, anonymous denial and invalid-handle
+rejection pass. All seven existing bot documents retain their identity/config/secret
+hash (excluding update timestamps). Mac applied Update and both editors visibly have
+settable name/handle fields; no real bot was renamed during verification. Other hosted
+clients apply Update/reload; no native binary change. Draft PR315 is stacked on PR314,
+unmerged. Private receipts: `/tmp/japanese-maple-bot-identity-20261030/` on Mac and
+`/root/bot-identity-20261030/` in CT131.
+
+Rollback code to `graph-window-20261030-02`, restart only API, retain live DB/env and
+any user-saved names/handles. No data restore, DNS, native/model, resource-limit or
+other guest change. The server hash check validates deployment preservation, while
+actual rename writes are exercised only in the isolated tests.
