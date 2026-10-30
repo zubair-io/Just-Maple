@@ -4,8 +4,12 @@ import { Router } from '@angular/router';
 import { AuthService } from '../services/auth.service';
 import { environment } from '../../environments/environment';
 import { isLocalNotebook } from '../providers/data-provider.interface';
-import { catchError, EMPTY, switchMap, throwError } from 'rxjs';
-import { routeApiRequest, fallBackToPublic } from '../services/server-endpoint';
+import { catchError, defer, EMPTY, switchMap, throwError, timeout, TimeoutError } from 'rxjs';
+import {
+  routeApiRequest,
+  fallBackToPublic,
+  nativeServerEndpoint,
+} from '../services/server-endpoint';
 
 export const authInterceptor: HttpInterceptorFn = (
   req: HttpRequest<unknown>,
@@ -16,19 +20,29 @@ export const authInterceptor: HttpInterceptorFn = (
 
   const { url, isApi } = routeApiRequest(req.url, environment.apiUrl || '');
   const send = (request: HttpRequest<unknown>) =>
-    next(request).pipe(
-      catchError((error) => {
-        if (isApi && error.status === 0 && fallBackToPublic()) {
-          // Never replay an uncertain mutation. Reads may safely retry on the public route.
-          if (request.method === 'GET' || request.method === 'HEAD') {
-            return next(
-              request.clone({ url: routeApiRequest(req.url, environment.apiUrl || '').url }),
-            );
+    defer(() => {
+      const routed = request.clone({ url: routeApiRequest(req.url, environment.apiUrl || '').url });
+      const native = nativeServerEndpoint();
+      const attemptedLocal =
+        isApi && native?.localUrl && routed.url.startsWith(`${native.localUrl}/api/`)
+          ? native.localUrl
+          : undefined;
+      const safeRead = request.method === 'GET' || request.method === 'HEAD';
+      const response = next(routed);
+      // A dead LAN route may never produce a network error. Bound reads, including the
+      // wait after HttpEventType.Sent. Uploads and uncertain mutations are never replayed.
+      return (attemptedLocal && safeRead ? response.pipe(timeout({ each: 5000 })) : response).pipe(
+        catchError((error) => {
+          if (attemptedLocal && (error.status === 0 || error instanceof TimeoutError)) {
+            fallBackToPublic(attemptedLocal);
+            const retryURL = routeApiRequest(req.url, environment.apiUrl || '').url;
+            // Other concurrent reads may already have switched the shared endpoint.
+            if (safeRead && retryURL !== routed.url) return next(request.clone({ url: retryURL }));
           }
-        }
-        return throwError(() => error);
-      }),
-    );
+          return throwError(() => error);
+        }),
+      );
+    });
 
   // Skip auth header for certain endpoints
   const skipAuthUrls = [

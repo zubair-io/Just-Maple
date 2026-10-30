@@ -532,6 +532,14 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
         }
 
         if let envelope = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           envelope["type"] as? String == "serverEndpointFailed",
+           let payload = envelope["payload"] as? [String: Any],
+           let endpoint = payload["endpoint"] as? String {
+            ServerConfigService.shared.reportEndpointFailure(endpoint)
+            return
+        }
+
+        if let envelope = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            envelope["type"] as? String == "openServerSettings", message.frameInfo.isMainFrame {
             NotificationCenter.default.post(name: ServerConfigService.openSettings, object: nil)
             return

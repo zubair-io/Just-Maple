@@ -23,10 +23,15 @@ export function routeApiRequest(url: string, defaultBase: string): { url: string
   const isApi = path === '/api' || path.startsWith('/api/');
   return { url: isApi ? `${native?.apiUrl ?? defaultBase}${path}` : url, isApi };
 }
-export function fallBackToPublic(): boolean {
+export function fallBackToPublic(failedEndpoint = nativeServerEndpoint()?.apiUrl): boolean {
   const native = nativeServerEndpoint();
-  if (!native || native.apiUrl === native.publicApiUrl) return false;
+  if (!native || native.apiUrl === native.publicApiUrl || native.apiUrl !== failedEndpoint)
+    return false;
   native.apiUrl = native.publicApiUrl;
+  // Keep native collectors and subsequent probes on the same route as the web view.
+  window.webkit?.messageHandlers?.nativeBridge?.postMessage(
+    JSON.stringify({ type: 'serverEndpointFailed', payload: { endpoint: failedEndpoint } }),
+  );
   window.dispatchEvent(new Event(serverEndpointChanged));
   return true;
 }

@@ -1,5 +1,6 @@
-import { Injectable, inject, signal, PLATFORM_ID } from '@angular/core';
+import { Injectable, inject, signal, PLATFORM_ID, DestroyRef } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subject, Observable } from 'rxjs';
 import { filter } from 'rxjs/operators';
 import { AuthService } from './auth.service';
@@ -70,6 +71,7 @@ interface ServerMessage {
 @Injectable({ providedIn: 'root' })
 export class RealtimeWSService {
   private platformId = inject(PLATFORM_ID);
+  private destroyRef = inject(DestroyRef);
   private authService = inject(AuthService);
   private visibilityService = inject(VisibilityService);
 
@@ -78,6 +80,7 @@ export class RealtimeWSService {
   private readonly MAX_RECONNECT_ATTEMPTS = 10;
   private readonly BASE_RECONNECT_DELAY = 1000;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private connectionTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Connection state
   readonly connected = signal(false);
@@ -97,14 +100,22 @@ export class RealtimeWSService {
 
   constructor() {
     if (isPlatformBrowser(this.platformId)) {
-      window.addEventListener(serverEndpointChanged, () => {
+      const reconnect = () => {
         this.disconnect();
         this.reconnectAttempts = 0;
         this.connect();
+      };
+      window.addEventListener(serverEndpointChanged, reconnect);
+      this.destroyRef.onDestroy(() => {
+        window.removeEventListener(serverEndpointChanged, reconnect);
+        this.disconnect();
       });
       // Reconnect when document becomes visible if not connected
       this.visibilityService.becameVisible$
-        .pipe(filter(() => !this.connected()))
+        .pipe(
+          filter(() => !this.connected()),
+          takeUntilDestroyed(this.destroyRef),
+        )
         .subscribe(() => this.connect());
     }
   }
@@ -137,13 +148,20 @@ export class RealtimeWSService {
     }
 
     const url = `${wsUrl}/ws/realtime`;
+    const attemptedEndpoint = native?.apiUrl;
 
     try {
       // Pass token via Sec-WebSocket-Protocol header (more secure than query param)
       const ws = new WebSocket(url, [token]);
       this.ws = ws;
+      if (native && native.apiUrl !== native.publicApiUrl) {
+        this.connectionTimer = setTimeout(() => {
+          if (this.ws === ws && !this.ready()) fallBackToPublic(attemptedEndpoint);
+        }, 5000);
+      }
 
       ws.onopen = () => {
+        if (this.ws !== ws) return;
         this.connected.set(true);
         this.error.set(null);
         this.reconnectAttempts = 0;
@@ -166,6 +184,7 @@ export class RealtimeWSService {
 
       this.ws.onclose = (event) => {
         if (this.ws !== ws) return;
+        this.clearConnectionTimer();
         this.connected.set(false);
         this.ready.set(false);
         this.ws = null;
@@ -175,10 +194,11 @@ export class RealtimeWSService {
           return;
         }
 
-        if (!fallBackToPublic()) this.scheduleReconnect();
+        if (!fallBackToPublic(attemptedEndpoint)) this.scheduleReconnect();
       };
     } catch {
-      this.scheduleReconnect();
+      this.clearConnectionTimer();
+      if (!fallBackToPublic(attemptedEndpoint)) this.scheduleReconnect();
     }
   }
 
@@ -186,6 +206,7 @@ export class RealtimeWSService {
    * Disconnect from WebSocket server
    */
   disconnect(): void {
+    this.clearConnectionTimer();
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -204,6 +225,11 @@ export class RealtimeWSService {
     this.ready.set(false);
   }
 
+  private clearConnectionTimer(): void {
+    if (this.connectionTimer) clearTimeout(this.connectionTimer);
+    this.connectionTimer = null;
+  }
+
   /**
    * Handle incoming message
    */
@@ -212,6 +238,7 @@ export class RealtimeWSService {
       case 'system':
         this.systemEvents$.next(data.event);
         if (data.event.type === 'connected') {
+          this.clearConnectionTimer();
           console.log('[WS] Server confirmed connection ready');
           this.ready.set(true);
           this.appEvents$.next(data.event);

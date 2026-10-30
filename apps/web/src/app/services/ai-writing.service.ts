@@ -1,3 +1,5 @@
+import { routeApiRequest } from './server-endpoint';
+import { environment } from '../../environments/environment';
 import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, Subject, firstValueFrom } from 'rxjs';
@@ -92,15 +94,18 @@ export class AIWritingService {
     subject: Subject<AIStreamEvent>,
   ): Promise<void> {
     try {
-      const response = await fetch(`/api/ai/generate/${notebookId}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.getAuthToken()}`,
+      const response = await fetch(
+        routeApiRequest(`/api/ai/generate/${notebookId}`, environment.apiUrl || '').url,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${this.getAuthToken()}`,
+          },
+          body: JSON.stringify(request),
+          signal: this.abortController?.signal,
         },
-        body: JSON.stringify(request),
-        signal: this.abortController?.signal,
-      });
+      );
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));

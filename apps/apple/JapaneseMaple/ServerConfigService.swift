@@ -41,21 +41,24 @@ nonisolated final class ServerConfigService: @unchecked Sendable {
 
     private let lock = NSLock()
     private let defaults: UserDefaults
+    private let now: @Sendable () -> Date
     private var effectiveURL: String?
     private var lastProbe: Date?
+    private var localRetryAfter: Date?
     private var endpointGeneration = 0
     private var monitor: NWPathMonitor?
     static let configurationDidChange = Notification.Name("MapleServerConfigurationDidChange")
     static let connectionDidChange = Notification.Name("MapleServerConnectionDidChange")
     static let openSettings = Notification.Name("MapleOpenServerSettings")
 
-    init(defaults: UserDefaults = .standard, monitorNetwork: Bool = true) {
+    init(defaults: UserDefaults = .standard, monitorNetwork: Bool = true, now: @escaping @Sendable () -> Date = { Date() }) {
         self.defaults = defaults
+        self.now = now
         if monitorNetwork {
             let monitor = NWPathMonitor()
             monitor.pathUpdateHandler = { [weak self] _ in
                 guard let self else { return }
-                self.lock.withLock { self.effectiveURL = nil; self.lastProbe = nil; self.endpointGeneration += 1 }
+                self.lock.withLock { self.lastProbe = nil; self.localRetryAfter = nil; self.endpointGeneration += 1 }
                 Task {
                     await self.resolveEndpoint()
                     NotificationCenter.default.post(name: Self.connectionDidChange, object: nil)
@@ -136,6 +139,7 @@ nonisolated final class ServerConfigService: @unchecked Sendable {
             defaults.set(identity.instanceId, forKey: "maple.server.instanceId")
             effectiveURL = nil
             lastProbe = nil
+            localRetryAfter = nil
             endpointGeneration += 1
         }
         await resolveEndpoint(session: session)
@@ -145,13 +149,14 @@ nonisolated final class ServerConfigService: @unchecked Sendable {
     /// Discover LAN routing from the primary server; verify it anonymously before sending tokens.
     /// Retain the last discovered address when the primary cannot be reached on the current network.
     @discardableResult
-    func resolveEndpoint(session: URLSession = .shared) async -> String {
+    func resolveEndpoint(session: URLSession = .shared, force: Bool = false) async -> String {
         let snapshot = lock.withLock { (
             primary: getActiveServer().url,
             local: localURL,
             instanceId: defaults.string(forKey: "maple.server.instanceId"),
             generation: endpointGeneration,
-            cached: lastProbe.map { Date().timeIntervalSince($0) < 30 } == true
+            avoidLocal: localRetryAfter.map { $0 > now() } == true,
+            cached: !force && lastProbe.map { now().timeIntervalSince($0) < 30 } == true
                 ? effectiveURL ?? getActiveServer().getAPIUrl() : nil
         ) }
         if let cached = snapshot.cached { return cached }
@@ -164,7 +169,7 @@ nonisolated final class ServerConfigService: @unchecked Sendable {
             local = Self.advertisedLocalURL(report, primary: snapshot.primary)
         }
         var resolved: String?
-        if let local, let normalized = try? Self.normalizeAddress(local), normalized == local,
+        if !snapshot.avoidLocal, let local, let normalized = try? Self.normalizeAddress(local), normalized == local,
            let candidate = try? await Self.identity(at: local, session: session),
            candidate.instanceId == expected,
            (try? Self.normalizeAddress(candidate.publicUrl)) == snapshot.primary {
@@ -178,9 +183,25 @@ nonisolated final class ServerConfigService: @unchecked Sendable {
             }
             defaults.set(local, forKey: "maple.server.localURL")
             effectiveURL = resolved
-            lastProbe = Date()
+            lastProbe = now()
             return resolved ?? snapshot.primary
         }
+    }
+
+    /// Invalidate in-flight probes so a late LAN success cannot undo a failed request.
+    /// Cool down before trying local again; the public account identity stays unchanged.
+    @discardableResult
+    func reportEndpointFailure(_ endpoint: String) -> Bool {
+        let changed = lock.withLock {
+            guard let local = localURL, endpoint == local, local != getConfiguredURL() else { return false }
+            effectiveURL = nil
+            lastProbe = now()
+            localRetryAfter = now().addingTimeInterval(30)
+            endpointGeneration += 1
+            return true
+        }
+        if changed { NotificationCenter.default.post(name: Self.connectionDidChange, object: nil) }
+        return changed
     }
 
     private func getConfiguredURL() -> String { defaults.string(forKey: "maple.server.publicURL") ?? Self.defaultServer.url }

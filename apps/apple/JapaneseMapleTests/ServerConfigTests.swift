@@ -30,6 +30,13 @@ private nonisolated final class ServerProbeProtocol: URLProtocol, @unchecked Sen
     override func stopLoading() {}
 }
 
+private nonisolated final class ProbeClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var date = Date()
+    func now() -> Date { lock.withLock { date } }
+    func advance(_ seconds: TimeInterval) { lock.withLock { date.addTimeInterval(seconds) } }
+}
+
 @Suite(.serialized)
 struct ServerConfigTests {
     private func fixture() -> (UserDefaults, ServerConfigService, URLSession) {
@@ -117,6 +124,44 @@ struct ServerConfigTests {
         ServerProbeProtocol.report("local.example.com", publicURL: "https://different.example.com")
         let untrusted = ServerConfigService(defaults: defaults, monitorNetwork: false)
         #expect(await untrusted.resolveEndpoint(session: session) == "https://phoebe.example.com")
+    }
+
+    @Test func activeProbeBypassesCachedLANAndRecoversWhenItReturns() async throws {
+        let (_, service, session) = fixture()
+        defer { session.invalidateAndCancel() }
+        ServerProbeProtocol.report("phoebe.example.com", local: "local.example.com")
+        ServerProbeProtocol.report("local.example.com")
+        try await service.configure(publicAddress: "phoebe.example.com", session: session)
+        ServerProbeProtocol.offline("local.example.com")
+        #expect(await service.resolveEndpoint(session: session) == "https://local.example.com")
+        #expect(await service.resolveEndpoint(session: session, force: true) == "https://phoebe.example.com")
+        ServerProbeProtocol.report("local.example.com")
+        #expect(await service.resolveEndpoint(session: session, force: true) == "https://local.example.com")
+        #expect(service.getActiveServer().id == "https://phoebe.example.com")
+    }
+
+    @Test func failedLANRequestSynchronizesNativeRouteAndCoolsDownBeforeRecovery() async throws {
+        ServerProbeProtocol.reset()
+        let clock = ProbeClock()
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        let service = ServerConfigService(defaults: defaults, monitorNetwork: false, now: { clock.now() })
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ServerProbeProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        ServerProbeProtocol.report("phoebe.example.com", local: "local.example.com")
+        ServerProbeProtocol.report("local.example.com")
+        try await service.configure(publicAddress: "phoebe.example.com", session: session)
+        #expect(!service.reportEndpointFailure("https://unrelated.example.com"))
+        #expect(service.getAPIUrl() == "https://local.example.com")
+        #expect(service.reportEndpointFailure("https://local.example.com"))
+        #expect(service.getAPIUrl() == "https://phoebe.example.com")
+        let probesBefore = ServerProbeProtocol.requests.filter { $0.url?.host == "local.example.com" }.count
+        #expect(await service.resolveEndpoint(session: session, force: true) == "https://phoebe.example.com")
+        #expect(ServerProbeProtocol.requests.filter { $0.url?.host == "local.example.com" }.count == probesBefore)
+        clock.advance(31)
+        #expect(await service.resolveEndpoint(session: session, force: true) == "https://local.example.com")
+        #expect(service.getActiveServer().id == "https://phoebe.example.com")
     }
 
     @Test func rejectsPrimaryWithDifferentCanonicalIdentityWithoutSavingIt() async throws {
