@@ -1,13 +1,59 @@
 @if (native.isNativeApp()) {
   <section class="my-6 rounded-xl border border-[var(--color-border)] p-4 space-y-3">
-    <h2 class="font-semibold text-[var(--color-text-main)]">Server</h2>
+    <h2 class="font-semibold text-[var(--color-text-main)]">Connection</h2>
     <p class="text-sm text-[var(--color-text-muted)]">Connected to {{ currentHost }}</p>
     <button
       type="button"
       (click)="native.openServerSettings()"
       class="text-sm text-[var(--color-primary)] hover:underline"
     >
-      Change server or local address
+      Change server
     </button>
+  </section>
+}
+@if (isAdmin()) {
+  <section class="my-6 rounded-xl border border-[var(--color-border)] p-4 space-y-3">
+    <h2 class="font-semibold text-[var(--color-text-main)]">Server network</h2>
+    <p class="text-sm text-[var(--color-text-muted)]">
+      Clients learn the local domain from this server and use it automatically when reachable.
+    </p>
+    @if (network(); as network) {
+      <p class="text-sm">Primary address: {{ network.publicUrl }}</p>
+      <form (ngSubmit)="save()" class="space-y-3">
+        <label for="server-local-domain" class="block text-sm font-medium"
+          >Local domain (optional)</label
+        >
+        <input
+          id="server-local-domain"
+          name="localAddress"
+          [(ngModel)]="localAddress"
+          [disabled]="busy()"
+          autocomplete="off"
+          autocapitalize="none"
+          spellcheck="false"
+          placeholder="Local server domain"
+          class="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] p-2"
+        />
+        <p class="text-sm text-[var(--color-text-muted)]">
+          Configure trusted HTTPS and allow this origin on your server before advertising it. Leave
+          empty to use only the primary address.
+        </p>
+        <button
+          type="submit"
+          [disabled]="busy()"
+          class="rounded-lg bg-[var(--color-primary)] px-4 py-2 text-white disabled:opacity-50"
+        >
+          {{ busy() ? 'Saving…' : 'Save network settings' }}
+        </button>
+      </form>
+    }
+    @if (error()) {
+      <p role="alert" class="text-sm text-red-600">{{ error() }}</p>
+    }
+    @if (saved()) {
+      <p role="status" class="text-sm text-[var(--color-text-muted)]">
+        Saved. Clients will discover this setting when they reconnect.
+      </p>
+    }
   </section>
 }
