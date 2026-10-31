@@ -110,10 +110,11 @@ export const routes: Routes = [
     canMatch: [AppLayoutGuard],
     canActivateChild: [swUpdateGuard],
     children: [
-      // Default child - welcome/landing when no notebook is selected
+      // Root opens login for signed-out users after AppLayoutGuard restores auth.
       {
         path: '',
         pathMatch: 'full',
+        canActivate: [AuthGuard],
         loadComponent: () =>
           import('./pages/welcome/welcome.component').then((m) => m.WelcomeComponent),
       },
