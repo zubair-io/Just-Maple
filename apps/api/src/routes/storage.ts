@@ -92,7 +92,7 @@ export const storageRoutes = new Elysia({ prefix: '/api/storage' })
             return { error: 'Failed to read file' };
         }
     })
-    .get('/recordings/:filename', async ({ params, set }) => {
+    .get('/recordings/:filename', async ({ params, set, request }) => {
         const { filename } = params;
 
         // Validate filename to prevent directory traversal
@@ -126,6 +126,36 @@ export const storageRoutes = new Elysia({ prefix: '/api/storage' })
 
             set.headers['Content-Type'] = contentType;
             set.headers['Cache-Control'] = 'public, max-age=31536000'; // Cache for 1 year
+            set.headers['Accept-Ranges'] = 'bytes';
+
+            const range = request.headers.get('range');
+            if (range) {
+                const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+                const size = fileBuffer.length;
+                let start = Number(match?.[1] || 0);
+                let end = match?.[2] ? Number(match[2]) : size - 1;
+                if (match && !match[1] && match[2]) {
+                    start = Math.max(0, size - Number(match[2]));
+                    end = size - 1;
+                }
+                if (
+                    !match ||
+                    (!match[1] && !match[2]) ||
+                    !Number.isSafeInteger(start) ||
+                    !Number.isSafeInteger(end) ||
+                    start >= size ||
+                    start > end
+                ) {
+                    set.status = 416;
+                    set.headers['Content-Range'] = `bytes */${size}`;
+                    return '';
+                }
+                end = Math.min(end, size - 1);
+                set.status = 206;
+                set.headers['Content-Range'] = `bytes ${start}-${end}/${size}`;
+                set.headers['Content-Length'] = String(end - start + 1);
+                return fileBuffer.subarray(start, end + 1);
+            }
 
             return fileBuffer;
         } catch (error) {

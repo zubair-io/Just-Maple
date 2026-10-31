@@ -46,6 +46,22 @@ describe('local media storage', () => {
         await expect(assertLocalStorageReady()).rejects.toThrow('unavailable');
         await expect(readFile(join(folder, 'recordings', 'clip'))).rejects.toThrow();
     });
+    it('supports recording seek ranges, suffix ranges and unsatisfiable requests', async () => {
+        const url = await uploadRecording('clip', 'owner', Buffer.from('audio bytes'), 'audio/mp4');
+        for (const [range, status, content, contentRange] of [
+            ['bytes=0-4', 206, 'audio', 'bytes 0-4/11'],
+            ['bytes=-5', 206, 'bytes', 'bytes 6-10/11'],
+            ['bytes=99-', 416, '', 'bytes */11'],
+            ['bytes=-0', 416, '', 'bytes */11'],
+        ] as const) {
+            const response = await storageRoutes.handle(
+                new Request('http://localhost' + url, { headers: { range } }),
+            );
+            expect(response.status).toBe(status);
+            expect(response.headers.get('content-range')).toBe(contentRange);
+            expect(await response.text()).toBe(content);
+        }
+    });
     it('serves nested public app assets with the correct content type', async () => {
         await mkdir(join(folder, 'assets', 'icons'), { recursive: true });
         await writeFile(join(folder, 'assets', 'icons', 'leaf.svg'), '<svg/>');
