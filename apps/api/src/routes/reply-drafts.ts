@@ -55,7 +55,7 @@ export const replyDraftRoutes = new Elysia({ prefix: '/api/reply-drafts' })
         async ({ auth, params, body, set }) => {
             if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
             try {
-                return await openReplyDraft(params.id, auth.user._id, body?.body);
+                return await openReplyDraft(params.id, auth.user._id, body?.body, body?.updatedAt);
             } catch (error) {
                 return failure(error, set);
             }
@@ -63,7 +63,10 @@ export const replyDraftRoutes = new Elysia({ prefix: '/api/reply-drafts' })
         {
             params: t.Object({ id: t.String() }),
             body: t.Optional(
-                t.Object({ body: t.Optional(t.String({ minLength: 1, maxLength: 5000 })) }),
+                t.Object({
+                    body: t.Optional(t.String({ minLength: 1, maxLength: 5000 })),
+                    updatedAt: t.Optional(t.String()),
+                }),
             ),
         },
     )

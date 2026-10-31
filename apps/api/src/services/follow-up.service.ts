@@ -758,6 +758,16 @@ function byDue(a: FollowUp, b: FollowUp): number {
     return dueTime(a) - dueTime(b) || a.at - b.at;
 }
 
+/** Bounded callers (Today and draft preparation) reuse the page's evidence/visibility rules. */
+export async function visibleFollowUpsInNotebook(
+    notebookId: string,
+    viewerId: string,
+    docs: FollowUpDocument[],
+    now = new Date(),
+): Promise<FollowUp[]> {
+    return visibleFollowUps(docs, await readContext(notebookId, viewerId), now);
+}
+
 /** The viewer's open and snoozed follow-ups here that have waited long enough, due first. */
 export async function listFollowUps(
     notebookId: string,

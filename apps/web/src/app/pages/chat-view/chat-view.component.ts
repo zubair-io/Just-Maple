@@ -1,3 +1,4 @@
+import { AssistancePanelComponent } from '../../components/organisms/assistance-panel/assistance-panel.component';
 import { AppHeaderComponent } from '../../components/organisms/app-header/app-header.component';
 import {
   Component,
@@ -72,6 +73,7 @@ interface ConnectionGraphData {
     NotebookHeaderComponent,
     ConnectionGraphComponent,
     ChatComponent,
+    AssistancePanelComponent,
     MemberAvatarGroupComponent,
   ],
   templateUrl: './chat-view.component.html',
@@ -98,10 +100,24 @@ export class ChatViewComponent implements OnInit, OnDestroy {
   private readonly summaryRefreshTrigger = signal<number>(0);
 
   // Tab navigation state
+  readonly assistanceOpen = signal(false);
+  readonly assistanceSelection = signal('');
+  readonly isToday = signal(false);
+  readonly assistancePage = computed(
+    () => this.pageService.pages().find((page) => page.id === this.routePageId()) ?? null,
+  );
+  captureAssistanceSelection(): void {
+    this.assistanceSelection.set(window.getSelection()?.toString().slice(0, 10000) || '');
+  }
+  openToday(): void {
+    this.assistanceOpen.set(false);
+    void this.router.navigate(['/', this.selectedNotebookId(), 'today']);
+  }
   readonly activeTab = signal<string>('overview');
   readonly childPageOpen = signal(false);
   readonly routePageId = signal<string | null>(null);
   readonly selectedHeaderTab = computed(() => {
+    if (this.isToday()) return 'today';
     const pageId = this.routePageId();
     const page = pageId ? this.pageService.pages().find((p) => p.id === pageId) : null;
     return page ? `type-${page.type}` : this.activeTab();
@@ -362,6 +378,8 @@ export class ChatViewComponent implements OnInit, OnDestroy {
       this.notificationService.setActiveNotebook(notebookId);
       this.childPageOpen.set(!!this.route.firstChild);
       this.routePageId.set(this.route.firstChild?.snapshot.paramMap.get('id') ?? null);
+      this.isToday.set(this.route.firstChild?.snapshot.routeConfig?.path === 'today');
+      this.assistanceOpen.set(false);
       if (notebookChanged) {
         this.activeTab.set('overview');
         this.pageSearchQuery.set('');

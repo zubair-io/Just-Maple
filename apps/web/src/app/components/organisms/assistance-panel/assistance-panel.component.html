@@ -1,0 +1,238 @@
+<section
+  role="dialog"
+  aria-modal="true"
+  aria-label="Page assistance"
+  cdkTrapFocus
+  [cdkTrapFocusAutoCapture]="true"
+  (keydown.escape)="close(); $event.stopPropagation()"
+  class="fixed inset-y-0 right-0 z-[70] flex w-full flex-col border-l border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text-main)] shadow-xl md:w-[44rem]"
+>
+  <header class="flex flex-wrap items-center gap-3 border-b border-[var(--color-border)] p-4">
+    <div class="min-w-0 flex-1">
+      <h2 class="m-0 font-sans text-lg font-bold">Ask about this page</h2>
+      <p class="m-0 text-xs text-[var(--color-text-muted)]">
+        Private conversation · Only you can read it
+      </p>
+    </div>
+    <button
+      type="button"
+      class="cursor-pointer rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 font-sans text-xs text-[var(--color-text-main)] disabled:cursor-default disabled:opacity-50"
+      (click)="close()"
+      aria-label="Close assistance"
+    >
+      Close
+    </button>
+    <label class="flex w-full items-center gap-2 text-sm"
+      >Bot
+      <select
+        class="box-border rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-2 font-sans text-sm text-[var(--color-text-main)] min-w-0 flex-1"
+        [value]="botId()"
+        (change)="openBot($any($event.target).value)"
+        [disabled]="loading() || sending()"
+      >
+        @for (bot of bots(); track bot.id) {
+          <option [value]="bot.id">{{ bot.name }} · @{{ bot.handle }}</option>
+        }
+      </select>
+    </label>
+    @if (messages().at(-1)?.sourceTitle; as title) {
+      <p class="m-0 w-full truncate text-xs text-[var(--color-text-muted)]">
+        Using: {{ title }} · snapshot {{ messages().at(-1)?.sourceRevision }}
+      </p>
+    }
+    <p class="m-0 text-xs text-[var(--color-text-muted)]">
+      Long pages use an excerpt. Select text to focus the question.
+    </p>
+    @if (selection()) {
+      <details class="w-full text-xs">
+        <summary>Selected text included</summary>
+        <p class="max-h-24 overflow-auto whitespace-pre-wrap">{{ selection() }}</p>
+      </details>
+    }
+  </header>
+  @if (error(); as message) {
+    <div class="flex items-center gap-2 p-3 text-sm" role="alert">
+      <p class="m-0 flex-1 text-[var(--color-error)]">{{ message }}</p>
+      <button
+        class="cursor-pointer rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 font-sans text-xs text-[var(--color-text-main)] disabled:cursor-default disabled:opacity-50"
+        (click)="refresh()"
+      >
+        Retry
+      </button>
+    </div>
+  }
+  <div
+    #viewport
+    class="min-h-0 flex-1 overflow-y-auto p-4 [overflow-anchor:none]"
+    (scroll)="scroll()"
+    [attr.aria-busy]="loading()"
+  >
+    <div #content class="flex flex-col gap-5">
+      @if (loading() && !messages().length) {
+        <p role="status">Loading your conversation…</p>
+      }
+      @if (!loading() && !bots().length) {
+        <p>Add an enabled AI bot to this notebook to begin.</p>
+      }
+      @if (hasMore()) {
+        <button
+          class="cursor-pointer rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 font-sans text-xs text-[var(--color-text-main)] disabled:cursor-default disabled:opacity-50 self-center"
+          [disabled]="loading()"
+          (click)="earlier()"
+        >
+          Load earlier messages
+        </button>
+      }
+      @for (message of messages(); track message.id) {
+        <article
+          [attr.data-message-id]="message.id"
+          class="rounded-xl border border-[var(--color-border)] p-3"
+          [class.bg-[var(--color-surface)]]="message.role === 'user'"
+        >
+          <p class="mb-2 mt-0 flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
+            <strong>{{ message.role === 'user' ? 'You' : conversation()?.botName }}</strong
+            ><span>{{ message.createdAt | date: 'MMM d, h:mm a' }}</span>
+          </p>
+          <app-bot-message-content
+            [message]="presentation(message)"
+            (followUp)="onDraft($event); send()"
+          />
+          @if (message.role === 'assistant') {
+            <div class="mt-3 flex flex-wrap gap-2">
+              <button
+                class="cursor-pointer rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 font-sans text-xs text-[var(--color-text-main)] disabled:cursor-default disabled:opacity-50"
+                [disabled]="!saveNotebookId()"
+                (click)="save(message)"
+              >
+                Save as editable note</button
+              ><button
+                class="cursor-pointer rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 font-sans text-xs text-[var(--color-text-main)] disabled:cursor-default disabled:opacity-50"
+                (click)="readAloud(message)"
+              >
+                Read aloud
+              </button>
+            </div>
+          }
+        </article>
+      } @empty {
+        @if (!loading() && bots().length) {
+          <p class="text-sm text-[var(--color-text-muted)]">
+            Ask a question, select text from the page, or start a voice conversation. Results stay
+            here when you leave.
+          </p>
+        }
+      }
+      @for (task of running(); track task.id) {
+        <div
+          class="flex items-center gap-3 rounded-xl border border-[var(--color-border)] p-3"
+          role="status"
+        >
+          <div class="min-w-0 flex-1">
+            <p class="m-0 truncate text-sm">{{ task.question }}</p>
+            <p class="m-0 text-xs text-[var(--color-text-muted)]">{{ task.progress }}</p>
+          </div>
+          <button
+            class="cursor-pointer rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 font-sans text-xs text-[var(--color-text-main)] disabled:cursor-default disabled:opacity-50"
+            (click)="stop(task)"
+          >
+            Stop work
+          </button>
+        </div>
+      }
+      @for (task of failed(); track task.id) {
+        <div class="text-sm text-[var(--color-text-muted)]">
+          <p>{{ task.progress }}. {{ task.error }}</p>
+          <button class="underline" (click)="onDraft(task.question)">
+            Use this question again
+          </button>
+          <p class="text-xs">Review existing action receipts before sending it again.</p>
+        </div>
+      }
+    </div>
+  </div>
+  @if (latest()) {
+    <button
+      class="cursor-pointer rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 font-sans text-xs text-[var(--color-text-main)] disabled:cursor-default disabled:opacity-50 mx-auto my-1"
+      (click)="bottom()"
+    >
+      Latest ↓
+    </button>
+  }
+  <footer class="flex flex-col gap-2 border-t border-[var(--color-border)] p-4">
+    @if (conflictingDraft(); as other) {
+      <div class="rounded-lg border border-[var(--color-border)] p-3 text-sm" role="alert">
+        <p>Another device saved a different draft. Your text is kept below.</p>
+        <details>
+          <summary>Review the other draft</summary>
+          <p class="max-h-32 overflow-auto whitespace-pre-wrap">
+            {{ other.text || '(Empty draft)' }}
+          </p>
+        </details>
+        <div class="mt-2 flex gap-3">
+          <button class="underline" (click)="resolveDraft(true)">Keep my draft</button
+          ><button class="underline" (click)="resolveDraft(false)">Use the other draft</button>
+        </div>
+      </div>
+    }
+    <label class="flex flex-wrap items-center gap-2 text-xs text-[var(--color-text-muted)]"
+      >Save results in
+      <select
+        class="box-border rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-2 font-sans text-sm text-[var(--color-text-main)] min-w-0 flex-1"
+        [value]="saveNotebookId()"
+        (change)="saveNotebookId.set($any($event.target).value)"
+      >
+        @for (notebook of privateNotebooks(); track notebook._id) {
+          <option [value]="notebook._id">{{ notebook.label }}</option>
+        }
+      </select>
+    </label>
+    <textarea
+      aria-label="Message to your assistant"
+      class="box-border rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-2 font-sans text-sm text-[var(--color-text-main)] min-h-20 w-full resize-y"
+      [value]="draft()"
+      (input)="onDraft($any($event.target).value)"
+      (blur)="saveDraft()"
+      maxlength="10000"
+      placeholder="Ask about this page…"
+    ></textarea>
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="min-w-0 flex-1 text-xs text-[var(--color-text-muted)]">{{ draftState() }}</span
+      ><button
+        type="button"
+        class="cursor-pointer rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 font-sans text-xs text-[var(--color-text-main)] disabled:cursor-default disabled:opacity-50"
+        (click)="talk()"
+        [disabled]="!conversation() || voice.state() === 'transcribing' || sending()"
+      >
+        {{
+          voice.state() === 'listening'
+            ? 'Stop and send'
+            : voice.state() === 'transcribing'
+              ? 'Transcribing locally…'
+              : 'Talk'
+        }}</button
+      ><button
+        type="button"
+        class="cursor-pointer rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 font-sans text-xs text-[var(--color-text-main)] disabled:cursor-default disabled:opacity-50 bg-[var(--color-primary)]! text-white!"
+        [disabled]="!conversation() || !draft().trim() || sending()"
+        (click)="send()"
+      >
+        {{ sending() ? 'Sending…' : 'Send' }}
+      </button>
+    </div>
+    @if (voiceMode() || voice.state() !== 'idle') {
+      <p class="m-0 text-xs text-[var(--color-text-muted)]">
+        Voice uses local transcription and local speech. Your words are sent to the selected bot
+        when you tap Stop and send.
+        <button class="underline" (click)="voice.stop(); voiceMode.set(false)">End voice</button>
+      </p>
+    }
+    @if (voice.modelLoading()) {
+      <p class="m-0 text-xs" role="status">
+        Preparing the local speech model… You can keep using the app.
+      </p>
+    }
+    @if (voice.error(); as message) {
+      <p class="m-0 text-xs text-[var(--color-text-muted)]">{{ message }}</p>
+    }
+  </footer>
+</section>

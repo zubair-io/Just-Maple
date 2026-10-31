@@ -508,9 +508,15 @@ export async function openReplyDraft(
     id: string,
     userId: string,
     body?: string,
+    expectedUpdatedAt?: string,
 ): Promise<{ action: BotAction; url: string }> {
     const row = await ownersDraft(id, userId);
     if (!isWaiting(row.status)) throw new ActionError(409, closedMessage(row));
+    if (expectedUpdatedAt && row.updatedAt.toISOString() !== expectedUpdatedAt)
+        throw new ActionError(
+            409,
+            'This draft changed since you reviewed it. Check the saved text before opening it.',
+        );
     const params = draftParams(row);
     const text = body === undefined ? params.body : checkBody(params.channel, body);
     const now = new Date();
@@ -529,9 +535,13 @@ export async function openReplyDraft(
                 updatedAt: now,
             },
         },
-        { status: { $in: ['proposed', 'opened'] } },
+        { status: { $in: ['proposed', 'opened'] }, updatedAt: row.updatedAt },
     );
-    if (!doc) throw new ActionError(409, closedMessage((await findAction(id)) ?? row));
+    if (!doc)
+        throw new ActionError(
+            409,
+            'This draft changed since you reviewed it. Check the saved text before opening it.',
+        );
     await broadcastAction(doc);
     return { action: toActionView(doc, userId), url: replyComposeUrl(params, text) };
 }

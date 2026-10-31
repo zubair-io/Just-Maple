@@ -1,3 +1,4 @@
+import { reconcileReplyReceipts } from './reply-receipt.service';
 import { deviceItemThreadKey } from '@maple/shared';
 import type {
     MacDataChangeBatch,
@@ -90,6 +91,19 @@ export async function applyDeviceUpload(
     if (stored || removed || vectors) await bumpDeviceDataVersion(userId);
     // New items get linked in the graphs of notebooks that show them.
     if (stored && config.backgroundJobsEnabled) markGraphDirty(userId);
+    // Imported outgoing messages can confirm an earlier compose handoff. A failed
+    // receipt check must not fail a collector upload that was already stored.
+    if (stored)
+        await reconcileReplyReceipts(
+            userId,
+            changed.filter((item) => after?.activeSources.includes(item.source)),
+            now,
+        ).catch((error) =>
+            console.error(
+                '[ReplyReceipt] Could not reconcile:',
+                error instanceof Error ? error.message : 'Unknown error',
+            ),
+        );
     const news: NewsEntry[] = [];
     for (const item of changed) {
         const kind = previous.has(item.id) ? 'changed' : 'added';

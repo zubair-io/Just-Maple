@@ -20,6 +20,8 @@ import { deviceDataRoutes } from './routes/device-data';
 import { calendarProposalRoutes } from './routes/calendar-proposals';
 import { homeRoutes } from './routes/home';
 import { botActionRoutes } from './routes/bot-actions';
+import { assistanceRoutes } from './routes/assistance';
+import { startAssistanceWorker, stopAssistanceWorker } from './services/assistance-runner.service';
 import { replyDraftRoutes } from './routes/reply-drafts';
 import { aboutMeRoutes } from './routes/about-me';
 import { graphRoutes } from './routes/graph';
@@ -102,6 +104,8 @@ async function main() {
     // Every minute: daily briefs and leave-now reminders
     if (config.backgroundJobsEnabled) startProactiveScheduler();
 
+    startAssistanceWorker();
+
     // Connect to Redis for cross-replica pub/sub
     try {
         await redisPubSub.connect();
@@ -133,6 +137,7 @@ async function main() {
         .use(homeRoutes)
         .use(botActionRoutes)
         .use(replyDraftRoutes)
+        .use(assistanceRoutes)
         .use(aboutMeRoutes)
         .use(graphRoutes)
         .use(followUpRoutes)
@@ -271,6 +276,7 @@ async function main() {
         stopping = true;
         const deadline = setTimeout(() => process.exit(1), 25_000);
         try {
+            stopAssistanceWorker();
             stopEmbedding?.();
             const server = app.server;
             let drainTimer: ReturnType<typeof setTimeout> | undefined;

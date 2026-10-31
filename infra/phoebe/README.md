@@ -707,3 +707,43 @@ arrival, send routing, thread loading and viewport tests. No native binary chang
 Accepted follow-on work: Today/Activity with a complete reply workflow and durable
 progress/recovery; page-aware conversations and saved notes; conversational voice
 after those foundations. These remain separate from the chat bug-fix release.
+
+## Assistance workflow rollout
+
+Implementation order (each stage is verified before production activation):
+
+- [x] Today: paged needs-attention, work, review and recent-result lists; source/contact
+      context, draft preparation, review and honest compose-handoff outcomes.
+- [x] Durable assistance work: SQLite-backed pending work, bounded concurrency, leases,
+      progress, cancellation, and interrupted-work recovery without replaying uncertain actions.
+- [x] Page assistance: private persistent conversations per page/bot, explicit selected
+      context and source access checks, saved editable notes retaining source references.
+- [x] Conversational voice: reuse local transcription and the same conversation/work;
+      local spoken replies, interruption and retained transcripts/results.
+
+Existing chat/proactive behavior remains covered by its regression tests. New work must
+recheck source and bot access, survive reconnects, and use bounded/paged reads. External
+reply handoff is recorded as opened, never as sent without evidence. No main merge or DNS
+change is part of this rollout.
+
+- [ ] Activate and verify the release on Phoebe and inspect the hosted Apple UI.
+
+Validation: full API suite 1,008 passed/three existing skips; focused Today/composer,
+voice lifecycle and reply-review tests, plus the existing chat history/viewport
+regressions. Voice is explicit push-to-talk (Talk / Stop and send), using the existing
+local speech model and local system voices. No continuous background listening.
+Actual microphone/audio quality on a physical phone is not part of the synthetic tests.
+
+Only new assistance work uses the durable worker; existing chat/proactive execution
+retains its established path. Pending assistance resumes; uncertain running work is
+marked interrupted and requires review before a new request. This release supports one
+API queue worker; per-conversation ordering is enforced by that worker. Keep this topology
+until a distributed conversation lock is added. Original model source is retained for
+current rendering. Saved results are editable memos with source/revision references.
+
+Reply handoff has two steps: prepare/save the reviewed version, then tap the compose
+link. This preserves the Apple wrapper's user-tap requirement. The app does not send it.
+A fresh imported outgoing item must exactly match the reviewed body (at least twelve
+characters), original thread and handoff time before the receipt becomes Done. Edits
+made in Mail/Messages, signatures, or unavailable sent-mail collection can leave a sent
+reply unverified; no heuristic claim of delivery is made.

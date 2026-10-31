@@ -41,7 +41,7 @@ export class ReplyDraftCardComponent {
   readonly status = computed(() => this.action()?.status ?? null);
   readonly closed = computed(() => {
     const status = this.status();
-    return status === 'discarded' || status === 'expired';
+    return status === 'discarded' || status === 'expired' || status === 'done';
   });
   readonly channelName = computed(() => {
     const draft = this.draft();
@@ -54,6 +54,7 @@ export class ReplyDraftCardComponent {
   readonly busy = signal(false);
   readonly copied = signal(false);
   readonly error = signal<string | null>(null);
+  readonly preparedUrl = signal<string | null>(null);
 
   /** The prefilled compose for what's in the box, to the thread's own people. */
   readonly composeUrl = computed(() => {
@@ -89,25 +90,39 @@ export class ReplyDraftCardComponent {
   /** The version of the draft the owner's text started from. */
   private basedOn: string | undefined;
   private conflicted = false;
+  private pendingSave?: Promise<void>;
 
   onInput(value: string): void {
+    this.preparedUrl.set(null);
     this.body.set(value);
     this.edited.set(true);
     this.copied.set(false);
   }
 
   /** The link itself opens Messages or Mail; this records it and saves the text. */
-  onOpen(): void {
+  async onOpen(event?: Event): Promise<void> {
+    // The second, real link tap is required by the native compose-link policy.
+    if (this.preparedUrl() === this.composeUrl() && !this.closed() && !this.busy()) return;
+    event?.preventDefault();
     const body = this.body().trim();
-    if (!body || this.closed()) return;
+    if (!body || this.closed() || this.busy()) return;
     this.error.set(null);
-    void this.actions
-      .openDraft(this.actionId(), body)
-      .then(({ action }) => {
-        this.basedOn = action.updatedAt;
-        this.edited.set(false);
-      })
-      .catch((error: unknown) => this.error.set(messageOf(error, 'Could not save the draft.')));
+    this.busy.set(true);
+    try {
+      if (this.pendingSave) {
+        await this.pendingSave;
+        if (this.error()) return;
+      }
+      const { action, url } = await this.actions.openDraft(this.actionId(), body, this.basedOn);
+      this.basedOn = action.updatedAt;
+      this.edited.set(false);
+      // Use only the server's compose URL after the exact reviewed version was saved.
+      this.preparedUrl.set(url);
+    } catch (error) {
+      this.error.set(messageOf(error, 'Could not save the draft.'));
+    } finally {
+      this.busy.set(false);
+    }
   }
 
   async copy(): Promise<void> {
@@ -127,7 +142,10 @@ export class ReplyDraftCardComponent {
   /** Saves the owner's edits when they leave the box. */
   async onBlur(): Promise<void> {
     const body = this.body().trim();
-    if (this.edited() && body && !this.closed()) await this.save(body);
+    if (this.edited() && body && !this.closed()) {
+      this.pendingSave = this.save(body);
+      await this.pendingSave;
+    }
   }
 
   async discard(): Promise<void> {

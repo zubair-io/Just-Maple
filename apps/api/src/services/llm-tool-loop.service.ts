@@ -12,6 +12,7 @@ export interface ChatTurn {
 }
 
 export interface ToolLoopParams {
+    signal?: AbortSignal;
     apiKey: string;
     model: string;
     system?: string;
@@ -53,11 +54,14 @@ export async function runAnthropicWithTools(
     }));
 
     for (let round = 0; round <= MAX_ROUNDS; round++) {
+        params.signal?.throwIfAborted();
         const lastRound = round === MAX_ROUNDS;
         const response = await fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
             headers,
-            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+            signal: params.signal
+                ? AbortSignal.any([params.signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)])
+                : AbortSignal.timeout(REQUEST_TIMEOUT_MS),
             body: JSON.stringify({
                 model: params.model,
                 max_tokens: params.maxTokens,
@@ -116,6 +120,7 @@ export async function runOpenAIWithTools(params: ToolLoopParams): Promise<string
     }));
 
     for (let round = 0; round <= MAX_ROUNDS; round++) {
+        params.signal?.throwIfAborted();
         const lastRound = round === MAX_ROUNDS;
         const response = await fetch('https://api.openai.com/v1/responses', {
             method: 'POST',
@@ -123,7 +128,9 @@ export async function runOpenAIWithTools(params: ToolLoopParams): Promise<string
                 'Content-Type': 'application/json',
                 Authorization: `Bearer ${params.apiKey}`,
             },
-            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+            signal: params.signal
+                ? AbortSignal.any([params.signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)])
+                : AbortSignal.timeout(REQUEST_TIMEOUT_MS),
             body: JSON.stringify({
                 model: params.model,
                 instructions: params.system,
@@ -175,6 +182,7 @@ export async function runOpenAIWithTools(params: ToolLoopParams): Promise<string
 /** Any server that speaks OpenAI's chat completions API: Inception, OpenRouter, Groq, vLLM… */
 /** One HTTP request and its raw reply, so a call can go out from the API or from a Mac. */
 export interface HttpRequest {
+    signal?: AbortSignal;
     method: 'GET' | 'POST';
     url: string;
     headers: Record<string, string>;
@@ -196,7 +204,9 @@ export const fetchSend: HttpSend = async (request) => {
         headers: request.headers,
         body: request.body,
         redirect: 'error',
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        signal: request.signal
+            ? AbortSignal.any([request.signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)])
+            : AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     return { status: response.status, body: await response.text() };
 };
@@ -227,11 +237,12 @@ interface ChatCompletionsMessage {
 }
 
 async function postChatCompletions(
-    params: ChatCompletionsTarget & { apiKey: string },
+    params: ChatCompletionsTarget & { apiKey: string; signal?: AbortSignal },
     body: Record<string, unknown>,
 ): Promise<ChatCompletionsMessage> {
     const response = await (params.send ?? fetchSend)({
         method: 'POST',
+        signal: params.signal,
         url: `${params.baseUrl}/chat/completions`,
         headers: {
             'Content-Type': 'application/json',
@@ -292,6 +303,7 @@ export async function runChatCompletionsWithTools(
     }));
 
     for (let round = 0; round <= MAX_ROUNDS; round++) {
+        params.signal?.throwIfAborted();
         const lastRound = round === MAX_ROUNDS;
         const message = await postChatCompletions(params, {
             model: params.model,

@@ -48,6 +48,7 @@ describe('ReplyDraftCardComponent', () => {
   const me = signal<{ _id: string } | null>({ _id: 'owner' });
 
   beforeEach(() => {
+    vi.spyOn(window, 'open').mockImplementation(() => null);
     events = new Subject<ChatEvent>();
     me.set({ _id: 'owner' });
     TestBed.configureTestingModule({
@@ -95,7 +96,7 @@ describe('ReplyDraftCardComponent', () => {
     expect(text()).toContain('Still on for Saturday?');
     expect(text()).toContain('Nothing is sent until you send it yourself.');
     expect(textarea().value).toBe('yesss saturday works!!');
-    expect(openLink()?.textContent?.trim()).toBe('Open in Messages');
+    expect(openLink()?.textContent?.trim()).toBe('Prepare in Messages');
     expect(openLink()?.getAttribute('href')).toBe(
       'sms:+15185550100&body=yesss%20saturday%20works!!',
     );
@@ -106,7 +107,7 @@ describe('ReplyDraftCardComponent', () => {
   });
 
   it('opens the edited text in Messages and records it', async () => {
-    const { textarea, openLink, settle, text } = await render(draftAction());
+    const { fixture, textarea, openLink, settle, text } = await render(draftAction());
     textarea().value = 'saturday at 4!';
     textarea().dispatchEvent(new Event('input'));
     await settle();
@@ -118,7 +119,11 @@ describe('ReplyDraftCardComponent', () => {
     link.click();
     const request = http.expectOne(`/api/reply-drafts/${ID}/open`);
     expect(request.request.method).toBe('POST');
-    expect(request.request.body).toEqual({ body: 'saturday at 4!' });
+    expect(request.request.body).toEqual({
+      body: 'saturday at 4!',
+      updatedAt: '2026-10-27T14:01:00.000Z',
+    });
+    expect(window.open).not.toHaveBeenCalled();
     request.flush({
       action: draftAction({
         status: 'opened',
@@ -129,7 +134,12 @@ describe('ReplyDraftCardComponent', () => {
       url: 'sms:+15185550100&body=saturday%20at%204!',
     });
     await settle();
-    expect(text()).toContain('Opened in Messages. Press send there');
+    expect(text()).toContain('Compose handoff prepared. Tap Open in Messages');
+    expect(window.open).not.toHaveBeenCalled();
+    const tap = new Event('click', { cancelable: true });
+    await fixture.componentInstance.onOpen(tap);
+    expect(tap.defaultPrevented).toBe(false);
+    expect(openLink()?.textContent?.trim()).toBe('Open in Messages');
   });
 
   it('opens mail drafts in Mail with the subject', async () => {
@@ -146,7 +156,7 @@ describe('ReplyDraftCardComponent', () => {
       }),
     );
     expect(text()).toContain('Re: Dinner plans');
-    expect(openLink()?.textContent?.trim()).toBe('Open in Mail');
+    expect(openLink()?.textContent?.trim()).toBe('Prepare in Mail');
     expect(openLink()?.getAttribute('href')).toBe(
       'mailto:jen@example.com?subject=Re%3A%20Dinner%20plans&body=Thursday%20works.',
     );

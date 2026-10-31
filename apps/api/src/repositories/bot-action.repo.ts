@@ -237,3 +237,17 @@ export async function saveAutonomy(
     );
     return doc?.settings ?? { [kind]: value };
 }
+
+/** Bounded incremental receipt matching; no mailbox/history backfill. */
+export async function openedReplyDrafts(ownerId: string): Promise<BotActionDocument[]> {
+    return actions()
+        .find({
+            ownerId,
+            kind: 'send_reply',
+            status: 'opened',
+            updatedAt: { $gte: new Date(Date.now() - 7 * 86400_000) },
+        })
+        .sort({ updatedAt: -1 })
+        .limit(100)
+        .toArray();
+}

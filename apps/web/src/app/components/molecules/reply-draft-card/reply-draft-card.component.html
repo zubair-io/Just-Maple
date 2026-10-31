@@ -37,16 +37,22 @@
         class="draft-text min-h-24 w-full resize-y rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-2 font-sans text-sm text-[var(--color-text-main)] disabled:opacity-60"
         rows="4"
         [value]="body()"
-        [disabled]="closed()"
+        [disabled]="closed() || busy()"
         (input)="onInput($any($event.target).value)"
         (blur)="onBlur()"
       ></textarea>
     </label>
 
     @switch (status()) {
+      @case ('done') {
+        <p class="m-0 font-sans text-xs text-[var(--color-text-muted)]" role="status">
+          Matching sent message observed in your imported conversation.
+        </p>
+      }
       @case ('opened') {
         <p class="m-0 font-sans text-xs text-[var(--color-text-muted)]" role="status">
-          Opened in {{ channelName() }}. Press send there when it's ready.
+          Compose handoff prepared. Tap Open in {{ channelName() }}, then send there. Sending has
+          not been verified.
         </p>
       }
       @case ('discarded') {
@@ -73,9 +79,9 @@
           <a
             class="draft-open inline-flex h-8 items-center rounded-lg bg-[var(--color-primary)] px-3 font-sans text-xs font-semibold text-white no-underline hover:bg-[var(--color-primary-hover)]"
             [href]="url"
-            (click)="onOpen()"
+            (click)="onOpen($event)"
             data-testid="open"
-            >Open in {{ channelName() }}</a
+            >{{ preparedUrl() === composeUrl() ? 'Open in ' : 'Prepare in ' }}{{ channelName() }}</a
           >
         }
         <button

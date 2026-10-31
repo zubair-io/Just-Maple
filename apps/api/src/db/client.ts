@@ -238,6 +238,23 @@ export async function createIndexes(database: Db): Promise<void> {
     await database.collection('user_bots').createIndex({ templateId: 1 });
     await database.collection('user_bots').createIndex({ handle: 1 }); // For sorted listing
 
+    // Assistance: private histories and bounded, durable foreground work.
+    await database
+        .collection('assistance_messages')
+        .createIndex({ userId: 1, conversationId: 1, createdAt: -1, _id: -1 });
+    await database.collection('assistance_tasks').createIndex({ status: 1, createdAt: 1, _id: 1 });
+    await database.collection('assistance_tasks').createIndex({ status: 1, leaseUntil: 1 });
+    await database
+        .collection('assistance_tasks')
+        .createIndex({ userId: 1, notebookId: 1, status: 1, createdAt: -1, _id: -1 });
+    await database
+        .collection('assistance_tasks')
+        .createIndex({ userId: 1, conversationId: 1, completedAt: -1, _id: -1 });
+    await database.collection('follow_ups').createIndex({ userId: 1, status: 1, at: -1, _id: -1 });
+    await database
+        .collection('bot_actions')
+        .createIndex({ ownerId: 1, notebookId: 1, status: 1, createdAt: -1, _id: -1 });
+
     // Bot invocations collection
     await database.collection('bot_invocations').createIndex({ userBotId: 1 });
     await database.collection('bot_invocations').createIndex({ sourceId: 1 });
