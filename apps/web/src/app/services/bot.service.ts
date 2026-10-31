@@ -1,6 +1,17 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, tap, map, catchError, of, throwError, from, switchMap } from 'rxjs';
+import {
+  Observable,
+  tap,
+  map,
+  catchError,
+  of,
+  throwError,
+  from,
+  switchMap,
+  finalize,
+  shareReplay,
+} from 'rxjs';
 import type {
   BotTemplate,
   BotModelOption,
@@ -93,7 +104,7 @@ export class BotService {
 
   // Notebook bots cache
   private readonly _notebookBotsCache = new Map<string, BotSuggestion[]>();
-  private readonly _notebookBotsLoading = signal<Set<string>>(new Set());
+  private readonly _notebookBotsLoading = new Map<string, Observable<BotSuggestion[]>>();
   private readonly _notebookBotsCacheVersion = signal(0);
 
   // Public signal for cache invalidation
@@ -422,51 +433,31 @@ export class BotService {
   // ============================================
 
   getNotebookBots(notebookId: string): Observable<BotSuggestion[]> {
-    // Route local notebooks to IndexedDB
-    if (isLocalNotebook(notebookId)) {
-      // Return cached if available
-      const cached = this._notebookBotsCache.get(notebookId);
-      if (cached) return of(cached);
-
-      return this.getLocalNotebookBots(notebookId).pipe(
-        tap((bots) => this._notebookBotsCache.set(notebookId, bots)),
-      );
-    }
-
-    // Return cached if available
     const cached = this._notebookBotsCache.get(notebookId);
-    if (cached) {
-      return of(cached);
-    }
+    if (cached) return of(cached);
+    const loading = this._notebookBotsLoading.get(notebookId);
+    if (loading) return loading;
 
-    // Check if already loading
-    if (this._notebookBotsLoading().has(notebookId)) {
-      // Return empty for now, will be updated when load completes
-      return of([]);
-    }
-
-    // Mark as loading
-    this._notebookBotsLoading.update((set) => new Set(set).add(notebookId));
-
-    return this.http.get<{ bots: BotSuggestion[] }>(`/api/notebooks/${notebookId}/bots`).pipe(
-      tap((response) => {
-        this._notebookBotsCache.set(notebookId, response.bots);
-        this._notebookBotsLoading.update((set) => {
-          const newSet = new Set(set);
-          newSet.delete(notebookId);
-          return newSet;
-        });
+    const source = isLocalNotebook(notebookId)
+      ? this.getLocalNotebookBots(notebookId)
+      : this.http
+          .get<{ bots: BotSuggestion[] }>(`/api/notebooks/${notebookId}/bots`)
+          .pipe(map((response) => response.bots));
+    const request = source.pipe(
+      tap((bots) => {
+        // A rename/sharing change may have invalidated this request while it ran.
+        if (this._notebookBotsLoading.get(notebookId) === request)
+          this._notebookBotsCache.set(notebookId, bots);
       }),
-      map((response) => response.bots),
-      catchError(() => {
-        this._notebookBotsLoading.update((set) => {
-          const newSet = new Set(set);
-          newSet.delete(notebookId);
-          return newSet;
-        });
-        return of([]);
+      catchError(() => of([] as BotSuggestion[])),
+      finalize(() => {
+        if (this._notebookBotsLoading.get(notebookId) === request)
+          this._notebookBotsLoading.delete(notebookId);
       }),
+      shareReplay({ bufferSize: 1, refCount: true }),
     );
+    this._notebookBotsLoading.set(notebookId, request);
+    return request;
   }
 
   // Client-side filtering for bots
@@ -486,8 +477,10 @@ export class BotService {
   clearNotebookBotsCache(notebookId?: string): void {
     if (notebookId) {
       this._notebookBotsCache.delete(notebookId);
+      this._notebookBotsLoading.delete(notebookId);
     } else {
       this._notebookBotsCache.clear();
+      this._notebookBotsLoading.clear();
     }
     // Increment version to trigger reactive updates
     this._notebookBotsCacheVersion.update((v) => v + 1);

@@ -1,0 +1,9 @@
+:host {
+  display: block;
+}
+.mention-dropdown {
+  min-width: 200px;
+  max-width: 320px;
+  max-height: 280px;
+  overflow-y: auto;
+}
