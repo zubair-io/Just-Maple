@@ -158,6 +158,11 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./pages/chat-view/chat-view.component').then((m) => m.ChatViewComponent),
         children: [
+          {
+            path: 'today',
+            loadComponent: () =>
+              import('./pages/today-view/today-view.component').then((m) => m.TodayViewComponent),
+          },
           // Create new note route
           {
             path: 'new',

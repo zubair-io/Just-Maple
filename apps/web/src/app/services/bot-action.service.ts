@@ -51,6 +51,12 @@ export class BotActionService {
       });
   }
 
+  /** Seed saved rows returned by Today without issuing another request per card. */
+  remember(actions: BotAction[]): void {
+    for (const action of actions) this.wanted.add(action.id);
+    this.merge(actions);
+  }
+
   /** One row (a card). Later changes arrive as events. */
   async load(id: string, force = false): Promise<void> {
     this.wanted.add(id);
@@ -131,12 +137,16 @@ export class BotActionService {
    * The owner opened a drafted reply in Messages or Mail (the link does the opening):
    * saves their text and records it. Returns the compose link the server built.
    */
-  async openDraft(id: string, body: string): Promise<{ action: BotAction; url: string }> {
+  async openDraft(
+    id: string,
+    body: string,
+    updatedAt?: string,
+  ): Promise<{ action: BotAction; url: string }> {
     try {
       const result = await firstValueFrom(
         this.http.post<{ action: BotAction; url: string }>(
           `/api/reply-drafts/${encodeURIComponent(id)}/open`,
-          { body },
+          { body, ...(updatedAt ? { updatedAt } : {}) },
         ),
       );
       this.merge([result.action]);
