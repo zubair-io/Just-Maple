@@ -67,6 +67,7 @@ export const config = {
 
     // Local storage fallback (used when Azure Blob Storage is not configured)
     localStoragePath: process.env.LOCAL_STORAGE_PATH || './storage',
+    localStorageRequired: process.env.LOCAL_STORAGE_REQUIRED === 'true',
 
     // Gmail / Google OAuth config
     gmailClientId: process.env.GMAIL_CLIENT_ID || '',

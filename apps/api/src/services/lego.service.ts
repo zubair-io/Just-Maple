@@ -4,6 +4,9 @@ import csv from 'csvtojson';
 import Anthropic from '@anthropic-ai/sdk';
 import { config } from '../config';
 import { BlobServiceClient } from '@azure/storage-blob';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { assertLocalStorageReady } from './local-storage.service';
 
 const anthropic = new Anthropic({
     apiKey: config.claudeApiKey,
@@ -160,7 +163,10 @@ function textToProseMirror(text: string): any {
 
 async function uploadToHornbeam(filename: string, data: any): Promise<string> {
     if (!config.hornbeamConnectionString) {
-        console.warn('[Lego Service] Hornbeam connection string not configured, skipping upload');
+        await assertLocalStorageReady();
+        const folder = join(config.localStoragePath, 'lego-cache');
+        await mkdir(folder, { recursive: true });
+        await writeFile(join(folder, filename), JSON.stringify(data));
         return '';
     }
 
@@ -234,8 +240,13 @@ export async function getLegos(): Promise<Lego[]> {
 
     try {
         // Try to fetch from Hornbeam cache first
+        if (!config.hornbeamConnectionString) {
+            await assertLocalStorageReady();
+            return JSON.parse(
+                await readFile(join(config.localStoragePath, 'lego-cache', legoJsonName), 'utf8'),
+            );
+        }
         const response = await axios.get(`${config.hornbeamBlobUrl}/${legoJsonName}`);
-        console.log('[Lego Service] Fetched from Hornbeam cache');
         return response.data;
     } catch (e) {
         // Cache miss - download fresh data

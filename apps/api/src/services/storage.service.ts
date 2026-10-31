@@ -2,6 +2,7 @@ import { BlobServiceClient } from '@azure/storage-blob';
 import { mkdir, writeFile, unlink } from 'fs/promises';
 import { join } from 'path';
 import { config } from '../config';
+import { assertLocalStorageReady } from './local-storage.service';
 import { processProfilePicture, downloadAndProcessImage } from './image-processing.service';
 
 export interface ProfilePictureUrls {
@@ -26,6 +27,7 @@ function getLocalStorageDir(): string {
  * Ensure the local storage directory exists
  */
 async function ensureLocalStorageDir(): Promise<void> {
+    await assertLocalStorageReady();
     const dir = getLocalStorageDir();
     await mkdir(dir, { recursive: true });
 }

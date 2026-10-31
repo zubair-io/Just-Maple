@@ -17,11 +17,7 @@
       @if (publicNotebookService.notebook()?.logoUrl) {
         <img [src]="publicNotebookService.notebook()!.logoUrl" alt="" class="h-7 w-auto rounded" />
       } @else {
-        <img
-          src="https://hornbeam.justmaple.app/data/assets/justmaple.svg"
-          alt="Maple"
-          class="w-7 h-7"
-        />
+        <img src="/api/storage/assets/justmaple.svg" alt="Maple" class="w-7 h-7" />
       }
       <span class="font-serif font-bold text-base tracking-tight text-[var(--color-text-main)]">{{
         publicNotebookService.notebook()?.displayName || 'Loading...'
