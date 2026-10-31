@@ -206,15 +206,9 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
                 broadcastChatEvent(page.notebookId, threadFlagEvent).catch(console.error);
             }
 
-            // A proactive bot answers messages in its page without an @mention.
-            if (page.proactive?.enabled) {
-                maybeAutoReply({
-                    page,
-                    message,
-                    userId: auth.user._id,
-                    parentMessageId,
-                }).catch((error) => console.error('[Proactive] Auto-reply failed:', error));
-            }
+            maybeAutoReply({ page, message, userId: auth.user._id, parentMessageId }).catch(
+                (error) => console.error('[Bot] Auto-reply failed:', error),
+            );
 
             // Send push notifications
             if (page.notebookId) {
@@ -423,15 +417,12 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
             };
             broadcastChatEvent(params.id, chatEvent).catch(console.error);
 
-            // A proactive bot answers messages in its chat without an @mention.
-            if (messagesPage.proactive?.enabled) {
-                maybeAutoReply({
-                    page: messagesPage,
-                    message,
-                    userId: auth.user._id,
-                    parentMessageId,
-                }).catch((error) => console.error('[Proactive] Auto-reply failed:', error));
-            }
+            maybeAutoReply({
+                page: messagesPage,
+                message,
+                userId: auth.user._id,
+                parentMessageId,
+            }).catch((error) => console.error('[Bot] Auto-reply failed:', error));
 
             if (parentMessageId && body.parentMessageId) {
                 const threadFlagEvent: ChatEvent = {

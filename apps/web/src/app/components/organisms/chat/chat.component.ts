@@ -1,3 +1,4 @@
+import { ChatViewport } from './chat-viewport';
 import {
   Component,
   input,
@@ -13,6 +14,7 @@ import {
   DestroyRef,
   ChangeDetectionStrategy,
   untracked,
+  afterRenderEffect,
 } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
@@ -57,6 +59,9 @@ interface MessageWithGrouping extends Message {
 })
 export class ChatComponent implements AfterViewInit, OnDestroy {
   @ViewChild('messageList') private messageListRef?: ElementRef<HTMLElement>;
+  @ViewChild('messageContent') private messageContentRef?: ElementRef<HTMLElement>;
+  private viewport?: ChatViewport;
+  private historyLoad?: Subscription;
   @ViewChild('editorElement', { static: false }) private editorRef?: ElementRef<HTMLElement>;
 
   private readonly messageService = inject(MessageService);
@@ -76,6 +81,7 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   readonly messages = this.messageService.messagesForTag;
   readonly isLoading = this.messageService.isLoading;
   readonly hasMore = this.messageService.hasMore;
+  readonly loadError = this.messageService.historyError;
   readonly currentUserId = signal<string | null>(null);
   readonly typingUsers = signal<TypingEvent[]>([]);
   readonly showScrollButton = signal(false);
@@ -172,6 +178,11 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   private lastTypingSentAt = 0;
 
   constructor() {
+    afterRenderEffect(() => {
+      this.messages();
+      this.typingNames();
+      this.viewport?.layoutChanged();
+    });
     effect(() => {
       const user = this.authService.user();
       this.currentUserId.set(user?._id || null);
@@ -243,9 +254,18 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
 
   ngAfterViewInit(): void {
     this.initEditor();
+    if (this.messageListRef && this.messageContentRef) {
+      this.viewport = new ChatViewport(
+        this.messageListRef.nativeElement,
+        this.messageContentRef.nativeElement,
+      );
+      if (!this.isLoading()) this.viewport.completeInitialLoad();
+    }
   }
 
   ngOnDestroy(): void {
+    this.historyLoad?.unsubscribe();
+    this.viewport?.dispose();
     this.editor?.destroy();
     this.uiStateService.setChatInputFocused(false);
   }
@@ -398,7 +418,9 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
 
   /** Loads the open chat: this page's messages, or the notebook's default chat without one. */
   private loadMessages(notebookId: string, pageId: string | null): void {
-    // Reset state for the new notebook
+    this.historyLoad?.unsubscribe();
+    this.viewport?.reset();
+    // Reset state for the selected page, including scheduled scroll work.
     this.lastNewestId = null;
     this.isAtBottom = true;
     this.typingUsers.set([]);
@@ -411,13 +433,8 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
     const load = pageId
       ? this.messageService.loadMessagesByPageId(pageId)
       : this.messageService.loadMessages(notebookId);
-    load.subscribe({
-      next: () => {
-        // Scroll to bottom on initial load with longer delay to ensure rendering
-        setTimeout(() => {
-          this.scrollToBottom();
-        }, 300);
-      },
+    this.historyLoad = load.pipe(takeUntil(this.destroy$)).subscribe({
+      next: () => this.viewport?.completeInitialLoad(),
     });
   }
 
@@ -770,15 +787,16 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
 
   loadMore(): void {
     if (!this.hasMore() || this.isLoading()) return;
-    // Keep the reader's place: older messages are added above what they're reading.
-    const el = this.messageListRef?.nativeElement;
-    const fromBottom = el ? el.scrollHeight - el.scrollTop : 0;
-    this.messageService.loadMore().subscribe({
-      next: () =>
-        requestAnimationFrame(() => {
-          if (el) el.scrollTop = el.scrollHeight - fromBottom;
-        }),
-    });
+    this.messageService
+      .loadMore()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: () => this.viewport?.layoutChanged(),
+      });
+  }
+
+  retryLoad(): void {
+    this.loadMessages(this.notebookId(), this.pageId());
   }
 
   trackByMessage(_index: number, message: Message): string {
@@ -786,18 +804,10 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   }
 
   private scrollToBottom(): void {
-    // Use requestAnimationFrame to ensure DOM has updated
-    requestAnimationFrame(() => {
-      setTimeout(() => {
-        if (this.messageListRef?.nativeElement) {
-          const element = this.messageListRef.nativeElement;
-          element.scrollTop = element.scrollHeight;
-          this.isAtBottom = true;
-          this.showScrollButton.set(false);
-          this.newMessageCount.set(0);
-        }
-      });
-    });
+    this.viewport?.followLatest();
+    this.isAtBottom = true;
+    this.showScrollButton.set(false);
+    this.newMessageCount.set(0);
   }
 
   scrollToBottomClicked(): void {
@@ -805,22 +815,12 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   }
 
   onScroll(): void {
-    const el = this.messageListRef?.nativeElement;
-    if (!el) return;
-
-    // Load more when scrolled near top
-    if (el.scrollTop < 100 && this.hasMore() && !this.isLoading()) {
-      this.loadMore();
-    }
-
-    // Track if user is at bottom (within 50px)
-    this.isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50;
-
-    // Hide scroll button and reset count when user reaches bottom
-    if (this.isAtBottom) {
-      this.showScrollButton.set(false);
-      this.newMessageCount.set(0);
-    }
+    if (!this.viewport) return;
+    const atTop = this.viewport.scrolled();
+    this.isAtBottom = this.viewport.atBottom;
+    this.showScrollButton.set(!this.isAtBottom);
+    if (this.isAtBottom) this.newMessageCount.set(0);
+    if (atTop && this.hasMore() && !this.isLoading() && !this.loadError()) this.loadMore();
   }
 
   isOwnMessage(message: Message): boolean {

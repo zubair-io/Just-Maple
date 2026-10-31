@@ -31,6 +31,31 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
     }
 
     describe('GET /api/notebooks/:id/messages', () => {
+        it('does not restart pagination for an unknown or foreign cursor', async () => {
+            const user = await createUserFixture();
+            const notebook = await createNotebookFixture({ createdBy: user._id.toString() });
+            const other = await createNotebookFixture({ createdBy: user._id.toString() });
+            await createMessageFixture({
+                notebookId: notebook._id.toString(),
+                userId: user._id.toString(),
+            });
+            const foreign = await createMessageFixture({
+                notebookId: other._id.toString(),
+                userId: user._id.toString(),
+            });
+            const token = await getAuthToken(user._id.toString(), user.email);
+            for (const before of ['missing-cursor', foreign.id]) {
+                const response = await app.handle(
+                    new Request(
+                        `http://localhost/api/notebooks/${notebook._id}/messages?before=${before}`,
+                        { headers: { Authorization: `Bearer ${token}` } },
+                    ),
+                );
+                expect(response.status).toBe(200);
+                expect(((await response.json()) as { messages: unknown[] }).messages).toEqual([]);
+            }
+        });
+
         it('should return messages for tag', async () => {
             const user = await createUserFixture();
             const tag = await createNotebookFixture({ createdBy: user._id.toString() });

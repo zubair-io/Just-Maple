@@ -20,7 +20,12 @@
   flex: 1;
   overflow-y: auto;
   padding: 16px 0;
-  padding-bottom: 96px;
+  padding-bottom: 16px;
+  overflow-anchor: none;
+  min-height: 0;
+}
+
+.message-content {
   display: flex;
   flex-direction: column;
   gap: 8px;

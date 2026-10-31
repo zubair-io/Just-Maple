@@ -455,7 +455,11 @@ async function handleChatMessage(
 ): Promise<void> {
     switch (action) {
         case 'message': {
-            const { notebookId, content } = payload as { notebookId: string; content: PageContent };
+            const { notebookId, content, pageId } = payload as {
+                notebookId: string;
+                content: PageContent;
+                pageId?: string;
+            };
             if (!notebookId || !content) {
                 ws.send(
                     JSON.stringify({
@@ -482,7 +486,25 @@ async function handleChatMessage(
             const user = await findUserById(context.userId);
 
             // Find or create the messages page for this notebook
-            const messagesPage = await findOrCreateMessagesPage(notebookId, context.userId);
+            const messagesPage = pageId
+                ? await findPageById(pageId, context.userId)
+                : await findOrCreateMessagesPage(notebookId, context.userId);
+            if (
+                !messagesPage ||
+                messagesPage.type !== 'message' ||
+                messagesPage.notebookId !== notebookId
+            ) {
+                ws.send(
+                    JSON.stringify({
+                        channel: 'chat',
+                        event: {
+                            type: 'error',
+                            message: 'Messages page not found in this notebook',
+                        },
+                    }),
+                );
+                return;
+            }
 
             // Create the message in the database
             const message = await createMessage(
@@ -508,12 +530,9 @@ async function handleChatMessage(
 
             broadcastChatEvent(notebookId, chatEvent).catch(console.error);
 
-            // A proactive bot answers messages in its chat without an @mention.
-            if (messagesPage.proactive?.enabled) {
-                maybeAutoReply({ page: messagesPage, message, userId: context.userId }).catch(
-                    (error) => console.error('[Proactive] Auto-reply failed:', error),
-                );
-            }
+            maybeAutoReply({ page: messagesPage, message, userId: context.userId }).catch((error) =>
+                console.error('[Bot] Auto-reply failed:', error),
+            );
 
             // Send push notifications to all notebook members except the author
             getNotebookMembers(notebookId, context.userId)

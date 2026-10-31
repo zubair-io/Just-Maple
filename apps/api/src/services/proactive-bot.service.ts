@@ -117,9 +117,8 @@ export async function whenIdle(pageId: string): Promise<void> {
 // MARK: - Conversation
 
 /**
- * Called after a person posts in a messages page. In a proactive page the proactive bot
- * answers top-level messages and replies to its own posts, unless the message @mentions
- * it (the client invokes it then).
+ * A private one-person/one-bot notebook gets implicit threaded replies. Explicit
+ * proactive pages may answer in the main chat. Mentions are invoked by the client.
  */
 export async function maybeAutoReply(params: {
     page: Page;
@@ -128,25 +127,36 @@ export async function maybeAutoReply(params: {
     parentMessageId?: string;
 }): Promise<void> {
     const { page, message, userId } = params;
-    const proactive = page.proactive;
-    if (!proactive?.enabled || !page.notebookId || message.senderType === 'bot') return;
-    // Only the person whose bot (and API key) and Mac it is gets automatic answers;
-    // other members can still @mention the bot.
-    if (userId !== proactive.ownerUserId) return;
-
-    const userBot = await findUserBotByIdInternal(proactive.userBotId);
-    if (!userBot || userBot.isEnabled === false) return;
+    const proactive = page.proactive?.enabled ? page.proactive : undefined;
+    if (!page.notebookId || message.senderType === 'bot') return;
+    let botId: string;
+    if (proactive) {
+        // Explicit proactive settings keep their existing owner-only main-chat behavior.
+        if (userId !== proactive.ownerUserId) return;
+        botId = proactive.userBotId;
+    } else {
+        const notebook = await findNotebookByIdWithAccess(page.notebookId, userId, 'write');
+        if (!notebook || notebook.sharing.isPublic) return;
+        const people = new Set(notebook.sharing.sharedWith.map((entry) => entry.userId));
+        const bots = new Set(notebook.sharing.sharedBots?.map((entry) => entry.userBotId));
+        // Implicit replies belong only in a private one-person, one-bot conversation.
+        if (people.size !== 1 || !people.has(userId) || bots.size !== 1) return;
+        botId = [...bots][0];
+    }
+    const userBot = await findUserBotByIdInternal(botId);
+    if (!userBot || userBot.userId !== userId || userBot.isEnabled === false) return;
     const text = message.content ? extractTextFromContent(message.content).trim() : '';
     if (!text) return;
     if (new RegExp(`@${escapeRegExp(userBot.handle)}\\b`, 'i').test(text)) return;
 
     let sourceId = message.id;
     let previousMessages: Message[];
-    let replyTopLevel = true;
+    let replyTopLevel = !!proactive;
     if (params.parentMessageId) {
         // Only follow up in threads that started from the bot's own post.
         const parent = await findMessageById(params.parentMessageId);
-        if (!parent || parent.userBotId !== userBot._id) return;
+        if (!parent || parent.pageId !== page.id) return;
+        if (proactive && parent.userBotId !== userBot._id) return;
         sourceId = parent.id;
         replyTopLevel = false;
         const thread = message.threadId ? await findThreadById(message.threadId) : null;
