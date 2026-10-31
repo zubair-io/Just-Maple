@@ -273,7 +273,7 @@ export async function findOwnDataPage(id: string, userId: string): Promise<Page 
 }
 
 export async function createPage(userId: string, data: CreatePageInput): Promise<Page> {
-    console.log('Creating page with data:', data);
+    console.log('[Pages] Creating page', data.type || 'memo');
     const now = new Date();
     const pageType = data.type || 'memo';
     const title = data.title || 'Untitled';
@@ -1004,7 +1004,7 @@ async function generatePageSlugs(notebookId: ObjectId, count: number): Promise<s
 /**
  * Convert Y.js binary state to ProseMirror JSON.
  */
-function yDocStateToJSON(state: Uint8Array): PageContent | null {
+export function yDocStateToJSON(state: Uint8Array): PageContent | null {
     const ydoc = new Y.Doc();
     Y.applyUpdate(ydoc, state);
     const fragment = ydoc.getXmlFragment('prosemirror');

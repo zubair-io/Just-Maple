@@ -86,6 +86,29 @@
 
       <!-- Header Actions (members group, share button) -->
       <div headerActions class="flex items-center gap-2">
+        @if (!isLocal()) {
+          <button
+            type="button"
+            aria-label="Today"
+            title="Today"
+            class="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-border)] bg-transparent text-[var(--color-text-main)] cursor-pointer"
+            (click)="openToday()"
+          >
+            <span class="material-symbols-rounded" aria-hidden="true">today</span>
+          </button>
+          @if (assistancePage()) {
+            <button
+              type="button"
+              aria-label="Ask about this page"
+              title="Ask about this page"
+              class="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-border)] bg-transparent text-[var(--color-primary)] cursor-pointer"
+              (pointerdown)="captureAssistanceSelection()"
+              (click)="assistanceOpen.set(true)"
+            >
+              <span class="material-symbols-rounded" aria-hidden="true">chat_spark</span>
+            </button>
+          }
+        }
         @if (!isLocal() && members().length > 1) {
           <div
             class="flex items-center gap-2 px-2.5 py-1 hover:bg-[var(--color-surface-hover)] rounded-lg cursor-pointer transition-colors"
@@ -527,4 +550,15 @@
     (closed)="closeShareModal()"
     (membersChanged)="onMembersChanged()"
   />
+}
+
+@if (assistanceOpen()) {
+  @if (assistancePage(); as page) {
+    <app-assistance-panel
+      [notebookId]="page.notebookId!"
+      [pageId]="page.id"
+      [selection]="assistanceSelection()"
+      (closed)="assistanceOpen.set(false)"
+    />
+  }
 }
