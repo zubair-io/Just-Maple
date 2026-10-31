@@ -816,3 +816,27 @@ verification before activation. Draft PR321 stays unmerged. Roll back code to
 native/model, resource, Azure or other guest changes. Private receipts are at
 `/tmp/japanese-maple-root-login-20261031/` on Mac and `/root/root-login-20261031-01/`
 in CT131. Already-open clients may need Update/reload.
+
+## Reliable icon loading
+
+Activated frontend-only `reliable-icons-20261031-01`, web source
+`d37f2ffa731305d363049f38045a2a707ef5bde2`, retaining API source
+`0067a05112dd075ada6433fc8df4594db34a7ed5`. Unsupported `chat_spark` rendered as
+several overflowing glyphs; the assistance button now uses `auto_awesome`. The
+450,864-byte bundled Material Symbols font is preloaded and prefetched with the
+app shell. Icon rendering no longer depends on the external Google Fonts request.
+Text fonts retain their existing loading behavior. Source/license/hash and static
+font settings are recorded in `apps/web/public/fonts/README.md`.
+
+Typechecks, precommit, explicit paperbark build, critical font ligatures and built
+cache/hash checks passed. All 119 artifacts verified; both hosts serve exact font
+bytes with the correct MIME, healthy API and anonymous denial. Four services active,
+zero automatic API restarts. Mac relaunched and visually verified all four page
+header icons, then returned to the original Notes list without edits or messages.
+Physical phone UI was not inspected; hosted clients use Update/reload.
+
+Verified NAS snapshot `just-maple-20261031T172131Z.sqlite` preceded activation. Roll
+back code to `root-login-20261031-01`, restart API and preserve live DB/env. Draft
+PR322 remains unmerged. No DNS/native/model/resource/Azure/other guest changes.
+Private receipts: Mac `/tmp/japanese-maple-icons-20261031/`, CT131
+`/root/reliable-icons-20261031-01/`.
