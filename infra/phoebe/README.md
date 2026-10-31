@@ -682,3 +682,28 @@ simulated local outage/public fallback and local recovery using isolated setting
 Broader legacy realtime/kanban tests have 27 failures reproduced unchanged on the
 parent commit (old mocks/API expectations and missing IndexedDB); they are not
 claimed as passing.
+
+## Chat reply placement and history loading
+
+Ordinary bot responses belong in a thread, including implicit responses in private
+notebooks shared with one enabled bot and one person. Human group, public and
+multi-bot chats need an explicit mention, including pages with proactive news enabled.
+Replies to human messages always stay in threads. Unsolicited proactive news and
+briefs retain their separate main-chat posting path.
+
+History loads are fenced against navigation, scoped to the selected page and merged
+with messages arriving during the request. HTTP/socket sends retain that page.
+Unknown/foreign pagination cursors stop instead of restarting from the newest page.
+The viewport follows the bottom only while the reader is there, preserves a visible
+message during older-history insertion and card/image growth, and cancels old scroll
+work on navigation. Main chat and threads expose retryable history failures. Cache
+snapshots are untracked so notebook navigation effects do not restart on each
+message-store update; this is covered by a regression test.
+
+Validation includes the full API suite (985 passed, three existing skips), the
+additional scoped-cursor route test, and focused frontend navigation, concurrent
+arrival, send routing, thread loading and viewport tests. No native binary change.
+
+Accepted follow-on work: Today/Activity with a complete reply workflow and durable
+progress/recovery; page-aware conversations and saved notes; conversational voice
+after those foundations. These remain separate from the chat bug-fix release.

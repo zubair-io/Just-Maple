@@ -12,7 +12,7 @@ describe('interactive bot follow-ups', () => {
     const context = {
       allNotebookBots: () => [{ id: 'bot', handle: 'assistant' }],
       notebookId: () => 'notebook',
-      parentMessage: () => ({ id: 'parent' }),
+      parentMessage: () => ({ id: 'parent', pageId: 'page' }),
       actionPending: signal(false),
       actionError: signal<string | null>(null),
       messageService: { sendMessage },
@@ -31,6 +31,7 @@ describe('interactive bot follow-ups', () => {
     expect(sendMessage).toHaveBeenCalledTimes(1);
     expect(sendMessage).toHaveBeenCalledWith('notebook', expect.objectContaining({ type: 'doc' }), {
       parentMessageId: 'parent',
+      pageId: 'page',
       forceHttp: true,
     });
     saved.next({});

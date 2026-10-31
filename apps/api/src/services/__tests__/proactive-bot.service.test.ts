@@ -106,10 +106,18 @@ beforeEach(() => {
     vi.mocked(findUserBotByIdInternal).mockResolvedValue(bot);
     vi.mocked(findUserBotById).mockResolvedValue(bot);
     vi.mocked(findBotTemplateById).mockResolvedValue(template);
+    vi.mocked(findNotebookByIdWithAccess).mockResolvedValue({
+        _id: 'n1',
+        sharing: {
+            isPublic: false,
+            sharedWith: [{ userId: 'u1', accessLevel: 'owner' }],
+            sharedBots: [{ userBotId: 'bot' }],
+        },
+    } as any);
 });
 
 describe('maybeAutoReply', () => {
-    it('answers a top-level message in the conversation itself', async () => {
+    it('threads human replies even when proactive news is enabled', async () => {
         await maybeAutoReply({
             page,
             message: { id: 'm1', content: doc('What time is practice?') } as any,
@@ -123,15 +131,16 @@ describe('maybeAutoReply', () => {
                 userId: 'u1',
                 context: expect.objectContaining({
                     mentionText: 'What time is practice?',
-                    replyTopLevel: true,
+                    replyTopLevel: false,
                 }),
             }),
         );
     });
 
     it('stays out of the way when the bot is off, mentioned, or the reply is to someone else', async () => {
+        vi.mocked(findUserBotByIdInternal).mockResolvedValueOnce({ ...bot, isEnabled: false });
         await maybeAutoReply({
-            page: { ...page, proactive: { ...page.proactive, enabled: false } },
+            page,
             message: { id: 'm', content: doc('hi') } as any,
             userId: 'u1',
         });
@@ -160,7 +169,11 @@ describe('maybeAutoReply', () => {
     });
 
     it('follows up in a thread started from its own post', async () => {
-        vi.mocked(findMessageById).mockResolvedValue({ id: 'p', userBotId: 'bot' } as any);
+        vi.mocked(findMessageById).mockResolvedValue({
+            id: 'p',
+            pageId: 'page',
+            userBotId: 'bot',
+        } as any);
         await maybeAutoReply({
             page,
             message: { id: 'm', content: doc('yes'), threadId: 't' } as any,
@@ -170,6 +183,60 @@ describe('maybeAutoReply', () => {
         expect(botExecutor.invoke).toHaveBeenCalledWith(
             expect.objectContaining({
                 sourceId: 'p',
+                context: expect.objectContaining({ replyTopLevel: false }),
+            }),
+        );
+    });
+});
+
+describe('ordinary private bot chats', () => {
+    const ordinary = { ...page, proactive: undefined };
+    const message = { id: 'm', pageId: 'page', userId: 'u1', content: doc('hello') } as any;
+    const sharing = {
+        isPublic: false,
+        sharedWith: [{ userId: 'u1', accessLevel: 'owner' }],
+        sharedBots: [{ userBotId: 'bot' }],
+    };
+    it('answers a private one-person one-bot chat in a thread without a mention', async () => {
+        vi.mocked(findNotebookByIdWithAccess).mockResolvedValue({ _id: 'n1', sharing } as any);
+        await maybeAutoReply({ page: ordinary, message, userId: 'u1' });
+        expect(botExecutor.invoke).toHaveBeenCalledWith(
+            expect.objectContaining({
+                sourceId: 'm',
+                context: expect.objectContaining({ replyTopLevel: false }),
+            }),
+        );
+    });
+    it.each([
+        { ...sharing, isPublic: true },
+        { ...sharing, sharedWith: [...sharing.sharedWith, { userId: 'u2', accessLevel: 'read' }] },
+        { ...sharing, sharedBots: [{ userBotId: 'bot' }, { userBotId: 'second' }] },
+        { ...sharing, sharedBots: [] },
+    ])(
+        'leaves public, human group and multi-bot chats quiet unless mentioned: %j',
+        async (sharing) => {
+            vi.mocked(findNotebookByIdWithAccess).mockResolvedValue({ _id: 'n1', sharing } as any);
+            await maybeAutoReply({ page: ordinary, message, userId: 'u1' });
+            await maybeAutoReply({ page, message, userId: 'u1' });
+            expect(botExecutor.invoke).not.toHaveBeenCalled();
+        },
+    );
+    it('continues a direct conversation in its original thread', async () => {
+        vi.mocked(findNotebookByIdWithAccess).mockResolvedValue({ _id: 'n1', sharing } as any);
+        vi.mocked(findMessageById).mockResolvedValue({
+            id: 'parent',
+            pageId: 'page',
+            userId: 'u1',
+        } as any);
+        await maybeAutoReply({
+            page: ordinary,
+            message: { ...message, threadId: 'thread' },
+            userId: 'u1',
+            parentMessageId: 'parent',
+        });
+        expect(botExecutor.invoke).toHaveBeenCalledWith(
+            expect.objectContaining({
+                sourceId: 'parent',
                 context: expect.objectContaining({ replyTopLevel: false }),
             }),
         );

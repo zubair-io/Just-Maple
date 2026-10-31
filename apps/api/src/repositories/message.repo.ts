@@ -125,10 +125,9 @@ export async function findMessagesByPageId(
     // Cursor-based pagination using UUID id
     if (options?.before) {
         // Find the message with this UUID to get its _id for pagination
-        const beforeMessage = await getCollection().findOne({ id: options.before });
-        if (beforeMessage) {
-            query._id = { $lt: beforeMessage._id };
-        }
+        const beforeMessage = await getCollection().findOne({ id: options.before, pageId });
+        if (!beforeMessage) return [];
+        query._id = { $lt: beforeMessage._id };
     }
 
     const limit = options?.limit || 500;
@@ -172,10 +171,12 @@ export async function findMessagesByNotebookId(
     };
 
     if (options?.before) {
-        const beforeMessage = await getCollection().findOne({ id: options.before });
-        if (beforeMessage) {
-            query._id = { $lt: beforeMessage._id };
-        }
+        const beforeMessage = await getCollection().findOne({
+            id: options.before,
+            notebookId: new ObjectId(notebookId),
+        });
+        if (!beforeMessage) return [];
+        query._id = { $lt: beforeMessage._id };
     }
 
     const limit = options?.limit || 500;

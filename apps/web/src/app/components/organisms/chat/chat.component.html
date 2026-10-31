@@ -1,47 +1,59 @@
 <div class="chat-container">
   <!-- Message List -->
-  <div #messageList class="message-list" (scroll)="onScroll()">
-    <!-- Load More Button -->
-    @if (hasMore()) {
-      <div class="load-more">
-        @if (isLoading()) {
-          <span class="loading-text">Loading...</span>
-        } @else {
-          <button type="button" (click)="loadMore()" class="load-more-btn">
-            Load earlier messages
-          </button>
-        }
-      </div>
-    }
-
-    <!-- Messages -->
-    @for (message of messagesWithGrouping(); track trackByMessage($index, message)) {
-      <app-chat-message
-        [message]="message"
-        [isOwn]="isOwnMessage(message)"
-        [isGrouped]="message.isGrouped"
-        [botError]="hasFailedBot(message.id)"
-        [replyingBots]="replyingInThread().get(message.id) ?? []"
-        [sendFailed]="failedSends().has(message.id)"
-        (retrySend)="retrySend(message.id)"
-        (discardSend)="discardSend(message.id)"
-        (threadClicked)="openThread.emit($event)"
-        (replyClicked)="openThread.emit($event)"
-        (followUp)="sendFollowUp($event)"
-      />
-    } @empty {
-      @if (!isLoading()) {
-        <div class="no-messages">
-          <span class="material-symbols-rounded">chat_bubble_outline</span>
-          <p>No messages yet. Start the conversation!</p>
+  <div #messageList class="message-list" (scroll)="onScroll()" [attr.aria-busy]="isLoading()">
+    <div #messageContent class="message-content">
+      @if (loadError(); as error) {
+        <div class="load-more" role="alert">
+          <span>{{ error }}</span>
+          <button type="button" class="load-more-btn" (click)="retryLoad()">Retry</button>
         </div>
       }
-    }
+      @if (isLoading() && messages().length === 0) {
+        <div class="no-messages" role="status">Loading messages…</div>
+      }
+      <!-- Load More Button -->
+      @if (hasMore()) {
+        <div class="load-more">
+          @if (isLoading()) {
+            <span class="loading-text">Loading...</span>
+          } @else {
+            <button type="button" (click)="loadMore()" class="load-more-btn">
+              Load earlier messages
+            </button>
+          }
+        </div>
+      }
 
-    <!-- Typing Indicator -->
-    @if (typingNames().length > 0) {
-      <app-chat-typing [names]="typingNames()" />
-    }
+      <!-- Messages -->
+      @for (message of messagesWithGrouping(); track trackByMessage($index, message)) {
+        <app-chat-message
+          [message]="message"
+          [attr.data-message-id]="message.id"
+          [isOwn]="isOwnMessage(message)"
+          [isGrouped]="message.isGrouped"
+          [botError]="hasFailedBot(message.id)"
+          [replyingBots]="replyingInThread().get(message.id) ?? []"
+          [sendFailed]="failedSends().has(message.id)"
+          (retrySend)="retrySend(message.id)"
+          (discardSend)="discardSend(message.id)"
+          (threadClicked)="openThread.emit($event)"
+          (replyClicked)="openThread.emit($event)"
+          (followUp)="sendFollowUp($event)"
+        />
+      } @empty {
+        @if (!isLoading()) {
+          <div class="no-messages">
+            <span class="material-symbols-rounded">chat_bubble_outline</span>
+            <p>No messages yet. Start the conversation!</p>
+          </div>
+        }
+      }
+
+      <!-- Typing Indicator -->
+      @if (typingNames().length > 0) {
+        <app-chat-typing [names]="typingNames()" />
+      }
+    </div>
   </div>
 
   <!-- Scroll to Bottom Button -->
