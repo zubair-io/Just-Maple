@@ -794,3 +794,25 @@ chat and pointer selection in a thread; scratch composers cleared, no messages s
 Hosted phone clients apply Update/reload; no native binary change. Verified NAS
 snapshot `just-maple-20261031T053650Z.sqlite` preceded activation. Draft PR320
 remains unmerged; no DNS/resource/model/Azure/other guest change. Code-only rollback to `assistance-20261031-01`; retain live DB/environment.
+
+## Root login redirect
+
+Signed-out visits to `/` now redirect to `/login` on the current server after saved
+authentication finishes restoring. Signed-in visitors retain the notebook landing
+page. Only the root child route changes; notebook/public/local routes keep their
+existing guards.
+
+Activated frontend-only `root-login-20261031-01`, web source
+`6c3fe27d30a9afd9eadd56ac4bffca210c7dea98`; API source remains
+`0067a05112dd075ada6433fc8df4594db34a7ed5`. All 217 manifest artifacts verified;
+four services active and zero automatic API restarts. Both HTTPS hosts pass health
+and anonymous-access checks. The in-app browser applied Update and a fresh LAN root
+visit visibly reached login without entering credentials.
+
+Three routing regressions, shared/web typechecks, precommit and explicit paperbark
+build passed. NAS snapshot `just-maple-20261031T171616Z.sqlite` passed integrity/SHA
+verification before activation. Draft PR321 stays unmerged. Roll back code to
+`mention-picker-20261031-01` and restart only API, retaining live DB/env. No DNS,
+native/model, resource, Azure or other guest changes. Private receipts are at
+`/tmp/japanese-maple-root-login-20261031/` on Mac and `/root/root-login-20261031-01/`
+in CT131. Already-open clients may need Update/reload.
