@@ -1,5 +1,30 @@
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
+import { config } from '../config';
+
+/** Exact API root, restricted to RFC1918 literals; metadata/loopback are never exempted. */
+function isAllowedPrivateBotRoot(base: string): boolean {
+    const url = new URL(base);
+    if (isIP(url.hostname) !== 4) return false;
+    const [a, b] = url.hostname.split('.').map(Number);
+    if (!(a === 10 || (a === 172 && b! >= 16 && b! <= 31) || (a === 192 && b === 168)))
+        return false;
+    return config.botAllowedPrivateEndpoints.some((entry) => {
+        try {
+            const allowed = new URL(entry);
+            return (
+                !allowed.username &&
+                !allowed.password &&
+                !allowed.search &&
+                !allowed.hash &&
+                ['http:', 'https:'].includes(allowed.protocol) &&
+                `${allowed.origin}${allowed.pathname.replace(/\/+$/, '')}` === base
+            );
+        } catch {
+            return false;
+        }
+    });
+}
 
 /**
  * Guards for URLs the server fetches on a user's behalf (bot HTTP actions, custom AI
@@ -99,7 +124,7 @@ export function validateUrl(url: string): void {
 /**
  * True for servers on the user's own machine or home network: localhost, private and
  * link-local addresses, and names like "nas.local" or a bare "studio". The API can't
- * reach these, and must never try.
+ * reach these unless an exact AI root was explicitly enabled by its administrator.
  */
 export function isLocalHost(hostname: string): boolean {
     const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
@@ -114,7 +139,7 @@ export function isLocalHost(hostname: string): boolean {
 /**
  * Normalizes the API root of an OpenAI-compatible server ("https://host/v1"). Accepts a
  * pasted ".../chat/completions" URL too. The server calls it, so it must be an internet
- * address; http is allowed (the key then travels unencrypted, which the UI warns about).
+ * address by default; an exact deployment-owned RFC1918 root may be enabled. HTTP is allowed.
  */
 export function normalizeEndpointBaseUrl(input: string): string {
     let url: URL;
@@ -127,20 +152,38 @@ export function normalizeEndpointBaseUrl(input: string): string {
     if (url.search || url.hash) throw new Error('The endpoint URL cannot have ? or # parts');
     if (!['http:', 'https:'].includes(url.protocol))
         throw new Error('The endpoint URL must start with http:// or https://');
+    const path = url.pathname.replace(/\/+$/, '').replace(/\/chat\/completions$/, '');
+    const base = `${url.origin}${path}`;
+    if (isAllowedPrivateBotRoot(base)) return base;
     if (isLocalHost(url.hostname))
         throw new Error(
-            "The server can't reach your own machine or home network. Expose the AI server with a tunnel (for example Tailscale Funnel or Cloudflare Tunnel) and use that URL.",
+            'This LAN AI endpoint must be enabled by the server administrator. Use an enabled server URL or a public tunnel URL.',
         );
     validateUrl(url.toString());
-    const path = url.pathname.replace(/\/+$/, '').replace(/\/chat\/completions$/, '');
-    return `${url.origin}${path}`;
+    return base;
 }
 
 /** Normalizes a server URL and checks its name doesn't point into a private network. */
 export async function resolveEndpoint(input: string): Promise<string> {
     const baseUrl = normalizeEndpointBaseUrl(input);
-    await assertPublicHost(baseUrl);
+    if (!isAllowedPrivateBotRoot(baseUrl)) await assertPublicHost(baseUrl);
     return baseUrl;
+}
+
+/** Recheck at the network boundary. The LAN exemption only covers model discovery/inference. */
+export async function assertBotRequestUrl(input: string): Promise<void> {
+    const url = new URL(input);
+    if (url.username || url.password) throw new Error('Put the API key in its own field');
+    const suffix = ['/models', '/chat/completions'].find((part) => url.pathname.endsWith(part));
+    if (
+        suffix &&
+        !url.search &&
+        !url.hash &&
+        isAllowedPrivateBotRoot(`${url.origin}${url.pathname.slice(0, -suffix.length)}`)
+    )
+        return;
+    validateUrl(input);
+    await assertPublicHost(input);
 }
 
 /**

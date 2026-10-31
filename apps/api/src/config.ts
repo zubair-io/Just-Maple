@@ -8,6 +8,13 @@ export const config = {
     databasePath: process.env.DATABASE_PATH || './storage/just-maple.sqlite',
     backgroundJobsEnabled: process.env.DISABLE_BACKGROUND_JOBS !== 'true',
     serverSearchEnabled: process.env.SERVER_SEARCH_ENABLED === 'true',
+    // Deployment-owned AI roots only; never supplied by a client request.
+    get botAllowedPrivateEndpoints() {
+        return (process.env.BOT_ALLOWED_PRIVATE_ENDPOINTS || '')
+            .split(',')
+            .map((url) => url.trim())
+            .filter(Boolean);
+    },
     mongodbUri: process.env.MONGODB_URI || 'mongodb://192.168.0.244:27017/justmaple',
     redisUrl: process.env.REDIS_URL,
     jwtSecret: process.env.JWT_SECRET || 'dev-secret-change-in-production',

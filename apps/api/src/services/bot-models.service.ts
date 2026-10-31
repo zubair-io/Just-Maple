@@ -1,5 +1,6 @@
 import { isBotModel, type BotModelOption, type BotProvider } from '@maple/shared';
 import type { HttpSend } from './llm-tool-loop.service';
+import { assertBotRequestUrl } from '../utils/url-safety';
 
 export class BotModelsError extends Error {
     constructor(
@@ -55,6 +56,7 @@ export async function listBotModels(
                 url.searchParams.set('limit', '1000');
                 if (after) url.searchParams.set('after_id', after);
             }
+            if (provider === 'openai-compatible') await assertBotRequestUrl(url.toString());
             const response = send
                 ? await send({ method: 'GET', url: url.toString(), headers }).then((reply) => ({
                       ok: reply.status >= 200 && reply.status < 300,

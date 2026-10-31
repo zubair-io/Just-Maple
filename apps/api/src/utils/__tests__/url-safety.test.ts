@@ -1,10 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
     isLocalHost,
     isPrivateAddress,
     normalizeEndpointBaseUrl,
     validateUrl,
+    resolveEndpoint,
+    assertBotRequestUrl,
 } from '../url-safety';
+
+afterEach(() => vi.unstubAllEnvs());
 
 describe('url safety', () => {
     it('recognizes private and loopback addresses, in any spelling', () => {
@@ -65,5 +69,42 @@ describe('url safety', () => {
         for (const host of ['localhost', '127.0.0.1', '[::1]', '10.0.0.5', 'nas.local', 'studio'])
             expect(isLocalHost(host)).toBe(true);
         for (const host of ['openrouter.ai', '8.8.8.8']) expect(isLocalHost(host)).toBe(false);
+    });
+
+    it('allows only the administrator-configured LAN AI root and inference/discovery paths', async () => {
+        vi.stubEnv('BOT_ALLOWED_PRIVATE_ENDPOINTS', 'http://10.0.0.9:8080/v1');
+        expect(await resolveEndpoint('http://10.0.0.9:8080/v1/chat/completions')).toBe(
+            'http://10.0.0.9:8080/v1',
+        );
+        await expect(
+            assertBotRequestUrl('http://10.0.0.9:8080/v1/models'),
+        ).resolves.toBeUndefined();
+        await expect(
+            assertBotRequestUrl('http://10.0.0.9:8080/v1/chat/completions'),
+        ).resolves.toBeUndefined();
+        for (const url of [
+            'http://10.0.0.8:8080/v1/models',
+            'http://10.0.0.9:8081/v1/models',
+            'http://10.0.0.9:8080/admin',
+            'http://10.0.0.9:8080/v1/models?redirect=1',
+            'http://10.0.0.9:8080/v1-extra/models',
+        ]) {
+            await expect(assertBotRequestUrl(url)).rejects.toThrow();
+        }
+        expect(() => validateUrl('http://10.0.0.9:8080/v1')).toThrow('private');
+    });
+
+    it('does not exempt metadata/loopback or retain permission after the allowlist is removed', async () => {
+        vi.stubEnv(
+            'BOT_ALLOWED_PRIVATE_ENDPOINTS',
+            'http://169.254.169.254/v1,http://127.0.0.1/v1,http://10.0.0.9:8080/v1',
+        );
+        await expect(resolveEndpoint('http://169.254.169.254/v1')).rejects.toThrow();
+        await expect(resolveEndpoint('http://127.0.0.1/v1')).rejects.toThrow();
+        await resolveEndpoint('http://10.0.0.9:8080/v1');
+        vi.stubEnv('BOT_ALLOWED_PRIVATE_ENDPOINTS', '');
+        await expect(
+            assertBotRequestUrl('http://10.0.0.9:8080/v1/chat/completions'),
+        ).rejects.toThrow();
     });
 });
