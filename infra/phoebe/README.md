@@ -15,8 +15,8 @@ migration and hostnames were explicitly authorized; **do not merge to main**.
 | Storage               | `local`: 16 GiB root + 64 GiB managed `/var/lib/just-maple`, backup enabled                     |
 | LAN                   | DHCP `192.168.1.179/23`, gateway `192.168.1.1`; reserve this lease for permanent use            |
 | API                   | Non-root `just-maple-api`, bound to `127.0.0.1:7071`                                            |
-| Application release   | `/opt/just-maple/current` → `mobile-pages-20261030-01`                                          |
-| Runtime source        | API `ff6bc7d5af124dd09c23e9e5d776e8629e07e7aa`; web `333534c7ea65d70fad0ecb00c500c3eaf9865e65`  |
+| Application release   | `/opt/just-maple/current` → `server-bots-20261031-01`                                           |
+| Runtime source        | API/web `e3ba6098b7647f8d7cecd3de33994b501b6b04d4`                                              |
 | Database              | `/var/lib/just-maple/production-20261029.sqlite`, WAL/FULL                                      |
 | Media files           | `/mnt/just-maple/media` on the supplied NFS share; Azure originals retained for recovery        |
 | Native search         | `just-maple-search`, private `/run/just-maple-search/worker.sock`                               |
@@ -912,3 +912,48 @@ Do not switch back to Azure-only storage after new NFS uploads or restore a stal
 database without reconciliation. Original config/env, media manifest and operator
 receipts are protected in CT131 `/root/nfs-media-20261031/`, on Phoebe in its existing
 provisioning directory, and on Mac `/tmp/japanese-maple-nfs-20261031/`.
+
+## Server-side local bots — October 31, 2026
+
+Release `server-bots-20261031-01` runs local AI requests from CT131 directly.
+The deployment-only `BOT_ALLOWED_PRIVATE_ENDPOINTS` is a comma-separated list of
+exact HTTP(S) API roots using RFC1918 IPv4 literals. Set it in the protected API
+environment and restart the API. It cannot be enabled through client bot settings.
+Only `/models` and `/chat/completions` beneath an approved root receive this
+exception; other hosts, ports, paths, query strings, loopback and metadata addresses
+remain blocked. Generic bot HTTP actions retain the public-address restriction;
+redirects remain refused. Credentials stay in saved server-side bot configuration.
+
+Phoebe approves the user-supplied `http://192.168.0.23:8080/v1`. Both `@flint` and
+`@strata` now use its available `qwen3.8-flash-next-coder-iq1_m` model. Flint's old
+`localhost:11434`/`flint:latest` configuration was replaced; its name, handle,
+instructions, sharing and enabled state were preserved. Strata already had the
+correct URL, model and credential; that credential was reused only for Flint's
+connection to the same server. All six other bot documents were unchanged.
+The address is deployment configuration, not an application default.
+
+Verified from CT131 through the saved-credential models API and the checked chat
+transport: both bots list their configured model and return a visible synthetic
+reply (Strata 1.8 seconds, Flint 1.0 second). No user conversation or private content
+was sent, and no chat messages were created. This checks plain completions, not
+every tool-calling workflow. CT130's Strata service is active; no CT130 configuration
+or resource changes were made. No Mac relay is needed for inference.
+
+All 119 release artifact hashes and both HTTPS hosts passed health/auth checks.
+NFS existing-file hashes, a new synthetic upload/read/remove, recording ranges and
+177,862 retained archive imports passed again. API/search/tunnel/Nginx are active,
+with zero automatic API restarts. Native binaries/models/resource limits are
+unchanged. Full API suite: 1,022 passed/three existing skips; shared/web typechecks,
+API/explicit paperbark builds and precommit passed. One existing revision race test
+failed initially, then passed alone and in the final full suite without code changes.
+Draft PR324 is stacked on PR323 and remains unmerged.
+
+Pre-change NAS snapshot `just-maple-20261031T180507Z.sqlite` passed integrity/SHA
+verification. Protected prior environment and bot-body snapshots are in CT131
+`/root/server-bots-20261031/`; operator receipts are there and under Phoebe's
+`/root/just-maple-provision-20261029/server-bots-20261031/`. For rollback, preserve the
+live database/NFS configuration. Restore only Flint's previous configuration through
+the owner API after comparing it with the saved snapshot and checking for newer
+user edits; never overwrite all bot documents or restore a stale database. Then
+restore the protected `api-before.env`, select `nfs-media-20261031-01`, and restart
+only the API. The previous release rejects LAN AI endpoints. No DNS or main merge.

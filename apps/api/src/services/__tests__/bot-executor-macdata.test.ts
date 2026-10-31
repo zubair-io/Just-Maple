@@ -246,6 +246,25 @@ describe('bots with Mac data', () => {
             vi.unstubAllGlobals();
         });
 
+        it('executes an approved LAN bot from the server through the ordinary tool/reply flow', async () => {
+            vi.stubEnv('BOT_ALLOWED_PRIVATE_ENDPOINTS', 'http://10.0.0.9:8080/v1');
+            userBot.config.baseUrl = 'http://10.0.0.9:8080/v1';
+            const fetchMock = vi
+                .fn()
+                .mockResolvedValue(reply({ role: 'assistant', content: 'From the LAN server.' }));
+            vi.stubGlobal('fetch', fetchMock);
+            try {
+                await new BotExecutorService().execute('invocation');
+                expect(fetchMock.mock.calls[0]![0]).toBe(
+                    'http://10.0.0.9:8080/v1/chat/completions',
+                );
+                expect(createMessageInThread).toHaveBeenCalled();
+            } finally {
+                vi.unstubAllEnvs();
+                vi.unstubAllGlobals();
+            }
+        });
+
         it("refuses a server on the user's own machine instead of calling it", async () => {
             userBot.config.baseUrl = 'http://localhost:11434/v1';
             const fetchMock = vi.fn();

@@ -285,10 +285,9 @@
                 placeholder="https://openrouter.ai/api/v1"
               />
               <p class="field-hint">
-                The API root of any OpenAI-compatible server on the internet. "/chat/completions" is
-                added for you. http:// works, but sends your API key unencrypted. For a server on
-                your own machine, like Ollama, use a tunnel URL such as Tailscale Funnel or
-                Cloudflare Tunnel.
+                The JapaneseMaple server connects to this OpenAI-compatible API root.
+                "/chat/completions" is added for you. LAN addresses must be enabled by your server
+                administrator.
               </p>
               @if (isInsecureUrl(baseUrl())) {
                 <div class="warning-box url-warning" role="alert">
@@ -529,9 +528,8 @@
                 placeholder="https://openrouter.ai/api/v1"
               />
               <p class="field-hint">
-                Internet servers only. For a server on your own machine, like Ollama, use a tunnel
-                URL such as Tailscale Funnel or Cloudflare Tunnel. Changing the server needs the API
-                key entered again.
+                The JapaneseMaple server connects to this address. LAN addresses must be enabled by
+                your server administrator. Changing the server needs the API key entered again.
               </p>
               @if (isInsecureUrl(editBaseUrl())) {
                 <div class="warning-box url-warning" role="alert">
