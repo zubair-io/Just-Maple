@@ -696,7 +696,9 @@ with messages arriving during the request. HTTP/socket sends retain that page.
 Unknown/foreign pagination cursors stop instead of restarting from the newest page.
 The viewport follows the bottom only while the reader is there, preserves a visible
 message during older-history insertion and card/image growth, and cancels old scroll
-work on navigation. Main chat and threads expose retryable history failures.
+work on navigation. Main chat and threads expose retryable history failures. Cache
+snapshots are untracked so notebook navigation effects do not restart on each
+message-store update; this is covered by a regression test.
 
 Validation includes the full API suite (985 passed, three existing skips), the
 additional scoped-cursor route test, and focused frontend navigation, concurrent
