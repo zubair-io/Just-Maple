@@ -27,6 +27,9 @@ function shouldOverrideTrailingSpace(editor: Editor): boolean {
 export const Mention = Node.create<MentionOptions>({
   name: 'mention',
 
+  // The picker must handle Enter before the composer's send shortcut.
+  priority: 1000,
+
   addOptions() {
     return {
       HTMLAttributes: {},
@@ -99,9 +102,11 @@ export const Mention = Node.create<MentionOptions>({
       },
       type: {
         default: 'bot',
-        parseHTML: (element) => element.getAttribute('data-type') || 'bot',
+        parseHTML: (element) =>
+          element.getAttribute('data-mention-type') ||
+          (element.getAttribute('data-type') === 'user' ? 'user' : 'bot'),
         renderHTML: (attributes) => {
-          return { 'data-type': attributes['type'] };
+          return { 'data-mention-type': attributes['type'] };
         },
       },
     };
@@ -111,6 +116,12 @@ export const Mention = Node.create<MentionOptions>({
     return [
       {
         tag: `span[data-type="mention"]`,
+      },
+      {
+        tag: `span[data-type="bot"][data-id][data-handle]`,
+      },
+      {
+        tag: `span[data-type="user"][data-id][data-handle]`,
       },
     ];
   },

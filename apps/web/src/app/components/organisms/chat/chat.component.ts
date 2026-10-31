@@ -1,3 +1,4 @@
+import { exitSuggestion } from '@tiptap/suggestion';
 import { ChatViewport } from './chat-viewport';
 import {
   Component,
@@ -30,7 +31,7 @@ import { ChatMessageComponent } from './chat-message.component';
 import { ChatTypingComponent } from './chat-typing.component';
 import { BotActivityService } from '../../../services/bot-activity.service';
 import { MentionSuggestionComponent } from './mention-suggestion.component';
-import { Mention, type MentionNodeAttrs } from './extensions/mention';
+import { Mention, MentionPluginKey, type MentionNodeAttrs } from './extensions/mention';
 import type { Message, PageContent, TypingEvent, ChatEvent } from '@maple/shared';
 import { extractMentions, extractText } from '@maple/shared';
 import { Subscription, Subject, takeUntil, filter, combineLatest, switchMap, of } from 'rxjs';
@@ -89,7 +90,10 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
 
   // Mention autocomplete state
   readonly showMentionSuggestions = signal(false);
-  readonly mentionSuggestions = signal<BotSuggestion[]>([]);
+  private readonly mentionQuery = signal('');
+  readonly mentionSuggestions = computed(() =>
+    BotService.filterBots(this.allNotebookBots(), this.mentionQuery()),
+  );
   readonly mentionSuggestionsLoading = signal(false);
   readonly mentionPosition = signal<{ top: number; left: number }>({ top: 0, left: 0 });
   readonly mentionPositionAbove = signal(false);
@@ -108,7 +112,7 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   );
 
   mentionCommand: ((props: Record<string, unknown>) => void) | null = null;
-  private readonly mentionSearch$ = new Subject<string>();
+  @ViewChild(MentionSuggestionComponent) private mentionList?: MentionSuggestionComponent;
   private readonly destroy$ = new Subject<void>();
 
   // Bot invocation tracking
@@ -241,15 +245,6 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
       this.destroy$.next();
       this.destroy$.complete();
     });
-
-    // Setup mention search with client-side filtering (no debounce needed)
-    this.mentionSearch$.pipe(takeUntil(this.destroy$)).subscribe({
-      next: (query) => {
-        const filtered = BotService.filterBots(this.allNotebookBots(), query);
-        this.mentionSuggestions.set(filtered);
-        this.mentionSuggestionsLoading.set(false);
-      },
-    });
   }
 
   ngAfterViewInit(): void {
@@ -309,8 +304,8 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
           },
           suggestion: {
             items: ({ query }) => {
-              // Trigger search - results handled async via mentionSearch$
-              this.mentionSearch$.next(query);
+              // Keep filtering reactive while the notebook bot list loads.
+              this.mentionQuery.set(query);
               return [];
             },
             render: () => {
@@ -327,7 +322,7 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
                 onKeyDown: (props) => {
                   const key = props.event.key;
                   if (key === 'Escape') {
-                    this.showMentionSuggestions.set(false);
+                    this.onMentionDismissed();
                     return true;
                   }
                   // With nothing to pick, Enter closes the list and sends as usual.
@@ -335,15 +330,11 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
                     this.showMentionSuggestions.set(false);
                     return false;
                   }
-                  // Consume Enter and arrow keys so ProseMirror doesn't handle them
-                  if (key === 'Enter' || key === 'ArrowUp' || key === 'ArrowDown') {
-                    return true;
-                  }
-                  return false;
+                  return this.mentionList?.onKeyDown(props.event) ?? false;
                 },
                 onExit: () => {
                   this.showMentionSuggestions.set(false);
-                  this.mentionSuggestions.set([]);
+                  this.mentionQuery.set('');
                   this.mentionCommand = null;
                 },
               };
@@ -414,6 +405,7 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
 
   onMentionDismissed(): void {
     this.showMentionSuggestions.set(false);
+    if (this.editor) exitSuggestion(this.editor.view, MentionPluginKey);
   }
 
   /** Loads the open chat: this page's messages, or the notebook's default chat without one. */
