@@ -1,0 +1,50 @@
+<div
+  class="mention-dropdown bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg shadow-lg overflow-hidden"
+  role="listbox"
+  aria-label="Bot mentions"
+>
+  @for (item of items(); track item.id; let i = $index) {
+    <button
+      type="button"
+      class="w-full flex items-center gap-3 px-3 py-2 hover:bg-[var(--color-surface-hover)] transition-colors text-left"
+      [class.bg-[var(--color-surface-hover)]]="i === selectedIndex()"
+      (pointerdown)="$event.preventDefault()"
+      (click)="selectItem(item)"
+      role="option"
+      [attr.aria-selected]="i === selectedIndex()"
+      (mouseenter)="selectedIndex.set(i)"
+    >
+      <app-profile-avatar
+        [email]="item.ownerId + '@bot'"
+        [displayName]="item.ownerName"
+        [profilePictureUrl]="item.avatar"
+        size="sm"
+        [showBorder]="false"
+      />
+      <div class="flex-1 min-w-0">
+        <div class="text-[var(--color-text-main)] font-medium truncate">
+          @{{ item.handle }}
+          @if (hasDuplicateHandle()(item.handle)) {
+            <span class="text-[var(--color-text-muted)] font-normal"> ({{ item.ownerName }}) </span>
+          }
+        </div>
+        @if (item.displayName && item.displayName !== item.handle) {
+          <div class="text-[var(--color-text-muted)] text-sm truncate">
+            {{ item.displayName }}
+          </div>
+        }
+      </div>
+      <span
+        class="text-xs px-2 py-0.5 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)]"
+      >
+        bot
+      </span>
+    </button>
+  }
+  @if (items().length === 0 && !isLoading()) {
+    <div class="px-3 py-2 text-[var(--color-text-muted)] text-sm">No bots found</div>
+  }
+  @if (isLoading()) {
+    <div class="px-3 py-2 text-[var(--color-text-muted)] text-sm">Loading...</div>
+  }
+</div>

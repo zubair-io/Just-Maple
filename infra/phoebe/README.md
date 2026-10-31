@@ -770,3 +770,27 @@ Rollback: select `chat-loading-20261031-02`, restart only `just-maple-api`, and 
 live DB/env plus additive collections/indexes. Pending new assistance is retained for
 resumption when compatible code returns; interrupted effects are not replayed. Draft
 PR319 remains unmerged. No DNS/main/other guest/resource/model/Azure change.
+
+## Mention picker recovery
+
+Chat and thread composers share in-flight notebook bot lookups instead of treating a
+second subscriber as an empty result. Cancellation releases the lookup; invalidated
+requests cannot overwrite refreshed names. An open picker reacts to bots arriving
+later. Keyboard events go to the active picker before the send shortcut; pointer
+selection preserves editor focus, and copied/pasted mentions preserve bot identity.
+Escape dismisses the picker and Shift+Enter retains newline behavior. Thread setup
+keeps incidental signal reads out of the navigation effect.
+
+Validation: real editor/picker integration in both composers, late bot arrival,
+concurrent/cancelled/invalidated lookups, rename and existing message/thread-loading
+regressions (27 passed); shared/web typechecks, precommit and explicit paperbark
+build pass. Activated `mention-picker-20261031-01`, frontend source
+`01e0a499a02253f6996032fe2fea670d91f171cf`, API source
+`0067a05112dd075ada6433fc8df4594db34a7ed5` retained. All 116 manifest artifacts
+verified; four services active, zero automatic API restarts, both hostnames pass
+health/auth/privacy/history/graph/Today checks and archive count remains 177,862.
+Mac applied Update after relaunch and visibly verified keyboard selection in main
+chat and pointer selection in a thread; scratch composers cleared, no messages sent.
+Hosted phone clients apply Update/reload; no native binary change. Verified NAS
+snapshot `just-maple-20261031T053650Z.sqlite` preceded activation. Draft PR320
+remains unmerged; no DNS/resource/model/Azure/other guest change. Code-only rollback to `assistance-20261031-01`; retain live DB/environment.
