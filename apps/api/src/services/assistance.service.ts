@@ -104,7 +104,7 @@ export async function sendAssistance(
     const now = new Date();
     const question = input.text.trim();
     if (!question) throw new AssistanceError(400, 'Write or record a message first.');
-    const questionMessageId = assistanceId(taskId, 'question');
+    const questionMessageId = taskId + ':0-question';
     const message = await putAssistanceMessage({
         _id: questionMessageId,
         userId,

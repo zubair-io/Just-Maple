@@ -170,7 +170,7 @@ export async function conversationMessages(
                 conversationId,
                 userId,
                 status: 'completed',
-                ...cut('completedAt', cursor?.id.replace(/:answer$/, '') || ''),
+                ...cut('completedAt', cursor?.id.replace(/:(answer|0-question)$/, '') || ''),
             })
             .sort({ completedAt: -1, _id: -1 })
             .limit(limit)

@@ -482,4 +482,30 @@ describe('durable private assistance', () => {
         };
         expect(hidden.followUps).toEqual([]);
     });
+    it('pages a question and answer deterministically when their timestamps tie', async () => {
+        const conversation = await open(),
+            sent = await send(conversation.id);
+        const task = (await findAssistanceTask(sent.id))!;
+        await claimAssistance('worker');
+        await completeAssistance(
+            sent.id,
+            'worker',
+            {
+                id: sent.id + ':answer',
+                conversationId: conversation.id,
+                role: 'assistant',
+                content: { type: 'doc', content: [] },
+                createdAt: task.createdAt.toISOString(),
+            },
+            [],
+        );
+        await testDb
+            .collection<TaskDoc>('assistance_tasks')
+            .updateOne({ _id: sent.id }, { $set: { completedAt: task.createdAt } });
+        const latest = await conversationMessages(conversation.id, userId, undefined, 1);
+        expect(latest[0]?.role).toBe('assistant');
+        const older = await conversationMessages(conversation.id, userId, latest[0]!._id, 1);
+        expect(older[0]?.role).toBe('user');
+        expect(await conversationMessages(conversation.id, userId, older[0]!._id, 1)).toEqual([]);
+    });
 });
