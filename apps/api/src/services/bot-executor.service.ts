@@ -1075,17 +1075,8 @@ export class BotExecutorService {
     ): Promise<{ threadId?: string; messageId: string }> {
         const source = await findMessageById(invocation.sourceId);
         if (!source) throw new Error('Source message not found');
-        if (invocation.context.replyTopLevel) {
-            const page = await findPageByIdForBot(source.pageId);
-            if (
-                page?.proactive?.enabled &&
-                page.proactive.userBotId === userBot._id &&
-                page.proactive.ownerUserId === invocation.userId
-            ) {
-                const message = await this.postTopLevel(page, userBot, template, content, ctx);
-                return { messageId: message.id };
-            }
-        }
+        // Human-triggered responses always belong to their source thread. Proactive
+        // news and briefs post independently through runProactive/postTopLevel.
         // Get or create thread for the parent message
         const thread = await getOrCreateThread({
             parentMessageId: invocation.sourceId,

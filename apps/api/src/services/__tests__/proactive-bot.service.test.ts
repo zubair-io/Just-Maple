@@ -106,10 +106,18 @@ beforeEach(() => {
     vi.mocked(findUserBotByIdInternal).mockResolvedValue(bot);
     vi.mocked(findUserBotById).mockResolvedValue(bot);
     vi.mocked(findBotTemplateById).mockResolvedValue(template);
+    vi.mocked(findNotebookByIdWithAccess).mockResolvedValue({
+        _id: 'n1',
+        sharing: {
+            isPublic: false,
+            sharedWith: [{ userId: 'u1', accessLevel: 'owner' }],
+            sharedBots: [{ userBotId: 'bot' }],
+        },
+    } as any);
 });
 
 describe('maybeAutoReply', () => {
-    it('answers a top-level message in the conversation itself', async () => {
+    it('threads human replies even when proactive news is enabled', async () => {
         await maybeAutoReply({
             page,
             message: { id: 'm1', content: doc('What time is practice?') } as any,
@@ -123,15 +131,16 @@ describe('maybeAutoReply', () => {
                 userId: 'u1',
                 context: expect.objectContaining({
                     mentionText: 'What time is practice?',
-                    replyTopLevel: true,
+                    replyTopLevel: false,
                 }),
             }),
         );
     });
 
     it('stays out of the way when the bot is off, mentioned, or the reply is to someone else', async () => {
+        vi.mocked(findUserBotByIdInternal).mockResolvedValueOnce({ ...bot, isEnabled: false });
         await maybeAutoReply({
-            page: { ...page, proactive: { ...page.proactive, enabled: false } },
+            page,
             message: { id: 'm', content: doc('hi') } as any,
             userId: 'u1',
         });
@@ -208,6 +217,7 @@ describe('ordinary private bot chats', () => {
         async (sharing) => {
             vi.mocked(findNotebookByIdWithAccess).mockResolvedValue({ _id: 'n1', sharing } as any);
             await maybeAutoReply({ page: ordinary, message, userId: 'u1' });
+            await maybeAutoReply({ page, message, userId: 'u1' });
             expect(botExecutor.invoke).not.toHaveBeenCalled();
         },
     );

@@ -281,7 +281,7 @@ describe('bots with Mac data', () => {
         expect(createTopLevelBotMessage).not.toHaveBeenCalled();
     });
 
-    it('answers in the conversation itself on a proactive page', async () => {
+    it('threads human replies on proactive pages despite the legacy top-level flag', async () => {
         invocation.context.replyTopLevel = true;
         vi.mocked(findPageByIdForBot).mockResolvedValue({
             id: 'page',
@@ -289,10 +289,8 @@ describe('bots with Mac data', () => {
             proactive: { enabled: true, userBotId: userBot._id, ownerUserId: invocation.userId },
         } as any);
         await new BotExecutorService().execute('invocation');
-        expect(createTopLevelBotMessage).toHaveBeenCalledWith(
-            expect.objectContaining({ pageId: 'page', userBotId: 'bot' }),
-        );
-        expect(createMessageInThread).not.toHaveBeenCalled();
+        expect(createMessageInThread).toHaveBeenCalled();
+        expect(createTopLevelBotMessage).not.toHaveBeenCalled();
     });
 });
 

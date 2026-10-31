@@ -687,9 +687,9 @@ claimed as passing.
 
 Ordinary bot responses belong in a thread, including implicit responses in private
 notebooks shared with one enabled bot and one person. Human group, public and
-multi-bot chats need an explicit mention. Explicit proactive pages retain their
-owner-only main-chat replies; replies inside a thread stay in that thread. The
-executor validates proactive settings before accepting a top-level reply flag.
+multi-bot chats need an explicit mention, including pages with proactive news enabled.
+Replies to human messages always stay in threads. Unsolicited proactive news and
+briefs retain their separate main-chat posting path.
 
 History loads are fenced against navigation, scoped to the selected page and merged
 with messages arriving during the request. HTTP/socket sends retain that page.
@@ -698,7 +698,7 @@ The viewport follows the bottom only while the reader is there, preserves a visi
 message during older-history insertion and card/image growth, and cancels old scroll
 work on navigation. Main chat and threads expose retryable history failures.
 
-Validation includes the full API suite (984 passed, three existing skips), the
+Validation includes the full API suite (985 passed, three existing skips), the
 additional scoped-cursor route test, and focused frontend navigation, concurrent
 arrival, send routing, thread loading and viewport tests. No native binary change.
 
