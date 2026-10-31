@@ -6,10 +6,27 @@ beforeEach(() => {
     vi.stubGlobal('fetch', fetchMock);
     fetchMock.mockReset();
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+});
 const page = (data: unknown[], rest = {}) => ({ ok: true, json: async () => ({ data, ...rest }) });
 
 describe('provider model discovery', () => {
+    it('discovers models directly from the approved LAN server with its saved credential', async () => {
+        vi.stubEnv('BOT_ALLOWED_PRIVATE_ENDPOINTS', 'http://10.0.0.9:8080/v1');
+        fetchMock.mockResolvedValue(page([{ id: 'local-model' }]));
+        expect(
+            await listBotModels('openai-compatible', 'local-key', false, 'http://10.0.0.9:8080/v1'),
+        ).toEqual([{ id: 'local-model', name: 'local-model' }]);
+        expect(fetchMock).toHaveBeenCalledWith(
+            'http://10.0.0.9:8080/v1/models',
+            expect.objectContaining({
+                redirect: 'error',
+                headers: { Authorization: 'Bearer local-key' },
+            }),
+        );
+    });
     it('loads OpenAI reply models, includes fine tunes, and excludes specialist models', async () => {
         fetchMock.mockResolvedValue(
             page([
