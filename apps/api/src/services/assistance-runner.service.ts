@@ -33,7 +33,7 @@ import {
     withSourcesList,
 } from './web-search.service';
 import { parseBotResponse, botUIPrompt } from './bot-ui.service';
-import { withReplyDraftCards, expireUnpostedDrafts } from './reply-draft.service';
+import { withReplyDraftCards } from './reply-draft.service';
 import { withProposalCards } from './calendar-proposal.service';
 import { withHomeProposalCards } from './home.service';
 import { withActionReceipts } from './bot-action.service';
@@ -99,7 +99,6 @@ async function runTask(task: TaskDoc, controller: AbortController): Promise<void
             .catch(() => controller.abort(new Error('Could not renew work lease')));
     }, 15_000);
     const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(180_000)]);
-    let drafts: Parameters<typeof expireUnpostedDrafts>[0];
     const progress = async (text: string) => {
         signal.throwIfAborted();
         if (!(await updateRunningAssistance(task._id, owner, { progress: text })))
@@ -133,7 +132,6 @@ async function runTask(task: TaskDoc, controller: AbortController): Promise<void
             mac.draftsAllowed = true;
             mac.draftedReplies = [];
         }
-        drafts = mac?.draftedReplies;
         const web = webToolContextFor({
             config: bot.config,
             ownerId: task.userId,
@@ -287,7 +285,8 @@ async function runTask(task: TaskDoc, controller: AbortController): Promise<void
                   ? error.message.slice(0, 500)
                   : 'Could not finish this work.',
         }).catch(() => {});
-        await expireUnpostedDrafts(drafts).catch(() => {});
+        // Saved drafts/proposals remain available in Today's review list after a failed
+        // or cancelled answer. They must not disappear with an interrupted model call.
     } finally {
         clearInterval(heartbeat);
     }
