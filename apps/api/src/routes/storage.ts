@@ -1,6 +1,8 @@
 import { Elysia } from 'elysia';
-import { readFile } from 'fs/promises';
+import { readFile, realpath } from 'fs/promises';
 import { join } from 'path';
+import { assertLocalStorageReady, publicAssetPath } from '../services/local-storage.service';
+import { config } from '../config';
 import { getProfilePictureStoragePath } from '../services/storage.service';
 import { getRecordingStoragePath } from '../services/recording-storage.service';
 import { getMemoImageStoragePath } from '../services/memo-image-storage.service';
@@ -10,6 +12,44 @@ import { getMemoImageStoragePath } from '../services/memo-image-storage.service'
  * Only used when Azure Blob Storage is not configured
  */
 export const storageRoutes = new Elysia({ prefix: '/api/storage' })
+    .get('/assets/*', async ({ params, set }) => {
+        let path: string;
+        try {
+            path = publicAssetPath(params['*']);
+        } catch {
+            set.status = 400;
+            return { error: 'Invalid asset path' };
+        }
+        try {
+            await assertLocalStorageReady();
+            const actual = await realpath(path);
+            const root = await realpath(join(config.localStoragePath, 'assets'));
+            if (!actual.startsWith(root + '/')) {
+                set.status = 400;
+                return { error: 'Invalid asset path' };
+            }
+            const types: Record<string, string> = {
+                svg: 'image/svg+xml',
+                png: 'image/png',
+                jpg: 'image/jpeg',
+                jpeg: 'image/jpeg',
+                webp: 'image/webp',
+                gif: 'image/gif',
+                ico: 'image/x-icon',
+                json: 'application/json',
+                webmanifest: 'application/manifest+json',
+                woff: 'font/woff',
+                woff2: 'font/woff2',
+            };
+            set.headers['Content-Type'] =
+                types[path.split('.').pop() ?? ''] ?? 'application/octet-stream';
+            set.headers['Cache-Control'] = 'public, max-age=86400';
+            return await readFile(actual);
+        } catch (error) {
+            set.status = (error as NodeJS.ErrnoException).code === 'ENOENT' ? 404 : 503;
+            return { error: set.status === 404 ? 'File not found' : 'Media storage unavailable' };
+        }
+    })
     .get('/profile-pictures/:filename', async ({ params, set }) => {
         const { filename } = params;
 
@@ -52,7 +92,7 @@ export const storageRoutes = new Elysia({ prefix: '/api/storage' })
             return { error: 'Failed to read file' };
         }
     })
-    .get('/recordings/:filename', async ({ params, set }) => {
+    .get('/recordings/:filename', async ({ params, set, request }) => {
         const { filename } = params;
 
         // Validate filename to prevent directory traversal
@@ -86,6 +126,36 @@ export const storageRoutes = new Elysia({ prefix: '/api/storage' })
 
             set.headers['Content-Type'] = contentType;
             set.headers['Cache-Control'] = 'public, max-age=31536000'; // Cache for 1 year
+            set.headers['Accept-Ranges'] = 'bytes';
+
+            const range = request.headers.get('range');
+            if (range) {
+                const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+                const size = fileBuffer.length;
+                let start = Number(match?.[1] || 0);
+                let end = match?.[2] ? Number(match[2]) : size - 1;
+                if (match && !match[1] && match[2]) {
+                    start = Math.max(0, size - Number(match[2]));
+                    end = size - 1;
+                }
+                if (
+                    !match ||
+                    (!match[1] && !match[2]) ||
+                    !Number.isSafeInteger(start) ||
+                    !Number.isSafeInteger(end) ||
+                    start >= size ||
+                    start > end
+                ) {
+                    set.status = 416;
+                    set.headers['Content-Range'] = `bytes */${size}`;
+                    return '';
+                }
+                end = Math.min(end, size - 1);
+                set.status = 206;
+                set.headers['Content-Range'] = `bytes ${start}-${end}/${size}`;
+                set.headers['Content-Length'] = String(end - start + 1);
+                return fileBuffer.subarray(start, end + 1);
+            }
 
             return fileBuffer;
         } catch (error) {

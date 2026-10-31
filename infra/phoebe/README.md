@@ -18,7 +18,7 @@ migration and hostnames were explicitly authorized; **do not merge to main**.
 | Application release   | `/opt/just-maple/current` → `mobile-pages-20261030-01`                                          |
 | Runtime source        | API `ff6bc7d5af124dd09c23e9e5d776e8629e07e7aa`; web `333534c7ea65d70fad0ecb00c500c3eaf9865e65`  |
 | Database              | `/var/lib/just-maple/production-20261029.sqlite`, WAL/FULL                                      |
-| Local files           | `/var/lib/just-maple/media`; existing Azure media storage/URLs retained                         |
+| Media files           | `/mnt/just-maple/media` on the supplied NFS share; Azure originals retained for recovery        |
 | Native search         | `just-maple-search`, private `/run/just-maple-search/worker.sock`                               |
 | Cloudflare tunnel     | `just-maple-phoebe-staging`, ID `54b3d343-950f-4257-b057-85af3ff3e128` (original name retained) |
 | Public ingress        | `phoebe.justmaple.app` → loopback API; catch-all 404; no LAN-host tunnel route                  |
@@ -54,7 +54,8 @@ Backfill continues automatically; subsequent collection/retention changes adjust
 these counts. Partial coverage is reported and lexical fallback remains available.
 
 The production environment retains the existing JWT secret, `RP_ID=justmaple.app`,
-APNs, OAuth/provider and Azure media credentials. It omits the source Mongo
+APNs and OAuth/provider credentials. Azure media credentials are retained only in the
+protected migration/rollback copy; the active API uses NFS. It omits the source Mongo
 credential and remote Redis. Both new origins are explicitly allowed for CORS and
 passkeys. Outbound/background jobs were gated until verification, then restored.
 
@@ -840,3 +841,74 @@ back code to `root-login-20261031-01`, restart API and preserve live DB/env. Dra
 PR322 remains unmerged. No DNS/native/model/resource/Azure/other guest changes.
 Private receipts: Mac `/tmp/japanese-maple-icons-20261031/`, CT131
 `/root/reliable-icons-20261031-01/`.
+
+## NFS media storage — October 31, 2026
+
+Production uses `192.168.0.110:/var/nfs/shared/JustMaple`, mounted on Phoebe at
+`/mnt/just-maple` and bound into CT131 at the same path (`mp1`, `backup=0`). The
+export must allow Phoebe's host IP `192.168.1.9`; mounting inside an unprivileged
+container is unnecessary. Use this dedicated directory, rather than mounting over
+the host's existing `/mnt` tree.
+
+The host fstab entry uses NFSv3, `hard,timeo=600,retrans=2,noatime,_netdev,nofail`
+and `x-systemd.mount-timeout=30s`. The scoped `pve-container@131.service` drop-in
+requires `/mnt/just-maple` before starting this guest. Live mount/binding and mapped
+app-user read/write checks passed; a full host reboot drill was not performed.
+
+The active API env has `LOCAL_STORAGE_PATH=/mnt/just-maple/media`,
+`LOCAL_STORAGE_REQUIRED=true` and no `HORNBEAM` credential. Install
+`nfs-media.conf` as the API's systemd drop-in: it grants the sandbox write access
+and checks the mount/marker at startup. The `.just-maple-instance` file in the media
+directory must contain the existing `INSTANCE_ID`. Uploads check that marker before
+creating directories/files. SQLite remains on local `/var/lib/just-maple`, WAL/FULL;
+the existing hourly off-host database backup still applies. NAS bind files are outside
+Proxmox CT backups; the NAS snapshot policy has not been audited.
+
+`apps/api/scripts/migrate-media.ts` supports:
+
+```text
+bun scripts/migrate-media.ts plan TARGET MANIFEST
+bun scripts/migrate-media.ts copy TARGET MANIFEST
+bun scripts/migrate-media.ts verify TARGET MANIFEST
+bun scripts/migrate-media.ts rewrite-preview TARGET MANIFEST DATABASE
+bun scripts/migrate-media.ts rewrite-apply TARGET MANIFEST DATABASE
+```
+
+Plan/copy require the protected Azure migration credential (operator units use the
+saved pre-change EnvironmentFile; never restore it over the live env just to copy).
+Copy selects only app profile pictures, recordings, memo images, `data/assets` and
+LEGO catalogue caches. It pins source ETags, verifies SHA-256, detects collisions,
+does not overwrite differing files, and never deletes Azure objects. A final delta
+pass rechecks unchanged local hashes without redownloading unchanged Azure blobs.
+Stop the API before `rewrite-apply`. It updates verified saved URLs in one SQLite
+transaction and makes mergeable Yjs edits to active memo image/text attributes,
+bumping changed memo versions. Unrelated app links and inactive history remain.
+
+Activated `nfs-media-20261031-01`, API source
+`5f1c678c065cfdbeb6f2b1155d19336c5f01b815`, web source
+`b474746279ea94c0b5baefd0099fa256ac505b45`; all 119 artifact hashes verified.
+Copied 626 files/1,984,224,325 bytes. Rehearsal and production each changed 121 JSON
+documents and two active memo states; the rehearsal's second preview was empty.
+Snapshot integrity and foreign-key checks passed. Prechange NAS snapshot
+`just-maple-20261031T174019Z.sqlite` and fresh stopped-API local
+`/var/lib/just-maple/nfs-pre-reference-20261031.sqlite` were verified first.
+
+Both HTTPS hosts pass authentication, exact existing-file hashes, a synthetic new
+NFS upload/read/remove, recording seek ranges and 177,862 retained archive records.
+Four services active, zero automatic API restarts. No container/model restart:
+the bind mount was hot-plugged. The cutover unit took 84.6 seconds. Mac relaunched,
+opened Engineering and returned to Notes; logo/assets loaded, no content edits or
+messages sent. Physical phone UI was not inspected; hosted clients use Update/reload.
+
+Validation: full API 1,017 passed/three existing skips, final media/range tests nine
+passed, shared/web typechecks, API/explicit paperbark builds and precommit passed.
+Standalone API typecheck retains existing workspace/legacy diagnostics, with none
+in changed storage files. Draft PR323 remains unmerged. No DNS, Azure deletion,
+native/model/resource or other guest change.
+
+Code rollback selects `reliable-icons-20261031-01` and restarts API while retaining
+the NFS env/mount and live database (older code supports the filesystem upload URLs).
+Do not switch back to Azure-only storage after new NFS uploads or restore a stale
+database without reconciliation. Original config/env, media manifest and operator
+receipts are protected in CT131 `/root/nfs-media-20261031/`, on Phoebe in its existing
+provisioning directory, and on Mac `/tmp/japanese-maple-nfs-20261031/`.
