@@ -424,12 +424,16 @@ export class MessageService {
    * Load messages for a notebook (finds/creates messages page automatically)
    */
   loadMessages(notebookId: string, reset: boolean = true): Observable<Message[]> {
-    return this.loadHistory(`/api/notebooks/${notebookId}/messages`, notebookId, null, reset);
+    // Callers may load from a navigation effect. Cache/pending-send snapshots must
+    // not make that effect depend on messages or restart it on every store update.
+    return untracked(() =>
+      this.loadHistory(`/api/notebooks/${notebookId}/messages`, notebookId, null, reset),
+    );
   }
 
   /** Load the selected page independently of other chats in its notebook. */
   loadMessagesByPageId(pageId: string, reset: boolean = true): Observable<Message[]> {
-    return this.loadHistory(`/api/pages/${pageId}/messages`, null, pageId, reset);
+    return untracked(() => this.loadHistory(`/api/pages/${pageId}/messages`, null, pageId, reset));
   }
 
   private recentCachedMessages(): Message[] {

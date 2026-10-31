@@ -1,5 +1,6 @@
 import { BotService } from '../bot.service';
 import { TestBed } from '@angular/core/testing';
+import { effect, signal } from '@angular/core';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { Subject } from 'rxjs';
@@ -81,6 +82,26 @@ describe('message history navigation and loading races', () => {
       .expectOne(`/api/pages/${id}/messages`)
       .flush({ page: page(id), messages: [message(`first-${id}`, id)] });
   }
+  it('does not make navigation effects reload when cached or live messages change', () => {
+    const notebook = signal('notebook');
+    const runs = vi.fn();
+    const watcher = TestBed.runInInjectionContext(() =>
+      effect(() => {
+        runs();
+        service.loadMessages(notebook()).subscribe();
+      }),
+    );
+    TestBed.tick();
+    http.expectOne('/api/notebooks/notebook/messages').flush({
+      page: page('a'),
+      messages: [message('initial')],
+    });
+    receive(message('live'));
+    TestBed.tick();
+    expect(runs).toHaveBeenCalledTimes(1);
+    expect(service.messagesForTag().map((m) => m.id)).toEqual(['initial', 'live']);
+    watcher.destroy();
+  });
   it('ignores a previous page response without changing the new page loading status', () => {
     service.loadMessagesByPageId('a').subscribe();
     const a = http.expectOne('/api/pages/a/messages');
