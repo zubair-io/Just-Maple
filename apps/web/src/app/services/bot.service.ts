@@ -613,7 +613,7 @@ export class BotService {
       .get<{ thread: Thread; messages: Message[] }>(`/api/messages/${messageId}/thread`)
       .pipe(
         map((response) => response),
-        catchError(() => of(null)),
+        catchError((error) => (error.status === 404 ? of(null) : throwError(() => error))),
       );
   }
 
