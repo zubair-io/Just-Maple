@@ -1,3 +1,4 @@
+import { BotService } from '../bot.service';
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
@@ -134,5 +135,36 @@ describe('message history navigation and loading races', () => {
     const content = message('sent', 'b').content;
     service.sendMessage('notebook', content).subscribe();
     expect(socket.sendChatMessage).toHaveBeenCalledWith('notebook', content, 'b');
+  });
+});
+
+describe('thread lookup errors', () => {
+  beforeEach(() =>
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: IndexedDBService, useValue: {} },
+      ],
+    }),
+  );
+  afterEach(() => {
+    TestBed.inject(HttpTestingController).verify();
+    TestBed.resetTestingModule();
+  });
+  it('distinguishes a new thread from a failed history request', () => {
+    const service = TestBed.inject(BotService);
+    const http = TestBed.inject(HttpTestingController);
+    const result = vi.fn();
+    service.getThreadForMessage('new').subscribe(result);
+    http.expectOne('/api/messages/new/thread').flush({}, { status: 404, statusText: 'Not found' });
+    expect(result).toHaveBeenCalledWith(null);
+    const error = vi.fn();
+    service.getThreadForMessage('existing').subscribe({ next: result, error });
+    http
+      .expectOne('/api/messages/existing/thread')
+      .flush({}, { status: 503, statusText: 'Unavailable' });
+    expect(error).toHaveBeenCalledOnce();
+    expect(result).toHaveBeenCalledOnce();
   });
 });
