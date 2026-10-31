@@ -161,6 +161,8 @@ for (const thread of [false, true])
       expect(editor.getText()).toBe('@');
       expect(send).not.toHaveBeenCalled();
       expect(closed).not.toHaveBeenCalled();
+      if (thread)
+        expect((fixture.componentInstance as ThreadPanelComponent).isClosing()).toBe(false);
       subscription?.unsubscribe();
       fixture.destroy();
     });
