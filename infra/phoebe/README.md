@@ -726,9 +726,9 @@ recheck source and bot access, survive reconnects, and use bounded/paged reads. 
 reply handoff is recorded as opened, never as sent without evidence. No main merge or DNS
 change is part of this rollout.
 
-- [ ] Activate and verify the release on Phoebe and inspect the hosted Apple UI.
+- [x] Activate and verify the release on Phoebe and inspect the hosted Apple UI.
 
-Validation: full API suite 1,008 passed/three existing skips; focused Today/composer,
+Validation: full API suite 1,009 passed/three existing skips; focused Today/composer,
 voice lifecycle and reply-review tests, plus the existing chat history/viewport
 regressions. Voice is explicit push-to-talk (Talk / Stop and send), using the existing
 local speech model and local system voices. No continuous background listening.
@@ -747,3 +747,26 @@ A fresh imported outgoing item must exactly match the reviewed body (at least tw
 characters), original thread and handoff time before the receipt becomes Done. Edits
 made in Mail/Messages, signatures, or unavailable sent-mail collection can leave a sent
 reply unverified; no heuristic claim of delivery is made.
+
+Activated `assistance-20261031-01`, API/web source
+`0067a05112dd075ada6433fc8df4594db34a7ed5`, with all 116 manifest artifacts
+verified. Snapshot `just-maple-20261031T050914Z.sqlite` passed the off-host backup
+workflow first. Both HTTPS hostnames pass health, authentication/privacy, paged chat,
+graph and all four Today-section checks. Today reads: LAN 6–15 ms, public 89–109 ms
+at this audit; no claim of broader load acceptance. Archive count remains 177,862.
+All four services active; zero automatic API restarts.
+
+Mac applied Update and visibly verified Today, an existing review proposal, private
+page assistance, draft close/reopen recovery, and clearing the scratch draft. No bot
+request or external message was sent during the live UI check. Hosted phone clients
+receive this on Update/reload; no native binary changed. Microphone permissions already
+exist in build 65, but physical phone/audio interaction remains unverified.
+
+Automatic exact sent-reply receipts currently apply to iMessage: Apple Mail does not
+supply the outgoing/thread identity used by this strict matcher, so email compose
+handoffs remain unverified. They are never labelled sent merely because Mail opened.
+
+Rollback: select `chat-loading-20261031-02`, restart only `just-maple-api`, and keep
+live DB/env plus additive collections/indexes. Pending new assistance is retained for
+resumption when compatible code returns; interrupted effects are not replayed. Draft
+PR319 remains unmerged. No DNS/main/other guest/resource/model/Azure change.
