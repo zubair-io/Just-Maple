@@ -1077,7 +1077,11 @@ export class BotExecutorService {
         if (!source) throw new Error('Source message not found');
         if (invocation.context.replyTopLevel) {
             const page = await findPageByIdForBot(source.pageId);
-            if (page) {
+            if (
+                page?.proactive?.enabled &&
+                page.proactive.userBotId === userBot._id &&
+                page.proactive.ownerUserId === invocation.userId
+            ) {
                 const message = await this.postTopLevel(page, userBot, template, content, ctx);
                 return { messageId: message.id };
             }

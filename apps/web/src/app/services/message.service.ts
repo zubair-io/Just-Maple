@@ -10,7 +10,19 @@ import {
 } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { Observable, tap, map, catchError, throwError, of, Subscription, switchMap } from 'rxjs';
+import {
+  Observable,
+  tap,
+  map,
+  catchError,
+  throwError,
+  of,
+  Subscription,
+  switchMap,
+  filter,
+  finalize,
+  EMPTY,
+} from 'rxjs';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { createStore } from '@ngneat/elf';
 import {
@@ -66,6 +78,12 @@ export class MessageService {
   private readonly _messagesSignal = toSignal(this.messages$, { initialValue: [] as Message[] });
 
   // UI state signals
+  private historyGeneration = 0;
+  private readonly cachedMessages = new Map<string, Message>();
+  private readonly historyChanges = new Map<string, Message>();
+  private readonly historyRemovals = new Set<string>();
+  private readonly _historyError = signal<string | null>(null);
+  readonly historyError = this._historyError.asReadonly();
   private readonly _isLoading = signal(false);
   private readonly _error = signal<string | null>(null);
   private readonly _hasMore = signal(true);
@@ -145,8 +163,11 @@ export class MessageService {
 
   private async hydrateFromIndexedDB(): Promise<void> {
     const cached = await this.indexedDB.getAll<Message>(STORE_NAME);
-    if (cached.length > 0 && this.store.query(getAllEntities()).length === 0) {
-      this.store.update(setEntities(cached));
+    for (const message of cached) {
+      if (!this.cachedMessages.has(message.id)) this.cachedMessages.set(message.id, message);
+    }
+    if (this.store.query(getAllEntities()).length === 0 && cached.length > 0) {
+      this.store.update(setEntities(this.recentCachedMessages()));
     }
   }
 
@@ -224,7 +245,8 @@ export class MessageService {
       if (placeholder) this.forgetPlaceholder(placeholder.id);
     }
 
-    if (isCurrentPage || isCurrentNotebook) {
+    if (currentPageId ? isCurrentPage : isCurrentNotebook) {
+      this.rememberHistoryChange(message);
       // Use upsert to handle duplicates (e.g., sender's own message)
       this.store.update(upsertEntities(message));
       this.persistToIndexedDB([message]);
@@ -327,6 +349,7 @@ export class MessageService {
   }
 
   private handleEditedMessage(message: Message): void {
+    this.rememberHistoryChange(message);
     this.store.update(updateEntities(message.id, () => message));
     this.persistToIndexedDB([message]);
     // A proactive bot revised its post while you're looking at the chat: you've seen the
@@ -337,6 +360,8 @@ export class MessageService {
   }
 
   private handleDeletedMessage(id: string): void {
+    this.cachedMessages.delete(id);
+    if (this._isLoading()) this.historyRemovals.add(id);
     this.store.update(deleteEntities(id));
     if (isPlatformBrowser(this.platformId)) {
       this.indexedDB.delete(id, STORE_NAME);
@@ -350,6 +375,8 @@ export class MessageService {
         hasThread: data.hasThread ?? entity.hasThread,
       })),
     );
+    const message = this.store.query(getEntity(data.id));
+    if (message) this.rememberHistoryChange(message);
   }
 
   /**
@@ -374,7 +401,7 @@ export class MessageService {
         // Filter by pageId (preferred) or notebookId (backward compat)
         const matchesPage = pageId && m.pageId === pageId;
         const matchesNotebook = notebookId && m.notebookId === notebookId;
-        return (matchesPage || matchesNotebook) && !m.threadId;
+        return (pageId ? matchesPage : matchesNotebook) && !m.threadId;
       })
       .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
   });
@@ -397,89 +424,93 @@ export class MessageService {
    * Load messages for a notebook (finds/creates messages page automatically)
    */
   loadMessages(notebookId: string, reset: boolean = true): Observable<Message[]> {
-    if (reset) {
-      this._currentNotebookId.set(notebookId);
-      this._hasMore.set(true);
-    }
-
-    this._isLoading.set(true);
-    this._error.set(null);
-
-    return this.http
-      .get<{ messages: Message[]; page: Page }>(`/api/notebooks/${notebookId}/messages`)
-      .pipe(
-        tap((response) => {
-          // Store the messages page info
-          this._currentPageId.set(response.page.id);
-          this._currentPage.set(response.page);
-
-          if (reset) {
-            this.store.update(setEntities(response.messages));
-          } else {
-            this.store.update(upsertEntities(response.messages));
-          }
-          this._hasMore.set(response.messages.length >= 50);
-          this.persistToIndexedDB(response.messages);
-          this._isLoading.set(false);
-        }),
-        map((response) => response.messages),
-        catchError((err) => {
-          let message = err?.error?.error || 'Failed to load messages';
-
-          // Network-aware error message
-          if (!this.network.isOnline()) {
-            message = 'Working offline - showing cached data';
-          }
-
-          this._error.set(message);
-          this._isLoading.set(false);
-
-          // Return cached data instead of empty array
-          const cached = this.store.query(getAllEntities());
-          return of(cached);
-        }),
-      );
+    return this.loadHistory(`/api/notebooks/${notebookId}/messages`, notebookId, null, reset);
   }
 
-  /**
-   * Load messages for a specific page (by pageId)
-   */
+  /** Load the selected page independently of other chats in its notebook. */
   loadMessagesByPageId(pageId: string, reset: boolean = true): Observable<Message[]> {
-    if (reset) {
-      this._currentPageId.set(pageId);
-      this._hasMore.set(true);
-    }
+    return this.loadHistory(`/api/pages/${pageId}/messages`, null, pageId, reset);
+  }
 
+  private recentCachedMessages(): Message[] {
+    const pageId = this._currentPageId();
+    const notebookId = this._currentNotebookId();
+    return [...this.cachedMessages.values()]
+      .filter(
+        (message) =>
+          !message.threadId &&
+          (pageId ? message.pageId === pageId : !!notebookId && message.notebookId === notebookId),
+      )
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .slice(-50);
+  }
+
+  private rememberHistoryChange(message: Message): void {
+    if (this._isLoading()) this.historyChanges.set(message.id, message);
+  }
+
+  private loadHistory(
+    endpoint: string,
+    notebookId: string | null,
+    pageId: string | null,
+    reset: boolean,
+  ): Observable<Message[]> {
+    const generation = ++this.historyGeneration;
+    this.historyChanges.clear();
+    this.historyRemovals.clear();
+    if (reset) {
+      this._currentNotebookId.set(notebookId);
+      this._currentPageId.set(pageId);
+      this._currentPage.set(null);
+      this._hasMore.set(true);
+      const pending = this.messages().filter((message) => this.pendingSends.has(message.id));
+      this.store.update(setEntities([...this.recentCachedMessages(), ...pending]));
+    }
     this._isLoading.set(true);
     this._error.set(null);
-
-    return this.http.get<{ messages: Message[]; page: Page }>(`/api/pages/${pageId}/messages`).pipe(
+    this._historyError.set(null);
+    return this.http.get<{ messages: Message[]; page: Page }>(endpoint).pipe(
+      filter(() => generation === this.historyGeneration),
       tap((response) => {
+        this._currentPageId.set(response.page.id);
         this._currentPage.set(response.page);
-        this._currentNotebookId.set(response.page.notebookId || null);
-
-        if (reset) {
-          this.store.update(setEntities(response.messages));
-        } else {
-          this.store.update(upsertEntities(response.messages));
-        }
+        this._currentNotebookId.set(response.page.notebookId || notebookId);
+        // A GET may finish after a socket echo, edit or optimistic send. Retain those
+        // changes, including pending sends in a chat the person has switched away from.
+        const pending = this.messages()
+          .filter((message) => this.pendingSends.has(message.id))
+          .map((message) =>
+            !message.pageId && message.notebookId === response.page.notebookId
+              ? { ...message, pageId: response.page.id }
+              : message,
+          );
+        const merged = new Map(
+          [...response.messages, ...this.historyChanges.values(), ...pending].map((message) => [
+            message.id,
+            message,
+          ]),
+        );
+        for (const id of this.historyRemovals) merged.delete(id);
+        this.store.update(
+          reset ? setEntities([...merged.values()]) : upsertEntities([...merged.values()]),
+        );
         this._hasMore.set(response.messages.length >= 50);
-        this.persistToIndexedDB(response.messages);
-        this._isLoading.set(false);
+        this.persistToIndexedDB(
+          [...merged.values()].filter((message) => !message.id.startsWith('temp-')),
+        );
       }),
       map((response) => response.messages),
       catchError((err) => {
-        let message = err?.error?.error || 'Failed to load messages';
-
-        if (!this.network.isOnline()) {
-          message = 'Working offline - showing cached data';
-        }
-
+        if (generation !== this.historyGeneration) return EMPTY;
+        const message = this.network.isOnline()
+          ? err?.error?.error || 'Could not load messages. Try again.'
+          : 'Working offline — showing cached messages.';
         this._error.set(message);
-        this._isLoading.set(false);
-
-        const cached = this.store.query(getAllEntities());
-        return of(cached);
+        this._historyError.set(message);
+        return of(this.messagesForTag());
+      }),
+      finalize(() => {
+        if (generation === this.historyGeneration) this._isLoading.set(false);
       }),
     );
   }
@@ -501,7 +532,9 @@ export class MessageService {
       return of([]);
     }
 
+    const generation = this.historyGeneration;
     this._isLoading.set(true);
+    this._historyError.set(null);
 
     // Use page-based endpoint if we have pageId, otherwise fall back to notebook
     const endpoint = pageId
@@ -511,6 +544,7 @@ export class MessageService {
     return this.http
       .get<{ messages: Message[] }>(endpoint, { params: { before: oldestMessage.id } })
       .pipe(
+        filter(() => generation === this.historyGeneration),
         tap((response) => {
           this.store.update(upsertEntities(response.messages));
           this._hasMore.set(response.messages.length >= 50);
@@ -519,6 +553,7 @@ export class MessageService {
         }),
         map((response) => response.messages),
         catchError((err) => {
+          if (generation !== this.historyGeneration) return EMPTY;
           let message = err?.error?.error || 'Failed to load more messages';
 
           if (!this.network.isOnline()) {
@@ -526,9 +561,13 @@ export class MessageService {
           }
 
           this._error.set(message);
+          this._historyError.set(message);
           this._isLoading.set(false);
 
           return of([]);
+        }),
+        finalize(() => {
+          if (generation === this.historyGeneration) this._isLoading.set(false);
         }),
       );
   }
@@ -539,14 +578,14 @@ export class MessageService {
   sendMessage(
     notebookId: string,
     content: PageContent,
-    options?: { threadId?: string; parentMessageId?: string; forceHttp?: boolean },
+    options?: { threadId?: string; parentMessageId?: string; forceHttp?: boolean; pageId?: string },
   ): Observable<Message | null> {
     this._error.set(null);
 
     const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const now = new Date().toISOString();
     const currentUser = this.authService.user();
-    const pageId = this._currentPageId() || '';
+    const pageId = options?.pageId || this._currentPageId() || '';
 
     // For simple messages without threads, use WebSocket (unless forceHttp is set)
     if (
@@ -571,10 +610,11 @@ export class MessageService {
       };
 
       // Add optimistic message immediately
+      this.rememberHistoryChange(tempMessage);
       this.store.update(addEntities(tempMessage));
       this.pendingSends.set(tempId, { notebookId, content, options });
 
-      this.realtimeWS.sendChatMessage(notebookId, content);
+      this.realtimeWS.sendChatMessage(notebookId, content, pageId || undefined);
       // The socket gives no error reply; if the echo never arrives, offer a retry.
       this.sendTimers.set(
         tempId,
@@ -606,6 +646,7 @@ export class MessageService {
         updatedAt: now,
       };
 
+      this.rememberHistoryChange(tempMessage);
       this.store.update(addEntities(tempMessage));
       this.pendingSends.set(tempId, { notebookId, content, options });
     }
@@ -621,12 +662,16 @@ export class MessageService {
     }
 
     return this.http
-      .post<{ message: Message; page?: Page }>(`/api/notebooks/${notebookId}/messages`, body)
+      .post<{
+        message: Message;
+        page?: Page;
+      }>(pageId ? `/api/pages/${pageId}/messages` : `/api/notebooks/${notebookId}/messages`, body)
       .pipe(
         tap((response) => {
           if (!isThreadReply) {
             this.forgetPlaceholder(tempId);
           }
+          this.rememberHistoryChange(response.message);
           this.store.update(upsertEntities(response.message));
           this.persistToIndexedDB([response.message]);
 
@@ -662,7 +707,12 @@ export class MessageService {
     {
       notebookId: string;
       content: PageContent;
-      options?: { threadId?: string; parentMessageId?: string; forceHttp?: boolean };
+      options?: {
+        threadId?: string;
+        parentMessageId?: string;
+        forceHttp?: boolean;
+        pageId?: string;
+      };
     }
   >();
   private readonly sendTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -692,6 +742,8 @@ export class MessageService {
   }
 
   private forgetPlaceholder(tempId: string): void {
+    this.historyChanges.delete(tempId);
+    if (this._isLoading()) this.historyRemovals.add(tempId);
     clearTimeout(this.sendTimers.get(tempId));
     this.sendTimers.delete(tempId);
     this.pendingSends.delete(tempId);
@@ -864,6 +916,9 @@ export class MessageService {
    * Clear messages for current tag
    */
   clearMessages(): void {
+    this.historyGeneration++;
+    this._isLoading.set(false);
+    this._historyError.set(null);
     this.store.update(setEntities([]));
     this._currentNotebookId.set(null);
     this._currentPageId.set(null);
@@ -884,6 +939,7 @@ export class MessageService {
   markMessageHasThread(messageId: string): void {
     const message = this.store.query(getEntity(messageId));
     if (message && !message.hasThread) {
+      this.rememberHistoryChange({ ...message, hasThread: true });
       this.store.update(
         updateEntities(messageId, (entity) => ({
           ...entity,
@@ -894,6 +950,7 @@ export class MessageService {
   }
 
   private async persistToIndexedDB(messages: Message[]): Promise<void> {
+    for (const message of messages) this.cachedMessages.set(message.id, message);
     if (!isPlatformBrowser(this.platformId) || messages.length === 0) return;
     await this.indexedDB.putMany(messages, STORE_NAME);
   }

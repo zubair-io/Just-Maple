@@ -15,6 +15,7 @@ describe('ChatComponent loading', () => {
       messagesForTag: signal([]),
       hasMore: signal(false),
       isLoading: signal(false),
+      historyError: signal(null),
       failedSends: signal(new Map()),
       loadMessages: vi.fn(() => of([])),
       loadMessagesByPageId: vi.fn(() => of([])),

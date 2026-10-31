@@ -71,85 +71,104 @@
   </div>
 
   <!-- Thread messages -->
-  <div #threadMessageList class="thread-message-list">
-    @if (isLoading()) {
-      <div class="thread-loading">
-        <div class="animate-pulse flex gap-1">
-          <div class="w-2 h-2 bg-current rounded-full"></div>
-          <div class="w-2 h-2 bg-current rounded-full"></div>
-          <div class="w-2 h-2 bg-current rounded-full"></div>
+  <div #threadMessageList class="thread-message-list" (scroll)="onThreadScroll()">
+    <div #threadMessageContent class="thread-message-content">
+      @if (threadLoadError(); as error) {
+        <div role="alert" class="flex items-center gap-2 text-sm text-[var(--color-text-muted)]">
+          <span>{{ error }}</span>
+          <button type="button" class="text-[var(--color-primary)]" (click)="retryThread()">
+            Retry
+          </button>
         </div>
-        <span>Loading thread...</span>
-      </div>
-    }
-
-    @for (message of threadMessages(); track message.id) {
-      <div class="thread-message">
-        <div class="thread-message-avatar">
-          @if (message.senderType === 'bot') {
-            @if (message.senderProfilePictureUrl && message.senderProfilePictureUrl.length > 5) {
-              <img
-                [src]="message.senderProfilePictureUrl"
-                [alt]="message.senderDisplayName || 'Bot'"
-                class="w-7 h-7 rounded-full object-cover"
-              />
-            } @else {
-              <div
-                class="w-7 h-7 rounded-full bg-[var(--color-primary)] flex items-center justify-center text-white text-xs font-bold"
-              >
-                {{
-                  message.senderProfilePictureUrl ||
-                    (message.senderDisplayName || 'Bot').charAt(0).toUpperCase()
-                }}
-              </div>
-            }
-          } @else {
-            <app-profile-avatar
-              [email]="message.senderEmail || ''"
-              [displayName]="message.senderDisplayName"
-              [profilePictureUrl]="message.senderProfilePictureUrl"
-              size="sm"
-            />
-          }
+      }
+      @if (isLoading()) {
+        <div class="thread-loading">
+          <div class="animate-pulse flex gap-1">
+            <div class="w-2 h-2 bg-current rounded-full"></div>
+            <div class="w-2 h-2 bg-current rounded-full"></div>
+            <div class="w-2 h-2 bg-current rounded-full"></div>
+          </div>
+          <span>Loading thread...</span>
         </div>
+      }
 
-        <div class="thread-message-body">
-          <div class="thread-message-header">
-            <span class="thread-message-sender">
-              @if (message.senderType === 'bot') {
-                {{ message.senderDisplayName || 'Bot' }}
-              } @else {
-                {{ message.senderDisplayName || message.senderEmail || 'Unknown' }}
-              }
-            </span>
-            <span class="thread-message-time">
-              {{ formatTime(message.createdAt) }}
-            </span>
+      @for (message of threadMessages(); track message.id) {
+        <div class="thread-message" [attr.data-message-id]="message.id">
+          <div class="thread-message-avatar">
             @if (message.senderType === 'bot') {
-              <span
-                class="text-xs px-1.5 py-0.5 rounded bg-[var(--color-primary)]/10 text-[var(--color-primary)]"
-              >
-                bot
-              </span>
+              @if (message.senderProfilePictureUrl && message.senderProfilePictureUrl.length > 5) {
+                <img
+                  [src]="message.senderProfilePictureUrl"
+                  [alt]="message.senderDisplayName || 'Bot'"
+                  class="w-7 h-7 rounded-full object-cover"
+                />
+              } @else {
+                <div
+                  class="w-7 h-7 rounded-full bg-[var(--color-primary)] flex items-center justify-center text-white text-xs font-bold"
+                >
+                  {{
+                    message.senderProfilePictureUrl ||
+                      (message.senderDisplayName || 'Bot').charAt(0).toUpperCase()
+                  }}
+                </div>
+              }
+            } @else {
+              <app-profile-avatar
+                [email]="message.senderEmail || ''"
+                [displayName]="message.senderDisplayName"
+                [profilePictureUrl]="message.senderProfilePictureUrl"
+                size="sm"
+              />
             }
           </div>
-          <div class="thread-message-content">
-            <app-bot-message-content
-              [message]="message"
-              [disabled]="actionPending()"
-              (followUp)="continueBot(message, $event)"
-            />
-            @if (message.botModel) {
-              <span class="text-xs text-[var(--color-text-muted)]">{{ message.botModel }}</span>
-            }
+
+          <div class="thread-message-body">
+            <div class="thread-message-header">
+              <span class="thread-message-sender">
+                @if (message.senderType === 'bot') {
+                  {{ message.senderDisplayName || 'Bot' }}
+                } @else {
+                  {{ message.senderDisplayName || message.senderEmail || 'Unknown' }}
+                }
+              </span>
+              <span class="thread-message-time">
+                {{ formatTime(message.createdAt) }}
+              </span>
+              @if (message.senderType === 'bot') {
+                <span
+                  class="text-xs px-1.5 py-0.5 rounded bg-[var(--color-primary)]/10 text-[var(--color-primary)]"
+                >
+                  bot
+                </span>
+              }
+            </div>
+            <div class="thread-message-content">
+              <app-bot-message-content
+                [message]="message"
+                [disabled]="actionPending()"
+                (followUp)="continueBot(message, $event)"
+              />
+              @if (message.botModel) {
+                <span class="text-xs text-[var(--color-text-muted)]">{{ message.botModel }}</span>
+              }
+            </div>
           </div>
         </div>
-      </div>
-    }
-    @if (replyingBots().length > 0) {
-      <app-chat-typing [names]="replyingBots()" />
-    }
+      }
+      @if (replyingBots().length > 0) {
+        <app-chat-typing [names]="replyingBots()" />
+      }
+    </div>
   </div>
+  @if (showLatestReplies()) {
+    <button
+      type="button"
+      class="mx-auto mb-2 rounded-full border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1 text-sm text-[var(--color-primary)]"
+      (click)="scrollToBottom()"
+    >
+      Latest replies ↓
+    </button>
+  }
 
   <!-- Mention Suggestions Dropdown -->
   @if (showMentionSuggestions()) {

@@ -1,3 +1,4 @@
+import { ChatViewport } from '../chat-viewport';
 import {
   Component,
   untracked,
@@ -14,6 +15,7 @@ import {
   DestroyRef,
   HostListener,
   ChangeDetectionStrategy,
+  afterRenderEffect,
 } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { BotMessageContentComponent } from '../../../atoms/bot-message-content/bot-message-content.component';
@@ -54,6 +56,9 @@ import { Subscription, Subject, takeUntil, filter, combineLatest, switchMap, of 
 })
 export class ThreadPanelComponent implements AfterViewInit, OnDestroy {
   @ViewChild('threadMessageList') private messageListRef?: ElementRef<HTMLElement>;
+  @ViewChild('threadMessageContent') private messageContentRef?: ElementRef<HTMLElement>;
+  private viewport?: ChatViewport;
+  readonly showLatestReplies = signal(false);
   @ViewChild('threadEditorElement', { static: false })
   private editorRef?: ElementRef<HTMLElement>;
 
@@ -66,9 +71,10 @@ export class ThreadPanelComponent implements AfterViewInit, OnDestroy {
   readonly replyingBots = computed(
     () => this.botActivity.inThreadBySource().get(this.parentMessage().id) ?? [],
   );
-  // Keep the "typing…" line in view when a bot starts replying.
-  private readonly scrollToTyping = effect(() => {
-    if (this.replyingBots().length > 0) untracked(() => setTimeout(() => this.scrollToBottom()));
+  private readonly scrollAfterRender = afterRenderEffect(() => {
+    this.replyingBots();
+    this.threadMessages();
+    this.viewport?.layoutChanged();
   });
 
   readonly parentMessage = input.required<Message>();
@@ -79,6 +85,7 @@ export class ThreadPanelComponent implements AfterViewInit, OnDestroy {
   readonly threadMessages = signal<Message[]>([]);
   readonly thread = signal<Thread | null>(null);
   readonly isLoading = signal(false);
+  readonly threadLoadError = signal<string | null>(null);
   readonly actionPending = signal(false);
   readonly actionError = signal<string | null>(null);
   readonly isClosing = signal(false);
@@ -147,6 +154,13 @@ export class ThreadPanelComponent implements AfterViewInit, OnDestroy {
   ngAfterViewInit(): void {
     this.initEditor();
     this.prefillBotMentions();
+    if (this.messageListRef && this.messageContentRef) {
+      this.viewport = new ChatViewport(
+        this.messageListRef.nativeElement,
+        this.messageContentRef.nativeElement,
+      );
+      if (!this.isLoading()) this.viewport.completeInitialLoad();
+    }
   }
 
   /** The parent message the mention prefill already ran for. */
@@ -158,6 +172,7 @@ export class ThreadPanelComponent implements AfterViewInit, OnDestroy {
   });
 
   ngOnDestroy(): void {
+    this.viewport?.dispose();
     this.editor?.destroy();
     this.realtimeSubscription?.unsubscribe();
     this.threadLoad?.unsubscribe();
@@ -399,7 +414,10 @@ export class ThreadPanelComponent implements AfterViewInit, OnDestroy {
   // ---- Thread Loading ----
 
   private loadThread(messageId: string): void {
+    this.viewport?.reset();
+    this.showLatestReplies.set(false);
     this.isLoading.set(true);
+    this.threadLoadError.set(null);
     this.threadMessages.set([]);
     this.thread.set(null);
 
@@ -408,16 +426,27 @@ export class ThreadPanelComponent implements AfterViewInit, OnDestroy {
       next: (result) => {
         if (result) {
           this.thread.set(result.thread);
-          this.threadMessages.set(result.messages);
+          const merged = new Map(
+            [...result.messages, ...this.threadMessages()].map((message) => [message.id, message]),
+          );
+          this.threadMessages.set(
+            [...merged.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+          );
         }
         this.isLoading.set(false);
-        this.scrollToBottom();
+        this.viewport?.completeInitialLoad();
         this.prefillBotMentions();
       },
       error: () => {
         this.isLoading.set(false);
+        this.threadLoadError.set('Could not load replies. Your draft is still here.');
+        this.viewport?.completeInitialLoad();
       },
     });
+  }
+
+  retryThread(): void {
+    this.loadThread(this.parentMessage().id);
   }
 
   private subscribeToThreadMessages(messageId: string): void {
@@ -441,7 +470,7 @@ export class ThreadPanelComponent implements AfterViewInit, OnDestroy {
             }
             return [...messages, newMessage];
           });
-          this.scrollToBottom();
+          this.viewport?.layoutChanged();
         }
       });
   }
@@ -462,7 +491,10 @@ export class ThreadPanelComponent implements AfterViewInit, OnDestroy {
 
     this.actionError.set(null);
     this.messageService
-      .sendMessage(this.notebookId(), content, { parentMessageId: parentMsg.id })
+      .sendMessage(this.notebookId(), content, {
+        parentMessageId: parentMsg.id,
+        pageId: parentMsg.pageId,
+      })
       .subscribe({
         next: (message) => {
           if (!message) return;
@@ -500,6 +532,7 @@ export class ThreadPanelComponent implements AfterViewInit, OnDestroy {
     this.messageService
       .sendMessage(this.notebookId(), content, {
         parentMessageId: this.parentMessage().id,
+        pageId: this.parentMessage().pageId,
         forceHttp: true,
       })
       .pipe(
@@ -574,14 +607,13 @@ export class ThreadPanelComponent implements AfterViewInit, OnDestroy {
     return false;
   }
 
-  private scrollToBottom(): void {
-    requestAnimationFrame(() => {
-      setTimeout(() => {
-        if (this.messageListRef?.nativeElement) {
-          const el = this.messageListRef.nativeElement;
-          el.scrollTop = el.scrollHeight;
-        }
-      });
-    });
+  scrollToBottom(): void {
+    this.viewport?.followLatest();
+    this.showLatestReplies.set(false);
+  }
+
+  onThreadScroll(): void {
+    this.viewport?.scrolled();
+    this.showLatestReplies.set(this.viewport ? !this.viewport.atBottom : false);
   }
 }

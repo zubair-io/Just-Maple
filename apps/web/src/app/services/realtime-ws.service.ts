@@ -412,12 +412,13 @@ export class RealtimeWSService {
   /**
    * Send a chat message via WebSocket
    */
-  sendChatMessage(notebookId: string, content: any): void {
+  sendChatMessage(notebookId: string, content: any, pageId?: string): void {
     this.send({
       channel: 'chat',
       action: 'message',
       notebookId,
       content,
+      ...(pageId ? { pageId } : {}),
     });
   }
 
