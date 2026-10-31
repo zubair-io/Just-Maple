@@ -2,6 +2,7 @@ import { BlobServiceClient } from '@azure/storage-blob';
 import { mkdir, writeFile, unlink } from 'fs/promises';
 import { join } from 'path';
 import { config } from '../config';
+import { assertLocalStorageReady } from './local-storage.service';
 import sharp from 'sharp';
 
 // Container name for memo images
@@ -173,6 +174,7 @@ function getLocalStorageDir(): string {
 }
 
 async function ensureLocalStorageDir(): Promise<void> {
+    await assertLocalStorageReady();
     const dir = getLocalStorageDir();
     await mkdir(dir, { recursive: true });
 }
