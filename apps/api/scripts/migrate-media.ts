@@ -110,7 +110,11 @@ if (mode === 'copy' || mode === 'plan') {
 if (mode.startsWith('rewrite-')) {
     if (!databasePath)
         throw new Error('Database path required (stop the API before rewrite-apply)');
-    const db = new Database(databasePath, { readonly: mode === 'rewrite-preview' });
+    await stat(databasePath);
+    const db = new Database(
+        databasePath,
+        mode === 'rewrite-preview' ? { readonly: true } : undefined,
+    );
     const urls = mediaUrlMap(manifest.copies, manifest.azureHost);
     const report: Record<string, number> = {};
     const run = () => {
@@ -136,7 +140,7 @@ if (mode.startsWith('rewrite-')) {
         }
         for (const row of db
             .query(
-                "SELECT collection_name,document_id,path,bytes FROM document_blobs WHERE collection_name IN ('memos','memo_versions') AND path='[\"state\"]'",
+                "SELECT collection_name,document_id,path,bytes FROM document_blobs WHERE collection_name IN ('memos','memo_versions') AND path='[\"state\"]' AND instr(bytes,cast('hornbeam' AS BLOB))>0",
             )
             .iterate() as Iterable<{
             collection_name: string;
