@@ -1,6 +1,41 @@
 /* JapaneseMaple Design System with Tailwind CSS */
 @use 'tailwindcss';
 
+// Bundled with the app: icon rendering must not depend on Google Fonts availability.
+@font-face {
+  font-family: 'Material Symbols Rounded';
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url('/fonts/material-symbols-rounded-dcedb5d34c36.woff2') format('woff2');
+}
+
+.material-symbols-rounded {
+  font-family: 'Material Symbols Rounded';
+  font-weight: 400;
+  font-style: normal;
+  font-feature-settings: 'liga';
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  vertical-align: middle;
+  -webkit-font-smoothing: antialiased;
+}
+
+@layer base {
+  .material-symbols-rounded {
+    font-size: 24px;
+  }
+}
+
 /* ============================================
    DESIGN TOKENS (CSS Custom Properties)
    ============================================ */
