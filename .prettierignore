@@ -4,3 +4,5 @@
 .github/
 /apps/remarkable/
 .claude/
+# Preserve existing public branding asset bytes.
+infra/phoebe/hosted-assets/

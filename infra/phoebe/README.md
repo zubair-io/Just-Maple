@@ -957,3 +957,104 @@ the owner API after comparing it with the saved snapshot and checking for newer
 user edits; never overwrite all bot documents or restore a stale database. Then
 restore the protected `api-before.env`, select `nfs-media-20261031-01`, and restart
 only the API. The previous release rejects LAN AI endpoints. No DNS or main merge.
+
+## Automatic main deployment — November 1, 2026
+
+`.github/workflows/SugarMaple-Deploy.yml` now deploys trusted `main` pushes (or a
+manual run on `main`). It calls the reusable CI workflow, including API/SQLite/native
+search checks, typechecks, formatting, E2E and deployment-tool tests. The standalone
+CI workflow still handles PRs/development; main uses the same checks once through
+the deployment workflow. No path filter: lockfile, tooling and shared changes deploy
+too. Deployment runs serialize and never deploy a feature branch.
+
+After checks pass, Ubuntu 22.04 builds Bun 1.4.3 API/SQLite/archive utilities,
+Paperbark web and the Rust 1.98.1 Linux search worker. A manifest describes every
+runtime file and its SHA-256. Only these runtime files are packaged: no environment,
+credentials, database, media or model cache. Release `phoebe-main-FULL_SHA` publishes
+the bundle as a prerelease without changing the latest product release; reruns do
+not overwrite published assets. These build artifacts are public, as is this repo.
+Versioned runtime dependencies (Bun, external Sharp and ONNX/model installation)
+remain operator-managed; a Bun/ONNX mismatch blocks activation. Changes requiring
+new system/native dependencies need a reviewed runtime upgrade first.
+
+Phoebe's root-owned `just-maple-main-deploy.timer` checks current main every five
+minutes plus up to 20 seconds jitter. It uses public GitHub API/releases, needing
+no GitHub secret or inbound SSH service. It requires an exact current-main SHA,
+matching repository/workflow and a successful **Publish Phoebe runtime** job, which
+can run only after all CI checks/builds pass. This deliberately does not wait for
+the workflow's final Phoebe verification job. It verifies GitHub's asset digest,
+bounds download/archive sizes, rejects links/traversal/duplicates/unlisted files,
+and verifies all file hashes before activation. Stale queued releases are ignored.
+
+Before each activation, the existing host backup helper must produce a fresh,
+verified off-host NAS snapshot. It retains the existing 168-snapshot cap; reaching
+that cap blocks deployment for retention review rather than deleting data. The
+CT131 activator preserves the environment, SQLite/NFS files and external runtime
+pins, stages `/opt/just-maple/releases/main-FULL_SHA`, drains API, atomically changes
+release/native links, restarts the model worker only if its binary changed, then
+checks SQLite and search readiness. Failed health checks restore the prior code and
+native links, preserving accepted database writes. It never restores a database.
+Failed/interrupted SHAs remain blocked in host deployment state until reviewed;
+newer main commits may proceed. Review schema compatibility before choosing any
+older code manually.
+
+The final CI job polls public `/deployment.json` plus health and fails if Phoebe
+does not serve that exact source commit with ready search within its timeout.
+Host receipts and failures: `journalctl -u just-maple-main-deploy.service` and
+`/var/lib/just-maple-deploy/state.json`. Packages/staged failures are retained for
+review; no automatic release/database/media cleanup is installed.
+
+Separately, the hosted web build uses repository variable `HOSTED_API_URL` for its
+HTTPS API/WebSocket origin. This generates an environment only during the build;
+there is no new hardcoded app server default, and the original source is restored
+on failure too. Its public branding/PWA assets are copied into the static build before
+Angular hashes its service-worker cache, so their existing paths work without an API
+reverse proxy. `PHOEBE_PUBLIC_URL` controls CI's deployment verification target.
+Both variables are configured to the existing public Phoebe origin. The existing
+`AZURE_CREDENTIALS` secret (successful web workflow October 28) is reused. Azure
+uploads target **account `hornbeam`, container `justmaple`**, replacing the old
+`just-maple` destination. Hashed assets upload first; index then service-worker
+manifest activate last with no-cache. Old hashed assets are retained for open
+clients; no other container is touched. The old Azure API/tunnel DNS are unchanged.
+
+Install/review the fixed operator scripts separately from runtime artifacts:
+
+```sh
+# On Phoebe, with a reviewed copy of infra/phoebe at an absolute path:
+sh /ABSOLUTE/REVIEWED/infra/phoebe/install-main-deploy.sh /ABSOLUTE/REVIEWED/infra/phoebe
+systemctl status just-maple-main-deploy.timer --no-pager
+journalctl -u just-maple-main-deploy.service -n 20 --no-pager
+```
+
+The installer changes only this new host timer/helper and CT131's activator tools.
+It does not activate an app release. Prior operator files, if present, are retained
+under `/root/just-maple-main-deploy-install/TIMESTAMP`. To stop automatic delivery:
+`systemctl disable --now just-maple-main-deploy.timer`; let an already-running
+activation finish and inspect its receipt before intervening. Restore reviewed old
+operator scripts from the installer backup if needed. Do not restore old databases
+or replace the live NFS environment. Current production stays on the running release
+above until this branch is merged to main and the first tested release is published.
+No main merge or DNS change is performed by this change.
+
+Operator installation verified November 1: timer active, initial check succeeded
+and waited for the tested current-main release; production symlink, health and API
+restart count unchanged. Host/CT helper files are root-owned mode 644. Installer
+backup is `/root/just-maple-main-deploy-install/20261101T053110Z`. Ten deployment-tool
+tests pass (archive tampering/traversal, provenance, health rollback, data preservation,
+conditional model restart and failed hosted-build cleanup). API and hosted-web builds,
+actionlint and shellcheck pass. The hosted bundle has 21 public branding/PWA files;
+20 applicable service-worker hashes match (favicon.ico is served without a cache hash).
+Both containers have identical inherited Azure access assignments (12), so the
+existing workflow credential retains the same container permissions. The first
+end-to-end main deployment remains pending merge and its real workflow run; no
+production release or Azure frontend was replaced during this setup. Public site
+routing/TLS was not changed; `https://justmaple.app/api/health` currently returns
+Cloudflare 525, a pre-existing origin/TLS issue outside this CI change.
+
+The 21 existing public logo/icon/marketing files in `hosted-assets/` were copied
+byte-for-byte from the app's public asset routes. They contain branding/PWA imagery,
+not user uploads. The hosted builder stages them before Angular generates its cache
+and removes only that temporary source folder afterward. Files are checked in so
+building a recovery release does not depend on the running Phoebe API being available.
+New `/api/storage/assets/` references must add their matching public file here; a
+missing asset fails the hosted build. User uploads remain on NFS.

@@ -4,11 +4,16 @@ on:
     workflow_call:
     push:
         branches:
-            - main
             - development
     pull_request:
 
 jobs:
+    deployment-tools:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - run: python3 -m unittest discover -s infra/phoebe/tests -v
+
     sqlite-and-search:
         name: SQLite integration and native search
         runs-on: ubuntu-latest

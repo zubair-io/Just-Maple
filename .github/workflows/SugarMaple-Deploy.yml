@@ -1,58 +1,156 @@
-name: Deploy Web to Azure Blob Storage
+name: Deploy main to Phoebe and Hornbeam
 
 on:
     push:
-        branches:
-            - main
-        paths:
-            - 'apps/web/**'
-            - 'packages/shared/**'
-            - '.github/workflows/SugarMaple-Deploy.yml'
+        branches: [main]
     workflow_dispatch:
 
-jobs:
-    build-and-deploy:
-        runs-on: ubuntu-latest
-        timeout-minutes: 5
-        steps:
-            - name: Checkout repository
-              uses: actions/checkout@v4
+permissions:
+    contents: read
 
-            - name: Setup Node.js
-              uses: actions/setup-node@v4
+concurrency:
+    group: deploy-main
+    cancel-in-progress: false
+
+jobs:
+    checks:
+        if: github.repository == 'zubair-io/Just-Maple' && github.ref == 'refs/heads/main'
+        uses: ./.github/workflows/ci.yml
+
+    build:
+        needs: checks
+        runs-on: ubuntu-22.04
+        timeout-minutes: 40
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  persist-credentials: false
+            - uses: actions/setup-node@v4
               with:
                   node-version-file: .node-version
-
-            - name: Setup Bun
-              uses: oven-sh/setup-bun@v2
+            - uses: oven-sh/setup-bun@v2
               with:
-                  bun-version: 1.2.14
+                  bun-version: 1.4.3
+            - run: bun install --frozen-lockfile
+            - run: bun run build:api
+            - run: bun run build:web:paperbark
+            - uses: dtolnay/rust-toolchain@stable
+              with:
+                  toolchain: 1.98.1
+            - run: cargo build --release --locked --manifest-path apps/search-worker/Cargo.toml
+            - name: Package Phoebe runtime
+              run: python3 infra/phoebe/release_bundle.py
+            - name: Build separately hosted frontend
+              env:
+                  HOSTED_API_URL: ${{ vars.HOSTED_API_URL }}
+              run: python3 infra/phoebe/build_hosted_web.py
+            - uses: actions/upload-artifact@v4
+              with:
+                  name: main-deployment
+                  path: |
+                      deploy/phoebe-runtime.tgz
+                      deploy/phoebe-runtime.tgz.sha256
+                      deploy/hosted-web/
+                  if-no-files-found: error
+                  retention-days: 14
 
-            - name: Install dependencies
-              run: bun install
+    publish-phoebe:
+        name: Publish Phoebe runtime
+        needs: build
+        runs-on: ubuntu-latest
+        timeout-minutes: 10
+        permissions:
+            contents: write
+        steps:
+            - uses: actions/download-artifact@v4
+              with:
+                  name: main-deployment
+                  path: deploy
+            - name: Publish immutable main runtime for Phoebe to pull
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  GH_REPO: ${{ github.repository }}
+                  SOURCE_SHA: ${{ github.sha }}
+              run: |
+                  set -euo pipefail
+                  tag="phoebe-main-${SOURCE_SHA}"
+                  # A rerun never replaces a published runtime.
+                  if ! gh release view "$tag" >/dev/null 2>&1; then
+                    gh release create "$tag" \
+                      deploy/phoebe-runtime.tgz deploy/phoebe-runtime.tgz.sha256 \
+                      --target "$SOURCE_SHA" --prerelease --latest=false \
+                      --title "Phoebe main ${SOURCE_SHA:0:12}" \
+                      --notes "Tested main runtime. Phoebe activates after this workflow succeeds."
+                  fi
 
-            - name: Build shared package
-              run: bun run build:shared
+    verify-phoebe:
+        needs: publish-phoebe
+        runs-on: ubuntu-latest
+        timeout-minutes: 20
+        steps:
+            - name: Wait for Phoebe to activate the exact commit
+              env:
+                  PHOEBE_PUBLIC_URL: ${{ vars.PHOEBE_PUBLIC_URL }}
+                  SOURCE_SHA: ${{ github.sha }}
+              run: |
+                  python3 - <<'PY'
+                  import json, os, time, urllib.request
+                  origin = os.environ['PHOEBE_PUBLIC_URL'].rstrip('/')
+                  if not origin.startswith('https://'):
+                      raise SystemExit('Configure PHOEBE_PUBLIC_URL as the HTTPS app origin')
+                  sha = os.environ['SOURCE_SHA']
+                  for attempt in range(60):
+                      try:
+                          request = urllib.request.Request(origin + '/deployment.json?commit=' + sha,
+                                                           headers={'Cache-Control': 'no-cache',
+                                                                    'User-Agent': 'JapaneseMaple-CI/1.0'})
+                          with urllib.request.urlopen(request, timeout=10) as response:
+                              deployed = json.load(response)
+                          request = urllib.request.Request(origin + '/api/health',
+                                                           headers={'User-Agent': 'JapaneseMaple-CI/1.0'})
+                          with urllib.request.urlopen(request, timeout=10) as response:
+                              health = json.load(response)
+                          if (deployed.get('sourceCommit') == sha and health.get('status') == 'healthy'
+                                  and health.get('search') == 'ready'):
+                              print('Phoebe activated ' + sha)
+                              break
+                      except (OSError, ValueError):
+                          pass
+                      time.sleep(15)
+                  else:
+                      raise SystemExit('Phoebe did not activate this commit; inspect its deployment service')
+                  PY
 
-            - name: Build web
-              run: bun run build:web
-
-            - name: Azure Login
-              uses: azure/login@v2
+    deploy-hornbeam:
+        needs: build
+        runs-on: ubuntu-latest
+        timeout-minutes: 15
+        steps:
+            - uses: actions/download-artifact@v4
+              with:
+                  name: main-deployment
+                  path: deploy
+            - uses: azure/login@v2
               with:
                   creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-            - name: Upload to blob storage
-              uses: azure/CLI@v2
-              with:
-                  inlineScript: |
-                      az storage blob upload-batch \
-                        --overwrite true \
-                        --account-name hornbeam \
-                        --auth-mode login \
-                        -d 'just-maple' \
-                        -s apps/web/dist/web/browser
-
+            - name: Publish hosted web to hornbeam / justmaple
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  # Hashed assets first; retain old assets for already-open clients.
+                  cp deploy/hosted-web/index.html deploy/index.html
+                  cp deploy/hosted-web/ngsw.json deploy/ngsw.json
+                  rm deploy/hosted-web/index.html deploy/hosted-web/ngsw.json
+                  az storage blob upload-batch --overwrite true --auth-mode login \
+                    --account-name hornbeam --destination justmaple --source deploy/hosted-web
+                  az storage blob upload --overwrite true --auth-mode login \
+                    --account-name hornbeam --container-name justmaple \
+                    --name index.html --file deploy/index.html \
+                    --content-type text/html --content-cache-control no-cache
+                  az storage blob upload --overwrite true --auth-mode login \
+                    --account-name hornbeam --container-name justmaple \
+                    --name ngsw.json --file deploy/ngsw.json \
+                    --content-type application/json --content-cache-control no-cache
             - name: Azure Logout
-              run: az logout
               if: always()
+              run: az logout
