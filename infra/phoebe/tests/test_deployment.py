@@ -7,12 +7,10 @@ import sys
 import tarfile
 import tempfile
 import unittest
-import subprocess
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import activate_release as activation
-import build_hosted_web as hosted
 import pull_main as pull
 import release_bundle as bundle
 
@@ -148,36 +146,6 @@ class ProvenanceTests(unittest.TestCase):
                 self.assertFalse(pull.eligible(release, [changed], SHA))
         self.assertFalse(pull.eligible({**release, 'draft': True}, [run], SHA))
 
-    def test_hosted_config_has_explicit_validated_origin(self):
-        source = hosted.environment_source('https://primary.example/')
-        self.assertIn('apiUrl: "https://primary.example"', source)
-        self.assertIn('wsUrl: "wss://primary.example"', source)
-        self.assertNotIn('paperbark.justmaple.app', source)
-        for bad in ['', 'http://example.com', 'https://user:password@example.com',
-                    'https://example.com/api', 'https://example.com/?token=secret']:
-            with self.assertRaises(ValueError):
-                hosted.environment_source(bad)
-
-    def test_failed_hosted_build_restores_source_and_removes_temporary_assets(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary).resolve()
-            source = root / 'apps/web/src/environments/environment.prod.ts'
-            source.parent.mkdir(parents=True)
-            source.write_text('original source')
-            (root / 'apps/web/src/index.html').write_text('/api/storage/assets/justmaple.svg')
-            public = root / 'apps/web/public'
-            public.mkdir(parents=True)
-            (public / 'manifest.webmanifest').write_text('{}')
-            branding = root / 'infra/phoebe/hosted-assets'
-            branding.mkdir(parents=True)
-            (branding / 'justmaple.svg').write_bytes(b'<svg/>')
-            with (patch.object(hosted, '__file__', str(root / 'infra/phoebe/build_hosted_web.py')),
-                  patch.dict(os.environ, {'HOSTED_API_URL': 'https://primary.example'}),
-                  patch.object(hosted.subprocess, 'run', side_effect=subprocess.CalledProcessError(1, 'build'))):
-                with self.assertRaises(subprocess.CalledProcessError):
-                    hosted.main()
-            self.assertEqual(source.read_text(), 'original source')
-            self.assertFalse((public / 'api/storage/assets').exists())
 
 
 if __name__ == '__main__':

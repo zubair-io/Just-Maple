@@ -8,6 +8,20 @@ on:
     pull_request:
 
 jobs:
+    just-maple-web:
+        name: Just Maple local editor tests
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version-file: .node-version
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: 1.4.3
+            - run: bun install --cwd apps/local/web --frozen-lockfile
+            - run: bun run --cwd apps/local/web test:unit
+
     deployment-tools:
         runs-on: ubuntu-latest
         steps:

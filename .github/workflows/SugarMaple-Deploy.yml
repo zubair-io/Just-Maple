@@ -1,4 +1,4 @@
-name: Deploy main to Phoebe and Hornbeam
+name: Deploy JapaneseMaple to Phoebe and Just Maple to Hornbeam
 
 on:
     push:
@@ -40,17 +40,12 @@ jobs:
             - run: cargo build --release --locked --manifest-path apps/search-worker/Cargo.toml
             - name: Package Phoebe runtime
               run: python3 infra/phoebe/release_bundle.py
-            - name: Build separately hosted frontend
-              env:
-                  HOSTED_API_URL: ${{ vars.HOSTED_API_URL }}
-              run: python3 infra/phoebe/build_hosted_web.py
             - uses: actions/upload-artifact@v4
               with:
                   name: main-deployment
                   path: |
                       deploy/phoebe-runtime.tgz
                       deploy/phoebe-runtime.tgz.sha256
-                      deploy/hosted-web/
                   if-no-files-found: error
                   retention-days: 14
 
@@ -121,36 +116,75 @@ jobs:
                       raise SystemExit('Phoebe did not activate this commit; inspect its deployment service')
                   PY
 
+    build-just-maple:
+        needs: checks
+        runs-on: ubuntu-latest
+        timeout-minutes: 15
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  persist-credentials: false
+            - uses: actions/setup-node@v4
+              with:
+                  node-version-file: .node-version
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: 1.4.3
+            - run: bun install --cwd apps/local/web --frozen-lockfile
+            - name: Build the separate serverless Just Maple frontend
+              run: bun run --cwd apps/local/web build:production
+            - name: Stage Just Maple and retire the previous app's service worker
+              run: |
+                  python3 - <<'PY'
+                  from pathlib import Path
+                  import shutil
+                  source = Path('apps/local/web/dist/web/browser')
+                  assert '<title>Just Maple</title>' in (source / 'index.html').read_text()
+                  output = Path('deploy/just-maple')
+                  shutil.copytree(source, output)
+                  # Clear only Angular's old ngsw caches, never user IndexedDB/files.
+                  worker = Path('apps/local/web/node_modules/@angular/service-worker')
+                  shutil.copy2(worker / 'safety-worker.js', output / 'ngsw-worker.js')
+                  (output / 'licenses').mkdir(exist_ok=True)
+                  shutil.copy2(worker / 'LICENSE', output / 'licenses/Angular-service-worker.txt')
+                  PY
+            - uses: actions/upload-artifact@v4
+              with:
+                  name: just-maple-web
+                  path: deploy/just-maple/
+                  if-no-files-found: error
+                  retention-days: 14
+
     deploy-hornbeam:
-        needs: build
+        needs: build-just-maple
         runs-on: ubuntu-latest
         timeout-minutes: 15
         steps:
             - uses: actions/download-artifact@v4
               with:
-                  name: main-deployment
-                  path: deploy
+                  name: just-maple-web
+                  path: deploy/just-maple
             - uses: azure/login@v2
               with:
                   creds: ${{ secrets.AZURE_CREDENTIALS }}
-            - name: Publish hosted web to hornbeam / justmaple
+            - name: Publish Just Maple to hornbeam / just-maple
               shell: bash
               run: |
                   set -euo pipefail
-                  # Hashed assets first; retain old assets for already-open clients.
-                  cp deploy/hosted-web/index.html deploy/index.html
-                  cp deploy/hosted-web/ngsw.json deploy/ngsw.json
-                  rm deploy/hosted-web/index.html deploy/hosted-web/ngsw.json
+                  # Assets first; retain prior hashed assets for already-open clients.
+                  cp deploy/just-maple/index.html deploy/index.html
+                  cp deploy/just-maple/ngsw-worker.js deploy/ngsw-worker.js
+                  rm deploy/just-maple/index.html deploy/just-maple/ngsw-worker.js
                   az storage blob upload-batch --overwrite true --auth-mode login \
-                    --account-name hornbeam --destination justmaple --source deploy/hosted-web
+                    --account-name hornbeam --destination just-maple --source deploy/just-maple
                   az storage blob upload --overwrite true --auth-mode login \
-                    --account-name hornbeam --container-name justmaple \
+                    --account-name hornbeam --container-name just-maple \
                     --name index.html --file deploy/index.html \
                     --content-type text/html --content-cache-control no-cache
                   az storage blob upload --overwrite true --auth-mode login \
-                    --account-name hornbeam --container-name justmaple \
-                    --name ngsw.json --file deploy/ngsw.json \
-                    --content-type application/json --content-cache-control no-cache
+                    --account-name hornbeam --container-name just-maple \
+                    --name ngsw-worker.js --file deploy/ngsw-worker.js \
+                    --content-type application/javascript --content-cache-control no-cache
             - name: Azure Logout
               if: always()
               run: az logout
