@@ -98,6 +98,7 @@ jobs:
 
     e2e-tests:
         runs-on: ubuntu-latest
+        timeout-minutes: 25
         needs: [build-and-test]
 
         steps:

@@ -355,3 +355,27 @@ class MainCITests(GitFixture):
                 self.assertRaises(ValueError),
             ):
                 control.require_green_main("owner/repo", self.main)
+
+    def test_main_deployment_runs_complete_ci_before_release(self):
+        for status, conclusion, allowed in [
+            ("completed", "success", True),
+            ("completed", "failure", False),
+            ("in_progress", None, False),
+        ]:
+            workflow = {
+                **self.workflow("Product deployment", conclusion, status),
+                "path": ".github/workflows/SugarMaple-Deploy.yml",
+            }
+            with self.subTest(status=status, conclusion=conclusion), patch.object(
+                control, "run", return_value=json.dumps([{"workflow_runs": [workflow]}])
+            ):
+                if allowed:
+                    control.require_green_main("owner/repo", self.main)
+                else:
+                    with self.assertRaises(ValueError):
+                        control.require_green_main("owner/repo", self.main)
+        with patch.object(
+            control, "run",
+            return_value=json.dumps([{"workflow_runs": [self.workflow("Unrelated publish")]}]),
+        ), self.assertRaises(ValueError):
+            control.require_green_main("owner/repo", self.main)

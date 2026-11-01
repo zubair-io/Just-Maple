@@ -206,10 +206,15 @@ def require_green_main(repo, sha):
     for page in pages:
         for workflow in page["workflow_runs"]:
             latest.setdefault(workflow["name"], workflow)
-    expected = {"CI"}
-    missing = expected - latest.keys()
-    if missing:
-        raise ValueError(f"Missing main CI: {sorted(missing)}")
+    # Main now runs the complete reusable CI inside the production deployment.
+    # Keep accepting the standalone CI for older revisions; identify the production
+    # workflow by its path so a display-name change cannot bypass/break this gate.
+    if not any(
+        name == "CI"
+        or workflow.get("path") == ".github/workflows/SugarMaple-Deploy.yml"
+        for name, workflow in latest.items()
+    ):
+        raise ValueError("Missing main CI: no complete CI/deployment workflow")
     for name, workflow in latest.items():
         # This controller can itself be the current push-triggered run.
         if name == "release-handoff":
