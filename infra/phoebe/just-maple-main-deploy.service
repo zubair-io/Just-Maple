@@ -1,0 +1,10 @@
+[Unit]
+Description=Pull tested current-main JapaneseMaple release into CT131
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/lib/just-maple-deploy/pull_main.py
+TimeoutStartSec=20min
+UMask=0077
