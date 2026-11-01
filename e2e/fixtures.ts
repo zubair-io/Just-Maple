@@ -81,7 +81,7 @@ export async function createTestUser(page: Page, baseURL: string = 'http://local
         await page.goto(baseURL);
         await page.evaluate(() => localStorage.clear());
         await page.goto(`${baseURL}/login`);
-        await page.getByRole('button', { name: 'New to Just Maple? Create an account' }).click();
+        await page.getByRole('button', { name: 'New to JapaneseMaple? Create an account' }).click();
         await page.locator('input#displayName').fill(displayName);
         const response = page.waitForResponse((r) =>
             r.url().endsWith('/api/auth/passkey/signup/finish'),
