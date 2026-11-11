@@ -123,7 +123,8 @@ export class EditorToolbarComponent implements OnInit, OnDestroy {
     if (offset > 0) {
       return `${offset}px`;
     }
-    return `calc(1rem + env(safe-area-inset-bottom))`;
+    // A page shown as a card sets --editor-toolbar-rest so the toolbar sits inside the card.
+    return `calc(var(--editor-toolbar-rest, 1rem) + env(safe-area-inset-bottom))`;
   });
 
   // Check if running in iOS native app (WebView)

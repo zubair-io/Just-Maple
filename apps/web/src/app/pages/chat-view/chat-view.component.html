@@ -1,135 +1,123 @@
 @if (selectedNotebook(); as notebook) {
-  <div class="notebook-landing flex flex-col h-full overflow-hidden bg-[var(--color-bg)]">
-    <app-header>
-      <!-- Switcher dropdown container -->
-      <div headerContext class="relative" (keydown.escape)="switcherOpen.set(false)">
-        <button
-          type="button"
-          (click)="openPagesSidebar()"
-          aria-label="Open pages"
-          aria-controls="notebook-sidebar"
-          [attr.aria-expanded]="uiState.sidebarOpen()"
-          class="flex md:hidden items-center gap-1.5 max-w-full h-9 px-2 font-sans font-bold text-lg tracking-tight text-[var(--color-text-main)] bg-transparent border-1.5 border-transparent hover:bg-[var(--color-surface-hover)] rounded-lg cursor-pointer transition-all outline-none"
-        >
-          <span class="truncate">{{ notebook.label }}</span>
-          <span
-            class="material-symbols-rounded text-base text-[var(--color-text-muted)] mt-0.5"
-            aria-hidden="true"
-            >expand_more</span
-          >
-        </button>
-        <button
-          (click)="switcherOpen.set(!switcherOpen())"
-          aria-haspopup="menu"
-          [attr.aria-expanded]="switcherOpen()"
-          aria-label="Switch notebook"
-          class="hidden md:flex items-center gap-1.5 max-w-full h-9 px-2 font-sans font-bold text-lg tracking-tight text-[var(--color-text-main)] bg-transparent border-1.5 border-transparent hover:bg-[var(--color-surface-hover)] rounded-lg cursor-pointer transition-all outline-none"
-        >
-          <span class="truncate">{{ notebook.label }}</span>
-          <span class="material-symbols-rounded text-base text-[var(--color-text-muted)] mt-0.5"
-            >expand_more</span
-          >
-        </button>
-
-        <!-- Dropdown items -->
-        @if (switcherOpen()) {
-          <div
-            class="hidden md:block fixed inset-0 z-40 bg-transparent"
-            (click)="switcherOpen.set(false)"
-          ></div>
-
-          <div
-            role="menu"
-            aria-label="Notebook navigation"
-            class="absolute top-[42px] left-0 z-50 w-60 max-h-[calc(100dvh-96px)] overflow-y-auto bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-1.5 shadow-lg hidden md:flex flex-col gap-0.5 animate-maple-modal-in"
-          >
-            <p
-              class="px-2.5 pt-1 pb-1.5 m-0 text-[10px] font-sans uppercase tracking-wider text-[var(--color-text-muted)]"
-            >
-              Switch notebook
-            </p>
-            @for (item of switcherItems(); track item._id) {
-              <button
-                role="menuitemradio"
-                [attr.aria-checked]="item.active"
-                (click)="selectNotebook(item._id)"
-                class="flex items-center gap-2 w-full h-9 px-2.5 box-border font-sans text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] border-none rounded-lg cursor-pointer text-left transition-colors"
-                [class.bg-[var(--color-surface-hover)]]="item.active"
-                [class.font-bold]="item.active"
-                [class.font-medium]="!item.active"
-              >
-                @if (item.pinned) {
-                  <span class="material-symbols-rounded text-sm text-[var(--color-primary)]"
-                    >push_pin</span
-                  >
-                }
-                <span class="flex-1 truncate">{{ item.name }}</span>
-                @if (item.unreadCount > 0) {
-                  <span
-                    class="flex-none font-sans text-[9px] font-bold text-white bg-[var(--color-primary)] rounded-full px-1.5 py-0.5"
-                  >
-                    {{ item.unreadLabel }}
-                  </span>
-                }
-              </button>
-            }
-            <div class="h-[1px] bg-[var(--color-border)] my-1 mx-1.5"></div>
-            <button
-              (click)="createNewNotebook()"
-              class="flex items-center gap-2 w-full h-9 px-2.5 box-border font-sans font-bold text-sm text-[var(--color-primary)] bg-transparent border-none rounded-lg cursor-pointer text-left hover:bg-[var(--color-surface-hover)] transition-colors"
-            >
-              + New notebook
-            </button>
-          </div>
+  <div class="notebook-shell flex flex-col h-full overflow-hidden bg-[var(--color-shell)]">
+    <!-- Header: back, notebook name, quiet actions -->
+    <header class="flex-none px-4 pt-3 pb-4 md:px-14 md:pt-[30px] md:pb-[76px]">
+      <p [class]="kickerClass + ' pl-[53px] md:pl-[55px]'" [class.max-md:hidden]="childPageOpen()">
+        Notebook
+        @if (!childPageOpen()) {
+          <span class="max-md:hidden"> · {{ pageCountLabel() }}</span>
         }
-      </div>
-
-      <!-- Header Actions (members group, share button) -->
-      <div headerActions class="flex items-center gap-2">
-        @if (!isLocal()) {
-          <button
-            type="button"
-            aria-label="Today"
-            title="Today"
-            class="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-border)] bg-transparent text-[var(--color-text-main)] cursor-pointer"
-            (click)="openToday()"
+      </p>
+      <div class="flex items-center gap-3 md:gap-3.5">
+        @if (childPageOpen()) {
+          <a
+            [routerLink]="['/', notebook._id]"
+            aria-label="Back to pages"
+            title="Back to pages"
+            [class]="circleClass + ' md:hidden'"
           >
-            <span class="material-symbols-rounded" aria-hidden="true">today</span>
-          </button>
-          @if (assistancePage()) {
+            <span class="material-symbols-rounded text-xl" aria-hidden="true">chevron_left</span>
+          </a>
+        }
+        <a
+          routerLink="/"
+          aria-label="Back to notebooks"
+          title="Back to notebooks"
+          [class]="circleClass"
+          [class.max-md:hidden]="childPageOpen()"
+        >
+          <span class="material-symbols-rounded text-xl" aria-hidden="true">chevron_left</span>
+        </a>
+
+        <div
+          role="heading"
+          aria-level="1"
+          class="flex-1 min-w-0 truncate font-sans text-[var(--color-text-main)] md:text-[54px] md:leading-[64px] md:font-light md:tracking-[-0.01em]"
+          [class]="childPageOpen() ? nameOnPageClass : nameOnListClass"
+        >
+          {{ notebook.label }}
+        </div>
+
+        <div class="flex-none flex items-center gap-2">
+          @if (recorder.state()?.isRecording || recorder.state()?.busy) {
+            <a
+              routerLink="/recorder"
+              aria-label="Open active recorder"
+              class="hidden sm:inline-flex items-center h-[38px] px-3.5 rounded-full border border-[var(--color-border)] bg-[var(--color-row-active)] font-sans text-xs font-bold text-[var(--color-maple)] no-underline"
+              >{{ recorder.state()?.isRecording ? '● Recording' : '◌ Processing' }}</a
+            >
+          }
+          @if (!isLocal()) {
             <button
               type="button"
-              aria-label="Ask about this page"
-              title="Ask about this page"
-              class="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-border)] bg-transparent text-[var(--color-primary)] cursor-pointer"
-              (pointerdown)="captureAssistanceSelection()"
-              (click)="assistanceOpen.set(true)"
+              aria-label="Today"
+              title="Today"
+              [class]="circleClass"
+              (click)="openToday()"
             >
-              <span class="material-symbols-rounded" aria-hidden="true">auto_awesome</span>
+              <span class="material-symbols-rounded text-xl" aria-hidden="true">today</span>
+            </button>
+            @if (assistancePage()) {
+              <button
+                type="button"
+                aria-label="Ask about this page"
+                title="Ask about this page"
+                [class]="circleClass"
+                (pointerdown)="captureAssistanceSelection()"
+                (click)="assistanceOpen.set(true)"
+              >
+                <span
+                  class="material-symbols-rounded text-xl text-[var(--color-maple)]"
+                  aria-hidden="true"
+                  >auto_awesome</span
+                >
+              </button>
+            }
+          }
+          @if (!isLocal() && members().length > 1) {
+            <button
+              type="button"
+              aria-label="Shared with"
+              title="Shared with"
+              class="hidden md:flex items-center h-[38px] px-2.5 rounded-full border border-[var(--color-border)] bg-[var(--color-row-active)] cursor-pointer transition-colors hover:border-[var(--color-text-muted)]"
+              (click)="openShareModal()"
+            >
+              <app-member-avatar-group [members]="members()" [maxDisplay]="3" size="xs" />
             </button>
           }
-        }
-        @if (!isLocal() && members().length > 1) {
-          <div
-            class="flex items-center gap-2 px-2.5 py-1 hover:bg-[var(--color-surface-hover)] rounded-lg cursor-pointer transition-colors"
+          <button
+            type="button"
+            [attr.aria-label]="isLocal() ? 'Bots' : 'Share notebook'"
+            [title]="isLocal() ? 'Bots' : 'Share notebook'"
+            [class]="circleClass"
+            [class.md:hidden]="!isLocal() && members().length > 1"
             (click)="openShareModal()"
           >
-            <span class="text-xs text-[var(--color-text-muted)] hidden md:inline">Shared with</span>
-            <app-member-avatar-group [members]="members()" [maxDisplay]="3" size="xs" />
-          </div>
-        }
+            <span class="material-symbols-rounded text-xl" aria-hidden="true">{{
+              isLocal() ? 'smart_toy' : 'ios_share'
+            }}</span>
+          </button>
+        </div>
+      </div>
+    </header>
 
-        <!-- New Page Dropdown -->
+    <div class="flex-1 min-h-0 flex flex-col md:flex-row md:pl-12 max-md:overflow-y-auto">
+      <!-- Left list: new page, then the notebook's pages (or, with no page open, who is here) -->
+      <nav
+        aria-label="Pages"
+        class="flex-none md:w-[262px] md:mr-10 md:overflow-y-auto max-md:px-3 pb-4"
+        [class.max-md:hidden]="childPageOpen()"
+      >
         <div class="relative">
           <button
-            (click)="toggleNewPageDropdown($event)"
-            aria-label="New page"
-            title="New page"
+            type="button"
             aria-haspopup="menu"
             [attr.aria-expanded]="newPageDropdownOpen()"
-            class="h-9 w-9 text-white bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] border-none rounded-lg transition-all cursor-pointer shadow-sm flex items-center justify-center"
+            [class]="rowIdleClass + ' text-[var(--color-text-muted)]'"
+            (click)="toggleNewPageDropdown($event)"
           >
             <span class="material-symbols-rounded text-xl" aria-hidden="true">add</span>
+            <span>New page</span>
           </button>
 
           @if (newPageDropdownOpen()) {
@@ -138,7 +126,8 @@
               (click)="newPageDropdownOpen.set(false)"
             ></div>
             <div
-              class="absolute right-0 top-[40px] z-50 w-44 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-1.5 shadow-lg flex flex-col gap-0.5 animate-maple-modal-in"
+              role="menu"
+              class="absolute left-2 top-[46px] z-50 w-52 max-h-[60vh] overflow-y-auto bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-1.5 shadow-lg flex flex-col gap-0.5 animate-maple-modal-in"
             >
               <button
                 (click)="newPageDropdownOpen.set(false); createNewPage('memo')"
@@ -252,201 +241,248 @@
           }
         </div>
 
-        @if (isLocal()) {
-          <button
-            (click)="openShareModal()"
-            class="flex items-center gap-1.5 px-3 py-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] text-xs font-semibold rounded-lg transition-colors border-none bg-transparent cursor-pointer"
-          >
-            <span class="material-symbols-rounded text-base">smart_toy</span>
-            <span class="hidden md:inline">Bots</span>
-          </button>
-        } @else if (members().length <= 1) {
-          <button
-            (click)="openShareModal()"
-            aria-label="Share notebook"
-            title="Share notebook"
-            class="flex items-center justify-center h-9 w-9 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] rounded-lg transition-colors border border-[var(--color-border)] bg-transparent cursor-pointer"
-          >
-            <span class="material-symbols-rounded text-base" aria-hidden="true">share</span>
-          </button>
-        }
-      </div>
+        <!-- Pages -->
+        <div [class.md:hidden]="!childPageOpen()">
+          @for (page of navigationPages(); track page.id) {
+            <a
+              [routerLink]="['/', notebook._id, page.id]"
+              [attr.aria-current]="page.id === routePageId() ? 'page' : null"
+              [class]="page.id === routePageId() ? rowActiveClass : rowIdleClass"
+            >
+              <span
+                class="material-symbols-rounded text-xl text-[var(--color-text-main)]"
+                aria-hidden="true"
+                >{{ pageIcon(page) }}</span
+              >
+              <span class="min-w-0 truncate font-bold text-[var(--color-text-main)]">{{
+                page.title || 'Untitled'
+              }}</span>
+              <span class="flex-none text-[var(--color-text-muted)]">{{ pageTypeName(page) }}</span>
+              <span class="flex-1"></span>
+              @if (hasUnread(page)) {
+                <span
+                  class="flex-none w-2 h-2 rounded-full bg-[var(--color-maple)]"
+                  role="img"
+                  aria-label="Unread messages"
+                ></span>
+              } @else if (openIds().has(page.id)) {
+                <span
+                  class="flex-none w-1.5 h-1.5 rounded-full bg-[var(--color-mist)]"
+                  role="img"
+                  aria-label="Open"
+                ></span>
+              }
+            </a>
+          } @empty {
+            <p class="m-0 px-4 py-3 font-sans text-sm text-[var(--color-text-muted)]">
+              No pages yet.
+            </p>
+          }
+        </div>
 
-      <!-- Tabs Navigation -->
-      <nav
-        headerNavigation
-        role="tablist"
-        aria-label="Notebook sections"
-        class="flex min-w-0 overflow-x-auto"
-      >
-        <button
-          role="tab"
-          [attr.aria-selected]="selectedHeaderTab() === 'overview'"
-          (click)="selectTab('overview')"
-          class="h-9 px-3 font-sans font-bold text-xs bg-transparent border-none border-b-2 cursor-pointer transition-colors whitespace-nowrap"
-          [class.text-[var(--color-text-main)]]="selectedHeaderTab() === 'overview'"
-          [class.border-[var(--color-primary)]]="selectedHeaderTab() === 'overview'"
-          [class.text-[var(--color-text-muted)]]="selectedHeaderTab() !== 'overview'"
-          [class.border-transparent]="selectedHeaderTab() !== 'overview'"
-        >
-          Overview
-        </button>
+        <!-- With no page open the pages are the tiles on the right; the list shows who is here -->
+        @if (!childPageOpen()) {
+          <div class="hidden md:block px-2 pt-5">
+            @if (!isLocal() && members().length > 0) {
+              <p [class]="kickerClass + ' mb-3'">Collaborators</p>
+              @for (member of members(); track member.userId) {
+                <button
+                  type="button"
+                  class="flex items-center gap-3 w-full h-10 p-0 border-none bg-transparent text-left cursor-pointer font-sans"
+                  (click)="openShareModal()"
+                >
+                  <span
+                    class="flex-none flex items-center justify-center w-7 h-7 rounded-full bg-[var(--color-row-active)] border border-[var(--color-border)] text-[11px] font-bold text-[var(--color-text-muted)] uppercase"
+                    aria-hidden="true"
+                    >{{ memberInitial(member) }}</span
+                  >
+                  <span
+                    class="min-w-0 truncate text-[15px] font-bold text-[var(--color-text-main)]"
+                    >{{ memberName(member) }}</span
+                  >
+                  <span class="flex-none text-sm text-[var(--color-text-muted)]">{{
+                    memberRole(member)
+                  }}</span>
+                </button>
+              }
+            }
 
-        <!-- Dynamic Page Type Tabs -->
-        @for (tab of dynamicTabs(); track tab.id) {
-          <button
-            role="tab"
-            [attr.aria-selected]="selectedHeaderTab() === tab.id"
-            (click)="selectTab(tab.id)"
-            class="h-9 px-3 font-sans font-bold text-xs bg-transparent border-none border-b-2 cursor-pointer transition-colors whitespace-nowrap"
-            [class.text-[var(--color-text-main)]]="selectedHeaderTab() === tab.id"
-            [class.border-[var(--color-primary)]]="selectedHeaderTab() === tab.id"
-            [class.text-[var(--color-text-muted)]]="selectedHeaderTab() !== tab.id"
-            [class.border-transparent]="selectedHeaderTab() !== tab.id"
-          >
-            {{ tab.label }}
-          </button>
+            @if (!isLocal()) {
+              <p [class]="kickerClass + ' mt-7 mb-2'">One per notebook</p>
+              @for (item of singletonPages; track item.type) {
+                <button
+                  type="button"
+                  class="flex items-center gap-3 w-full h-[34px] p-0 border-none bg-transparent text-left cursor-pointer font-sans text-[15px] text-[var(--color-text-main)] hover:text-[var(--color-maple)] transition-colors"
+                  (click)="openSingleton(item.type)"
+                >
+                  <span class="material-symbols-rounded text-lg" aria-hidden="true">{{
+                    item.icon
+                  }}</span>
+                  <span>{{ item.label }}</span>
+                </button>
+              }
+            }
+          </div>
         }
       </nav>
-    </app-header>
 
-    <!-- Tab View Outlet -->
-    <div class="flex-1 flex flex-col min-h-0 overflow-hidden relative">
-      @if (childPageOpen()) {
-        <router-outlet />
-      } @else {
-        <!-- OVERVIEW TAB -->
-        @if (activeTab() === 'overview') {
-          <div class="absolute inset-0 overflow-y-auto p-6 md:p-8 animate-maple-content-in">
-            <!-- Overview subtitle stats -->
-            <div class="mb-6 text-xs text-[var(--color-text-muted)] font-sans">
-              <span>{{ isLocal() ? localPages().length : summary()?.totalPages }} pages</span>
-              <span class="mx-1.5">·</span>
-              <span>last activity {{ notebook.updatedAt | date: 'shortTime' }}</span>
-            </div>
-
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              <!-- Left pane: Pages & Messages previews -->
-              <div class="flex flex-col gap-6">
-                <!-- Recent Pages -->
-                <div
-                  class="p-5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-sm"
+      <!-- Open pages: the newest in first place, the others to its right -->
+      <section
+        class="flex-1 min-w-0 flex flex-col md:min-h-0"
+        [class.min-h-0]="childPageOpen()"
+        [class.max-md:hidden]="!childPageOpen()"
+      >
+        @if (childPageOpen()) {
+          <div
+            class="flex-1 min-h-0 flex items-stretch max-md:px-3 max-md:pb-1 md:gap-8 md:-ml-6 md:pl-6 md:pr-14 md:pt-3 md:pb-9 md:overflow-x-auto page-row"
+            (scroll)="placeEditorToolbar()"
+          >
+            <article
+              #openCard
+              #frontCard
+              [attr.data-page-id]="routePageId()"
+              [attr.aria-label]="frontLabel()"
+              [class]="frontCardClass()"
+            >
+              <div [class]="bandClass">
+                <span class="material-symbols-rounded text-xl" aria-hidden="true">{{
+                  frontIcon()
+                }}</span>
+                <span class="flex-1 min-w-0 truncate">
+                  @if (frontPage(); as page) {
+                    <span class="font-bold text-[var(--color-text-main)]">{{
+                      page.title || 'Untitled'
+                    }}</span>
+                    <span class="text-[var(--color-text-muted)]"> · {{ frontLabel() }}</span>
+                  } @else {
+                    <span class="font-bold text-[var(--color-text-main)]">{{ frontLabel() }}</span>
+                  }
+                </span>
+                <button
+                  type="button"
+                  aria-label="Close page"
+                  title="Close page"
+                  [class]="bandButtonClass"
+                  (click)="closeFront()"
                 >
-                  <h3 class="m-0 mb-4 font-sans font-bold text-sm text-[var(--color-text-main)]">
-                    Recent Pages
-                  </h3>
-                  <div class="flex flex-col gap-2">
-                    @for (page of recentPages(); track page.id) {
-                      <button
-                        (click)="onFileClicked(page.id)"
-                        class="flex items-center gap-3 w-full h-11 px-3 box-border font-sans font-semibold text-sm text-[var(--color-text-main)] bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-text-muted)] rounded-lg cursor-pointer text-left transition-colors"
-                      >
-                        <span class="font-sans text-[10px] text-[var(--color-text-muted)]">
-                          {{ page.updatedAt | date: 'MMM d' }}
-                        </span>
-                        <span class="flex-1 truncate">{{ page.title || 'Untitled' }}</span>
-                        <span class="font-sans font-bold text-sm text-[var(--color-primary)]"
-                          >→</span
-                        >
-                      </button>
-                    } @empty {
-                      <p class="m-0 py-6 text-center text-xs text-[var(--color-text-muted)]">
-                        No pages yet.
-                      </p>
-                    }
-                  </div>
+                  <span class="material-symbols-rounded text-xl" aria-hidden="true">close</span>
+                </button>
+              </div>
+              <div class="flex-1 flex flex-col min-h-0 overflow-hidden relative">
+                <router-outlet />
+              </div>
+            </article>
+
+            <!-- The other open pages wait to the right; picking one brings it to first place -->
+            @for (page of peekPages(); track page.id) {
+              <article #openCard [attr.data-page-id]="page.id" [class]="sideCardClass">
+                <div [class]="bandClass">
+                  <span class="material-symbols-rounded text-xl" aria-hidden="true">{{
+                    pageIcon(page)
+                  }}</span>
+                  <span class="flex-1 min-w-0 truncate">
+                    <span class="font-bold text-[var(--color-text-main)]">{{
+                      page.title || 'Untitled'
+                    }}</span>
+                    <span class="text-[var(--color-text-muted)]"> · {{ pageTypeName(page) }}</span>
+                  </span>
+                  <button
+                    type="button"
+                    [attr.aria-label]="'Close ' + (page.title || 'Untitled')"
+                    title="Close page"
+                    [class]="bandButtonClass"
+                    (click)="closePage(page.id)"
+                  >
+                    <span class="material-symbols-rounded text-xl" aria-hidden="true">close</span>
+                  </button>
                 </div>
-
-                <!-- Recent messages Dialogue preview -->
-                @if (!isLocal()) {
-                  <div
-                    class="p-5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-sm"
+                <a
+                  [routerLink]="['/', notebook._id, page.id]"
+                  [attr.aria-label]="'Bring ' + (page.title || 'Untitled') + ' to first place'"
+                  class="group flex-1 flex flex-col min-h-0 px-9 pt-9 pb-7 no-underline"
+                >
+                  <span
+                    class="text-[26px] leading-tight text-[var(--color-text-main)] line-clamp-3"
+                    [class]="page.type === 'memo' ? 'font-serif font-bold' : 'font-sans font-light'"
+                    >{{ page.title || 'Untitled' }}</span
                   >
-                    <h3
-                      class="m-0 mb-4 font-sans font-bold text-sm text-[var(--color-text-main)] flex items-center gap-1.5"
+                  <span class="mt-3 font-sans text-sm text-[var(--color-text-muted)]"
+                    >{{ pageNote(page) }} · edited {{ page.updatedAt | date: 'MMM d' }}</span
+                  >
+                  @if (page.description) {
+                    <span
+                      class="mt-4 font-sans text-[15px] leading-relaxed text-[var(--color-text-main)] line-clamp-4"
+                      >{{ page.description }}</span
                     >
-                      <span class="material-symbols-rounded text-base text-[var(--color-primary)]"
-                        >chat</span
-                      >
-                      <span>Recent Activity</span>
-                    </h3>
-                    <div class="flex flex-col gap-3">
-                      @for (msg of recentMessages(); track msg.id) {
-                        <div class="text-sm leading-relaxed text-[var(--color-text-main)]">
-                          <span class="font-bold mr-1.5"
-                            >{{ msg.senderDisplayName || msg.userId.slice(0, 5) }}:</span
-                          >
-                          <span>{{ msg.content?.text || '' }}</span>
-                          <span class="font-sans text-[10px] text-[var(--color-text-muted)] ml-2">
-                            {{ msg.createdAt | date: 'shortTime' }}
-                          </span>
-                        </div>
-                      } @empty {
-                        <p class="m-0 py-6 text-center text-xs text-[var(--color-text-muted)]">
-                          No messages yet.
-                        </p>
+                  }
+                  @if (page.tags?.length) {
+                    <span class="mt-4 flex flex-wrap gap-1.5">
+                      @for (tag of page.tags!.slice(0, 6); track tag) {
+                        <span
+                          class="px-2 py-0.5 rounded-md bg-[var(--color-card-band)] font-sans text-xs text-[var(--color-text-muted)]"
+                          >#{{ tag }}</span
+                        >
                       }
-                    </div>
-                  </div>
-                }
-              </div>
-
-              <!-- Right pane: Connection Graph or statistics breakdown -->
-              <div class="flex flex-col gap-6">
-                @if (isLocal()) {
-                  <div
-                    class="p-5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-sm"
+                    </span>
+                  }
+                  <span class="mt-7 flex flex-col gap-3" aria-hidden="true">
+                    <span class="h-2 w-[46%] rounded-full bg-[var(--color-card-band)]"></span>
+                    <span class="h-2 w-[86%] rounded-full bg-[var(--color-card-band)]"></span>
+                    <span class="h-2 w-[68%] rounded-full bg-[var(--color-card-band)]"></span>
+                    <span class="h-2 w-[76%] rounded-full bg-[var(--color-card-band)]"></span>
+                  </span>
+                  <span class="flex-1"></span>
+                  <span
+                    class="self-start inline-flex items-center h-9 px-4 rounded-[10px] border border-[var(--color-border)] bg-[var(--color-card-band)] font-sans text-sm font-bold text-[var(--color-text-main)] group-hover:border-[var(--color-text-muted)] transition-colors"
+                    >Open</span
                   >
-                    <h3 class="m-0 mb-3 font-sans font-bold text-sm text-[var(--color-text-main)]">
-                      Pages
-                    </h3>
-                    <div class="flex flex-col gap-1 max-h-[300px] overflow-y-auto">
-                      @for (page of localPages(); track page.id) {
-                        <button
-                          (click)="onFileClicked(page.id)"
-                          class="flex items-center gap-2.5 px-3 py-2 text-sm text-left border-none bg-transparent hover:bg-[var(--color-surface-hover)] rounded-lg cursor-pointer w-full text-[var(--color-text-main)]"
-                        >
-                          <span
-                            class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
-                          >
-                            {{ pageIcon(page) }}
-                          </span>
-                          <span class="truncate flex-1">{{ page.title || 'Untitled' }}</span>
-                        </button>
-                      }
-                    </div>
-                  </div>
-                } @else if (summary()) {
-                  <!-- Category breakdown / Page type counts -->
-                  <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    @for (entry of summary()!.pageCounts | keyvalue; track entry.key) {
-                      <div
-                        class="flex flex-col items-center p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl text-center hover:-translate-y-0.5 transition-all duration-150"
-                      >
-                        <span
-                          class="material-symbols-rounded text-lg text-[var(--color-text-muted)] mb-1.5"
-                        >
-                          {{ getPageTypeIcon(entry.key) }}
-                        </span>
-                        <span class="font-bold text-xl text-[var(--color-text-main)] mb-0.5">{{
-                          entry.value
-                        }}</span>
-                        <span
-                          class="text-[10px] text-[var(--color-text-muted)] font-sans uppercase tracking-wider"
-                        >
-                          {{ getPageTypeLabel(entry.key) }}s
-                        </span>
-                      </div>
-                    }
-                  </div>
-                }
-              </div>
+                </a>
+              </article>
+            }
+          </div>
+        } @else {
+          <!-- No page open: every page as a tile -->
+          <div class="flex-1 min-h-0 overflow-y-auto md:-ml-6 md:pl-6 md:pr-14 md:pt-3 md:pb-10">
+            <div class="grid grid-cols-[repeat(auto-fill,minmax(216px,1fr))] gap-5">
+              @for (page of navigationPages(); track page.id) {
+                <a
+                  [routerLink]="['/', notebook._id, page.id]"
+                  class="flex flex-col h-[172px] overflow-hidden rounded-[14px] bg-[var(--color-card)] shadow-[var(--shadow-card)] no-underline border transition-transform duration-150 hover:-translate-y-0.5"
+                  [class]="hasUnread(page) ? 'border-[var(--color-maple)]' : 'border-transparent'"
+                >
+                  <span
+                    class="flex-none flex items-center gap-2 h-9 px-4 bg-[var(--color-card-band)] font-sans text-[13px] font-bold text-[var(--color-text-main)]"
+                  >
+                    <span class="material-symbols-rounded text-lg" aria-hidden="true">{{
+                      pageIcon(page)
+                    }}</span>
+                    <span class="min-w-0 truncate">{{ page.title || 'Untitled' }}</span>
+                  </span>
+                  <span class="flex-1 flex flex-col gap-2.5 px-4 pt-5" aria-hidden="true">
+                    <span class="h-1.5 w-[78%] rounded-full bg-[var(--color-card-band)]"></span>
+                    <span class="h-1.5 w-[62%] rounded-full bg-[var(--color-card-band)]"></span>
+                    <span class="h-1.5 w-[86%] rounded-full bg-[var(--color-card-band)]"></span>
+                    <span class="h-1.5 w-[48%] rounded-full bg-[var(--color-card-band)]"></span>
+                  </span>
+                  <span
+                    class="flex-none px-4 pb-4 font-sans text-[11px] truncate"
+                    [class]="
+                      hasUnread(page) ? 'text-[var(--color-maple)]' : 'text-[var(--color-mist)]'
+                    "
+                    >{{ pageNote(page) }}</span
+                  >
+                </a>
+              } @empty {
+                <p class="m-0 font-sans text-sm text-[var(--color-text-muted)]">
+                  No pages yet. Start with New page.
+                </p>
+              }
             </div>
 
-            <!-- Connection Graph component (Full Width at bottom) -->
+            <!-- How the notebook's pages link to each other -->
             @if (!isLocal() && connectionGraph()) {
               <div
-                class="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-sm overflow-hidden mt-6"
+                class="mt-8 overflow-hidden rounded-[18px] bg-[var(--color-card)] shadow-[var(--shadow-card)]"
               >
                 <app-connection-graph
                   [nodes]="connectionGraph()!.nodes"
@@ -458,77 +494,31 @@
             }
           </div>
         }
-
-        <!-- DYNAMIC PAGES TAB -->
-        @if (activeTab().startsWith('type-')) {
-          <div class="absolute inset-0 overflow-y-auto p-6 md:p-8 animate-maple-content-in">
-            <div class="max-w-[720px] mx-auto">
-              <!-- Header of Pages -->
-              <div
-                class="flex items-baseline justify-between mb-4 border-b border-[var(--color-border)] pb-3"
-              >
-                <span
-                  class="font-sans text-[11px] font-semibold tracking-wider text-[var(--color-text-muted)] uppercase"
-                >
-                  {{
-                    activeTab().substring(5) === 'memo' ? 'Notes' : activeTab().substring(5) + 's'
-                  }}
-                </span>
-
-                <div class="flex items-center gap-4">
-                  <!-- Search box -->
-                  <div class="relative">
-                    <input
-                      type="text"
-                      [ngModel]="pageSearchQuery()"
-                      (ngModelChange)="pageSearchQuery.set($event)"
-                      placeholder="Search pages..."
-                      class="h-7 px-2 font-sans text-[10px] text-[var(--color-text-main)] bg-[var(--color-input-bg)] border border-[var(--color-border)] rounded outline-none focus:border-[var(--color-primary)] transition-colors w-32"
-                    />
-                  </div>
-
-                  <!-- Add button for this specific type -->
-                  <button
-                    (click)="createNewPage($any(activeTab().substring(5)))"
-                    class="font-sans text-xs text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] bg-transparent border-none cursor-pointer p-0 font-semibold flex items-center gap-1"
-                  >
-                    + Create {{ getPageTypeLabel(activeTab().substring(5)) }}
-                  </button>
-                </div>
-              </div>
-
-              <!-- Pages List -->
-              <div class="flex flex-col">
-                @for (page of filteredPagesForActiveTab(); track page.id) {
-                  <button
-                    (click)="onFileClicked(page.id)"
-                    class="flex items-baseline justify-between gap-4 text-left py-3.5 px-1 bg-transparent border-none border-b border-[var(--color-border)] hover:bg-[var(--color-surface-hover)] cursor-pointer text-[var(--color-text-main)] transition-colors w-full"
-                  >
-                    <div class="flex items-center gap-2.5 min-w-0">
-                      <span
-                        class="material-symbols-rounded text-sm text-[var(--color-text-muted)] flex-shrink-0"
-                      >
-                        {{ pageIcon(page) }}
-                      </span>
-                      <span class="font-sans text-base leading-normal truncate">{{
-                        page.title || 'Untitled page'
-                      }}</span>
-                    </div>
-                    <span class="flex-none font-sans text-[11px] text-[var(--color-text-muted)]">
-                      {{ page.updatedAt | date: 'MMM d, y' }}
-                    </span>
-                  </button>
-                } @empty {
-                  <p class="font-sans text-xs text-[var(--color-text-muted)] text-center py-10">
-                    No pages of this type yet. Click above to create one.
-                  </p>
-                }
-              </div>
-            </div>
-          </div>
-        }
-      }
+      </section>
     </div>
+
+    <!-- Open pages strip: bright is on screen, dim is waiting off screen -->
+    @if (openPages().length > 0) {
+      <div
+        role="list"
+        aria-label="Open pages"
+        class="page-row flex-none flex items-center gap-2 overflow-x-auto px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:pl-[350px] md:pr-14 md:pt-0 md:pb-5"
+      >
+        @for (page of openPages(); track page.id) {
+          <a
+            role="listitem"
+            [routerLink]="['/', notebook._id, page.id]"
+            [attr.aria-current]="page.id === routePageId() ? 'page' : null"
+            [class]="onScreenIds().has(page.id) ? pillOn : pillOff"
+          >
+            <span class="material-symbols-rounded text-lg" aria-hidden="true">{{
+              pageIcon(page)
+            }}</span>
+            <span class="truncate">{{ page.title || 'Untitled' }}</span>
+          </a>
+        }
+      </div>
+    }
   </div>
 } @else {
   <div

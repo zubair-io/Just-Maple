@@ -1,5 +1,4 @@
 import { AssistancePanelComponent } from '../../components/organisms/assistance-panel/assistance-panel.component';
-import { AppHeaderComponent } from '../../components/organisms/app-header/app-header.component';
 import {
   Component,
   inject,
@@ -8,12 +7,16 @@ import {
   OnInit,
   OnDestroy,
   effect,
+  untracked,
+  viewChild,
+  viewChildren,
+  ElementRef,
   ChangeDetectionStrategy,
 } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router, RouterOutlet, NavigationEnd } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink, RouterOutlet, NavigationEnd } from '@angular/router';
 import {
   Subscription,
   switchMap,
@@ -31,7 +34,17 @@ import { NotificationService } from '../../services/notification.service';
 import { PageService } from '../../services/page.service';
 import { MessageService } from '../../services/message.service';
 import { DeviceDataService } from '../../services/device-data.service';
-import { UiStateService } from '../../services/ui-state.service';
+import {
+  BAND_BUTTON_CLASS,
+  CARD_BAND_CLASS,
+  CARD_CLASS,
+  CIRCLE_BUTTON_CLASS,
+  KICKER_CLASS,
+  LIST_ROW_ACTIVE_CLASS,
+  LIST_ROW_IDLE_CLASS,
+} from '../../utils/shell-classes';
+import { OpenPagesService } from '../../services/open-pages.service';
+import { RecorderWorkspaceService } from '../../services/recorder-workspace.service';
 import { DEVICE_DATA_SOURCES, deviceSourceInfo } from '../../utils/device-sources';
 import {
   ShareModalComponent,
@@ -44,7 +57,11 @@ import {
   type GraphEdge,
   type GraphStats,
 } from '../../components';
-import { getPageTypeLabel as getLabel, getPageTypeIcon as getIcon } from '../../utils/page-types';
+import {
+  getPageTypeLabel as getLabel,
+  getPageTypeIcon as getIcon,
+  getPageTypeName,
+} from '../../utils/page-types';
 import { isLocalNotebook } from '../../providers/data-provider.interface';
 import type { NotebookMember, Page, Message, MacDataSource } from '@maple/shared';
 import { aboutMePageId, activityPageId, followUpsPageId, graphPageId } from '@maple/shared';
@@ -61,14 +78,44 @@ interface ConnectionGraphData {
   stats: GraphStats;
 }
 
+/** Pages that read as a column; every other type takes the width of the row. */
+const NARROW_PAGE_TYPES = new Set(['memo', 'message', 'aboutme', 'activity', 'followups']);
+
+/** Views under a notebook that aren't pages. */
+const VIEW_NAMES: Record<string, { label: string; icon: string }> = {
+  today: { label: 'Today', icon: 'today' },
+  todos: { label: 'Todos', icon: 'checklist' },
+  new: { label: 'New page', icon: 'add' },
+  scan: { label: 'Scan', icon: 'barcode_scanner' },
+};
+
+/** Pages each notebook has at most one of, offered beside the overview. */
+const SINGLETON_PAGES = [
+  { type: 'aboutme', label: 'About me', icon: 'person' },
+  { type: 'graph', label: 'Graph', icon: 'hub' },
+  { type: 'activity', label: 'Activity', icon: 'monitoring' },
+  { type: 'followups', label: 'Follow-ups', icon: 'reply' },
+] as const;
+
+type SingletonPageType = (typeof SINGLETON_PAGES)[number]['type'];
+
+const ACCESS_LEVEL_NAMES: Record<string, string> = {
+  owner: 'Owner',
+  write: 'Member',
+  read: 'Viewer',
+};
+
+const PILL_CLASS =
+  'flex-none flex items-center gap-2 h-9 max-w-[200px] px-3.5 rounded-[10px] bg-[var(--color-row-active)] font-sans text-[13px] no-underline transition-opacity';
+
 @Component({
   selector: 'app-chat-view',
   standalone: true,
   imports: [
     CommonModule,
     FormsModule,
-    AppHeaderComponent,
     RouterOutlet,
+    RouterLink,
     ShareModalComponent,
     NotebookHeaderComponent,
     ConnectionGraphComponent,
@@ -89,6 +136,8 @@ export class ChatViewComponent implements OnInit, OnDestroy {
   private readonly messageService = inject(MessageService);
   private readonly dialogService = inject(DialogService);
   private readonly deviceData = inject(DeviceDataService);
+  private readonly openPagesService = inject(OpenPagesService);
+  readonly recorder = inject(RecorderWorkspaceService);
 
   private routeSubscription?: Subscription;
 
@@ -113,21 +162,9 @@ export class ChatViewComponent implements OnInit, OnDestroy {
     this.assistanceOpen.set(false);
     void this.router.navigate(['/', this.selectedNotebookId(), 'today']);
   }
-  readonly activeTab = signal<string>('overview');
   readonly childPageOpen = signal(false);
   readonly routePageId = signal<string | null>(null);
-  readonly selectedHeaderTab = computed(() => {
-    if (this.isToday()) return 'today';
-    const pageId = this.routePageId();
-    const page = pageId ? this.pageService.pages().find((p) => p.id === pageId) : null;
-    return page ? `type-${page.type}` : this.activeTab();
-  });
-  readonly switcherOpen = signal<boolean>(false);
-  readonly uiState = inject(UiStateService);
-  readonly pageSearchQuery = signal<string>('');
   readonly newPageDropdownOpen = signal<boolean>(false);
-
-  private readonly pinnedIds = signal<Set<string>>(this.loadPinnedIds());
 
   // Reactively load members when notebook changes or refresh is triggered
   readonly members = toSignal(
@@ -180,61 +217,6 @@ export class ChatViewComponent implements OnInit, OnDestroy {
     { initialValue: null as ConnectionGraphData | null },
   );
 
-  readonly dynamicTabs = computed(() => {
-    const notebookId = this.selectedNotebookId();
-    if (!notebookId) return [];
-
-    const pages = this.isLocal()
-      ? this.localPages()
-      : this.pageService.pages().filter((p) => p.notebookId === notebookId);
-
-    const types = [...new Set(pages.map((p) => p.type))];
-
-    return types.map((type) => ({
-      id: `type-${type}`,
-      type,
-      label: this.getPageTypeTabLabel(type),
-    }));
-  });
-
-  readonly filteredPagesForActiveTab = computed(() => {
-    const tab = this.activeTab();
-    const pages = this.notebookPages();
-
-    if (tab.startsWith('type-')) {
-      const targetType = tab.substring(5);
-      return pages.filter((p) => p.type === targetType);
-    }
-    return [];
-  });
-
-  private getPageTypeTabLabel(type: string): string {
-    switch (type) {
-      case 'memo':
-        return 'Notes';
-      case 'whiteboard':
-        return 'Whiteboards';
-      case 'kanban':
-        return 'Kanbans';
-      case 'message':
-        return 'Chats';
-      case 'json':
-        return 'JSON Pages';
-      case 'canvas':
-        return 'Canvases';
-      case 'collectable':
-        return 'Collectibles';
-      case 'graph':
-        return 'Graph';
-      case 'activity':
-        return 'Activity';
-      case 'followups':
-        return 'Follow-ups';
-      default:
-        return `${type.charAt(0).toUpperCase() + type.slice(1)}s`;
-    }
-  }
-
   constructor() {
     // Track active notebook for smart notification filtering and message loading
     effect(() => {
@@ -248,19 +230,48 @@ export class ChatViewComponent implements OnInit, OnDestroy {
       }
     });
 
-    // Make sure activeTab falls back to overview if the selected page type tab is no longer available
-    effect(() => {
-      const tab = this.activeTab();
-      if (
-        tab.startsWith('type-') &&
-        !this.pageService.isLoading() &&
-        this.pageService.pages().length > 0
-      ) {
-        const available = this.dynamicTabs().some((t) => t.id === tab);
-        if (!available) {
-          this.activeTab.set('overview');
-        }
+    // Keep the editor toolbar centred on the card in first place as it resizes.
+    effect((onCleanup) => {
+      const card = this.frontCard()?.nativeElement;
+      if (!card || typeof ResizeObserver === 'undefined') return;
+      const place = () => this.placeEditorToolbar();
+      const observer = new ResizeObserver(place);
+      observer.observe(card);
+      window.addEventListener('resize', place);
+      place();
+      onCleanup(() => {
+        observer.disconnect();
+        window.removeEventListener('resize', place);
+      });
+    });
+
+    // Tell the strip which open pages are on screen and which wait off to the right.
+    effect((onCleanup) => {
+      const cards = this.openCards();
+      if (typeof IntersectionObserver === 'undefined' || cards.length === 0) {
+        untracked(() => this.visibleIds.set(new Set()));
+        return;
       }
+      const seen = new Map<string, boolean>();
+      const observer = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            const id = (entry.target as HTMLElement).dataset['pageId'];
+            if (id) seen.set(id, entry.intersectionRatio >= 0.35);
+          }
+          this.visibleIds.set(new Set([...seen].filter(([, on]) => on).map(([id]) => id)));
+        },
+        { threshold: [0, 0.35, 1] },
+      );
+      for (const card of cards) observer.observe(card.nativeElement);
+      onCleanup(() => observer.disconnect());
+    });
+
+    // A page that is opened takes first place in the row of open pages.
+    effect(() => {
+      const notebookId = this.selectedNotebookId();
+      const page = this.frontPage();
+      if (notebookId && page) untracked(() => this.openPagesService.open(notebookId, page.id));
     });
   }
 
@@ -277,22 +288,6 @@ export class ChatViewComponent implements OnInit, OnDestroy {
     const notebookId = this.selectedNotebookId();
     if (!notebookId || !this.isLocal()) return [];
     return this.pageService.pages().filter((p) => p.notebookId === notebookId);
-  });
-
-  readonly switcherItems = computed(() => {
-    const all = this.notebookService.notebooks();
-    const activeId = this.selectedNotebookId();
-    return all.map((nb) => ({
-      _id: nb._id,
-      name: nb.label,
-      active: nb._id === activeId,
-      pinned: this.pinnedIds().has(nb._id),
-      unreadCount: this.messageService.getUnreadCount(nb._id),
-      unreadLabel:
-        this.messageService.getUnreadCount(nb._id) > 99
-          ? '99+'
-          : String(this.messageService.getUnreadCount(nb._id)),
-    }));
   });
 
   readonly recentPages = computed(() => {
@@ -316,12 +311,6 @@ export class ChatViewComponent implements OnInit, OnDestroy {
       : this.pageService.pages().filter((p) => p.notebookId === notebookId);
 
     return pages.filter((page) => !page.isTrashed);
-  });
-
-  readonly notebookPages = computed(() => {
-    const pages = this.navigationPages();
-    const query = this.pageSearchQuery().trim().toLowerCase();
-    return pages.filter((p) => !query || p.title.toLowerCase().includes(query));
   });
 
   /** This notebook's chats, for choosing where a bot is proactive. */
@@ -363,6 +352,176 @@ export class ChatViewComponent implements OnInit, OnDestroy {
       : getIcon(page.type);
   }
 
+  /** The page in first place: the one the route shows. */
+  readonly frontPage = computed(
+    () => this.navigationPages().find((page) => page.id === this.routePageId()) ?? null,
+  );
+
+  /** This notebook's open pages, first place first. */
+  readonly openPages = computed(() => {
+    const byId = new Map(this.navigationPages().map((page) => [page.id, page]));
+    return this.openPagesService
+      .ids(this.selectedNotebookId())
+      .map((id) => byId.get(id))
+      .filter((page): page is Page => !!page);
+  });
+
+  /** Open pages to the right of the one in first place. */
+  readonly peekPages = computed(() =>
+    this.openPages().filter((page) => page.id !== this.routePageId()),
+  );
+
+  readonly openIds = computed(() => new Set(this.openPages().map((page) => page.id)));
+
+  /** Route under the notebook that isn't a page (Today, Todos...). */
+  private readonly childPath = signal<string | null>(null);
+
+  readonly frontIcon = computed(() => {
+    const page = this.frontPage();
+    if (page) return this.pageIcon(page);
+    if (!this.childPageOpen()) return 'dashboard';
+    return VIEW_NAMES[this.childPath() ?? '']?.icon ?? 'description';
+  });
+
+  readonly frontLabel = computed(() => {
+    const page = this.frontPage();
+    if (page) return this.pageTypeName(page);
+    if (!this.childPageOpen()) return 'Overview';
+    return VIEW_NAMES[this.childPath() ?? '']?.label ?? 'Page';
+  });
+
+  /** Memos and chats are a column; boards and drawings take the width. */
+  readonly frontCardClass = computed(() => {
+    const page = this.frontPage();
+    const narrow = !!page && NARROW_PAGE_TYPES.has(page.type);
+    const width = narrow
+      ? 'md:w-[clamp(440px,48%,620px)]'
+      : this.peekPages().length > 0
+        ? 'md:w-[calc(100%-88px)]'
+        : 'md:w-full';
+    return `${CARD_CLASS} w-full md:flex-none md:min-h-0 [--editor-toolbar-rest:4.75rem] md:[--editor-toolbar-rest:6.75rem] ${width}`;
+  });
+
+  readonly sideCardClass = `${CARD_CLASS} hidden md:flex flex-none w-[400px] min-h-0`;
+  readonly kickerClass = KICKER_CLASS;
+  readonly circleClass = CIRCLE_BUTTON_CLASS;
+  readonly rowIdleClass = LIST_ROW_IDLE_CLASS;
+  readonly rowActiveClass = LIST_ROW_ACTIVE_CLASS;
+  readonly bandClass = CARD_BAND_CLASS;
+  readonly bandButtonClass = BAND_BUTTON_CLASS;
+  readonly nameOnListClass = 'text-[32px] leading-[40px] font-light tracking-[-0.01em]';
+  readonly nameOnPageClass = 'text-[17px] leading-[38px] font-bold';
+  readonly pillOn = `${PILL_CLASS} font-bold text-[var(--color-text-main)] shadow-[0_1px_2px_rgba(41,37,36,0.05)]`;
+  readonly pillOff = `${PILL_CLASS} text-[var(--color-text-muted)] opacity-55 hover:opacity-100`;
+  readonly singletonPages = SINGLETON_PAGES;
+
+  private readonly frontCard = viewChild<ElementRef<HTMLElement>>('frontCard');
+
+  /**
+   * The memo editor's toolbar floats over the page. Tell it where the card in
+   * first place is, so it sits inside that card and not across its neighbours.
+   */
+  placeEditorToolbar(): void {
+    const card = this.frontCard()?.nativeElement;
+    if (!card) return;
+    const rect = card.getBoundingClientRect();
+    const left = Math.max(rect.left, 0);
+    const right = Math.min(rect.right, window.innerWidth);
+    card.style.setProperty('--editor-toolbar-left', `${Math.round((left + right) / 2)}px`);
+    card.style.setProperty('--editor-toolbar-max', `${Math.max(right - left - 24, 200)}px`);
+  }
+
+  /** Cards in the row, watched so the strip can tell on screen from waiting. */
+  private readonly openCards = viewChildren<ElementRef<HTMLElement>>('openCard');
+  private readonly visibleIds = signal<Set<string>>(new Set());
+
+  /** Open pages a person can see now; the one in first place always counts. */
+  readonly onScreenIds = computed(() => {
+    const ids = new Set(this.visibleIds());
+    const front = this.routePageId();
+    if (front) ids.add(front);
+    return ids;
+  });
+
+  readonly pageCountLabel = computed(() => {
+    const count = this.navigationPages().length;
+    return count === 1 ? '1 page' : `${count} pages`;
+  });
+
+  /** The quiet line under a page's name: its type, and what is waiting in it. */
+  pageNote(page: Page): string {
+    const name = this.pageTypeName(page);
+    if (page.type === 'message') {
+      const unread = this.messageService.getUnreadCountByPageId(page.id);
+      if (unread > 0) return `${name} · ${unread} unread`;
+    }
+    const todos = page.todoMeta;
+    if (todos?.hasTodos) {
+      const open = todos.todoCount - todos.completedCount;
+      if (todos.overdueCount > 0) return `${name} · ${todos.overdueCount} overdue`;
+      if (open > 0) return `${name} · ${open} ${open === 1 ? 'todo' : 'todos'}`;
+    }
+    return name;
+  }
+
+  memberName(member: NotebookMember): string {
+    return member.displayName || member.email?.split('@')[0] || 'Member';
+  }
+
+  memberInitial(member: NotebookMember): string {
+    return this.memberName(member).charAt(0);
+  }
+
+  memberRole(member: NotebookMember): string {
+    return ACCESS_LEVEL_NAMES[member.accessLevel] ?? member.accessLevel;
+  }
+
+  /** Opens the notebook's About me, Graph, Activity or Follow-ups, adding it first if needed. */
+  openSingleton(type: SingletonPageType): void {
+    const notebookId = this.selectedNotebookId();
+    if (!notebookId) return;
+    const existing = this.navigationPages().find((page) => page.type === type);
+    if (existing) {
+      void this.router.navigate(['/', notebookId, existing.id]);
+      return;
+    }
+    if (type === 'aboutme') void this.createAboutMePage();
+    else if (type === 'graph') void this.createGraphPage();
+    else if (type === 'activity') void this.createActivityPage();
+    else void this.createFollowUpsPage();
+  }
+
+  /** "Memo", "Chat", "Calendar": what a page is, in Maple's words. */
+  pageTypeName(page: Page): string {
+    return getPageTypeName(page.type);
+  }
+
+  hasUnread(page: Page): boolean {
+    return page.type === 'message' && this.messageService.hasUnreadByPageId(page.id);
+  }
+
+  /** Closes an open page; closing the one in first place shows the next. */
+  closePage(pageId: string): void {
+    const notebookId = this.selectedNotebookId();
+    if (!notebookId) return;
+    const wasFront = pageId === this.routePageId();
+    this.openPagesService.close(notebookId, pageId);
+    if (wasFront) this.showNextOpenPage(notebookId);
+  }
+
+  closeFront(): void {
+    const notebookId = this.selectedNotebookId();
+    if (!notebookId) return;
+    const pageId = this.routePageId();
+    if (pageId) this.openPagesService.close(notebookId, pageId);
+    this.showNextOpenPage(notebookId);
+  }
+
+  private showNextOpenPage(notebookId: string): void {
+    const next = this.openPages().find((page) => page.id !== this.routePageId());
+    void this.router.navigate(next ? ['/', notebookId, next.id] : ['/', notebookId]);
+  }
+
   ngOnInit(): void {
     this.routeSubscription = combineLatest([
       this.route.params,
@@ -379,34 +538,17 @@ export class ChatViewComponent implements OnInit, OnDestroy {
       this.childPageOpen.set(!!this.route.firstChild);
       this.routePageId.set(this.route.firstChild?.snapshot.paramMap.get('id') ?? null);
       this.isToday.set(this.route.firstChild?.snapshot.routeConfig?.path === 'today');
+      this.childPath.set(this.route.firstChild?.snapshot.routeConfig?.path ?? null);
       this.assistanceOpen.set(false);
       if (notebookChanged) {
-        this.activeTab.set('overview');
-        this.pageSearchQuery.set('');
         if (notebookId && isLocalNotebook(notebookId)) {
           this.pageService.loadLocalPages(notebookId).pipe(take(1)).subscribe();
         }
       }
-      const tab = this.route.snapshot.queryParamMap.get('tab');
-      if (!this.childPageOpen() && tab) this.activeTab.set(tab);
       if (wasChildPageOpen && !this.childPageOpen()) {
         this.summaryRefreshTrigger.update((value) => value + 1);
       }
-      this.switcherOpen.set(false);
       this.newPageDropdownOpen.set(false);
-    });
-  }
-
-  openPagesSidebar(): void {
-    this.switcherOpen.set(false);
-    this.uiState.openSidebar();
-  }
-
-  selectTab(tab: string): void {
-    this.switcherOpen.set(false);
-    this.activeTab.set(tab);
-    this.router.navigate(['/', this.selectedNotebookId()], {
-      queryParams: { tab: tab === 'overview' ? null : tab },
     });
   }
 
@@ -414,38 +556,6 @@ export class ChatViewComponent implements OnInit, OnDestroy {
     this.routeSubscription?.unsubscribe();
     // Clear active notebook when leaving chat view
     this.notificationService.setActiveNotebook(null);
-  }
-
-  private loadPinnedIds(): Set<string> {
-    if (typeof localStorage === 'undefined') return new Set();
-    const val = localStorage.getItem('maple-pinned-notebooks');
-    if (!val) return new Set();
-    try {
-      return new Set(JSON.parse(val));
-    } catch {
-      return new Set();
-    }
-  }
-
-  togglePin(notebookId: string, event: Event): void {
-    event.stopPropagation();
-    event.preventDefault();
-    this.pinnedIds.update((set) => {
-      const next = new Set(set);
-      if (next.has(notebookId)) {
-        next.delete(notebookId);
-      } else {
-        next.add(notebookId);
-      }
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem('maple-pinned-notebooks', JSON.stringify([...next]));
-      }
-      return next;
-    });
-  }
-
-  isPinned(notebookId: string): boolean {
-    return this.pinnedIds().has(notebookId);
   }
 
   openShareModal(): void {
@@ -498,7 +608,6 @@ export class ChatViewComponent implements OnInit, OnDestroy {
   }
 
   onFileClicked(pageId: string): void {
-    this.switcherOpen.set(false);
     const notebookId = this.selectedNotebookId();
     if (notebookId) {
       this.router.navigate(['/', notebookId, pageId]);
@@ -530,33 +639,6 @@ export class ChatViewComponent implements OnInit, OnDestroy {
     }
 
     this.router.navigate(['/', notebookId, pageId]);
-  }
-
-  selectNotebook(notebookId: string): void {
-    this.switcherOpen.set(false);
-    this.router.navigate(['/', notebookId]);
-  }
-
-  async createNewNotebook(): Promise<void> {
-    this.switcherOpen.set(false);
-    const name = await this.dialogService.prompt({
-      title: 'New Notebook',
-      message: 'Enter a name for the notebook:',
-      placeholder: 'Notebook name',
-      confirmLabel: 'Create',
-    });
-    if (!name) return;
-
-    this.notebookService.createNotebook({ label: name }).subscribe({
-      next: (nb) => {
-        if (nb) {
-          this.router.navigate(['/', nb._id]);
-        }
-      },
-      error: (error) => {
-        console.error('Failed to create notebook:', error);
-      },
-    });
   }
 
   createNewPage(type: 'memo' | 'whiteboard' | 'message' | 'kanban' | 'json' = 'memo'): void {

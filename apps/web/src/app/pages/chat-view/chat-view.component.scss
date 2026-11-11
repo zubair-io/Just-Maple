@@ -6,14 +6,10 @@
   overflow: hidden;
 }
 
-.notebook-landing {
+.notebook-shell {
   width: 100%;
   height: 100%;
 }
-
-/* ============================================================
-   Title Switcher Dropdown & Backdrop
-   ============================================================ */
 
 .animate-maple-modal-in {
   animation: mapleModalIn 0.2s ease-out both;
@@ -21,27 +17,6 @@
 
 .animate-maple-content-in {
   animation: mapleContentIn 0.15s ease-in 0.12s both;
-}
-
-/* ============================================================
-   Tab Layout
-   ============================================================ */
-
-nav[role='tablist'] {
-  button[role='tab'] {
-    position: relative;
-    outline: none;
-    transition: all 0.15s ease-in-out;
-
-    &:hover {
-      color: var(--color-text-main) !important;
-    }
-
-    &:focus-visible {
-      outline: 2px solid var(--color-primary);
-      outline-offset: -2px;
-    }
-  }
 }
 
 /* ============================================================
@@ -117,5 +92,14 @@ app-chat {
   }
   to {
     transform: rotate(360deg);
+  }
+}
+
+/* The row of open pages scrolls sideways; the strip below shows where you are. */
+.page-row {
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
   }
 }

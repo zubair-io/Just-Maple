@@ -1,9 +1,9 @@
 :host {
   position: fixed;
-  bottom: calc(1rem + env(safe-area-inset-bottom));
-  left: 50%;
+  bottom: calc(var(--editor-toolbar-rest, 1rem) + env(safe-area-inset-bottom));
+  left: var(--editor-toolbar-left, 50%);
   transform: translateX(-50%);
-  max-width: calc(100vw - 24px);
+  max-width: min(calc(100vw - 24px), var(--editor-toolbar-max, 100vw));
   z-index: 100;
   font-family: var(--font-sans);
   transition: bottom 0.15s ease-out;
