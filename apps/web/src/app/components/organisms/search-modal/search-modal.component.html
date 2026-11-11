@@ -1,83 +1,78 @@
-<!-- Modal Content -->
+<!-- Search: opens over the page with ⌘K, and is nowhere on screen until then -->
 <div
-  class="bg-[var(--color-surface)] rounded-xl shadow-2xl w-full max-w-2xl max-h-[70vh] flex flex-col mx-4"
+  class="bg-[var(--color-surface)] rounded-[18px] shadow-2xl w-full max-w-[640px] max-h-[72vh] flex flex-col mx-4 overflow-hidden font-sans"
   (keydown)="onKeyDown($event)"
 >
-  <!-- Search Input -->
-  <div class="p-4 border-b border-[var(--color-border)]">
-    <div class="flex items-center gap-2">
-      <span class="material-symbols-rounded text-xl text-[var(--color-text-muted)] shrink-0"
-        >search</span
-      >
+  <!-- What you are looking for -->
+  <div
+    class="flex-none flex items-center gap-3 min-h-[62px] px-6 py-2 border-b border-[var(--color-border)]"
+  >
+    <span
+      class="material-symbols-rounded text-xl text-[var(--color-text-main)] shrink-0"
+      aria-hidden="true"
+      >search</span
+    >
 
-      <!-- Active filter chips -->
-      @for (tag of selectedTags(); track tag) {
-        <button
-          (click)="removeTag(tag)"
-          class="flex items-center gap-1 px-2 py-1 bg-[var(--color-primary)] text-white text-xs rounded-full shrink-0 hover:bg-[var(--color-primary-hover)] transition-colors"
-        >
-          <span>#{{ tag }}</span>
-          <span class="material-symbols-rounded text-sm">close</span>
-        </button>
-      }
-      @for (notebookId of selectedNotebookIds(); track notebookId) {
-        <button
-          (click)="toggleNotebook(notebookId)"
-          class="flex items-center gap-1 px-2 py-1 bg-[var(--color-primary)] text-white text-xs rounded-full shrink-0 hover:bg-[var(--color-primary-hover)] transition-colors"
-        >
-          <span class="material-symbols-rounded text-sm">folder</span>
-          <span>{{ getNotebookLabel(notebookId) }}</span>
-          <span class="material-symbols-rounded text-sm">close</span>
-        </button>
-      }
-      @for (type of selectedTypes(); track type) {
-        <button
-          (click)="toggleType(type)"
-          class="flex items-center gap-1 px-2 py-1 bg-[var(--color-primary)] text-white text-xs rounded-full shrink-0 hover:bg-[var(--color-primary-hover)] transition-colors"
-        >
-          <span class="material-symbols-rounded text-sm">{{ getTypeIcon(type) }}</span>
-          <span>{{ getTypeLabel(type) }}</span>
-          <span class="material-symbols-rounded text-sm">close</span>
-        </button>
-      }
+    <!-- Active filter chips -->
+    @for (tag of selectedTags(); track tag) {
+      <button type="button" (click)="removeTag(tag)" [class]="chipClass">
+        <span>#{{ tag }}</span>
+        <span class="material-symbols-rounded text-sm" aria-hidden="true">close</span>
+      </button>
+    }
+    @for (notebookId of selectedNotebookIds(); track notebookId) {
+      <button type="button" (click)="toggleNotebook(notebookId)" [class]="chipClass">
+        <span>{{ getNotebookLabel(notebookId) }}</span>
+        <span class="material-symbols-rounded text-sm" aria-hidden="true">close</span>
+      </button>
+    }
+    @for (type of selectedTypes(); track type) {
+      <button type="button" (click)="toggleType(type)" [class]="chipClass">
+        <span>{{ getTypeLabel(type) }}</span>
+        <span class="material-symbols-rounded text-sm" aria-hidden="true">close</span>
+      </button>
+    }
 
-      <input
-        type="text"
-        class="search-input flex-1 min-w-[100px] bg-transparent border-none outline-none text-base text-[var(--color-text-main)] placeholder:text-[var(--color-text-muted)]"
-        [placeholder]="
-          hasActiveFilters() ? 'Search or press enter...' : 'Search notes, whiteboards, messages...'
-        "
-        [value]="query()"
-        (input)="onQueryChange($any($event.target).value)"
-        autocomplete="off"
-        spellcheck="false"
-      />
-      @if (isSearching()) {
-        <div class="animate-spin shrink-0">
-          <span class="material-symbols-rounded text-xl text-[var(--color-text-muted)]"
-            >progress_activity</span
-          >
-        </div>
-      }
-      <button
-        (click)="toggleFilter()"
-        class="p-1.5 rounded-lg transition-colors shrink-0"
-        [class.bg-[var(--color-primary)]]="hasActiveFilters()"
-        [class.text-white]="hasActiveFilters()"
-        [class.hover:bg-[var(--color-surface-hover)]]="!hasActiveFilters()"
-        [class.text-[var(--color-text-muted)]]="!hasActiveFilters()"
-        title="Toggle filters"
+    <input
+      type="text"
+      class="search-input flex-1 min-w-[100px] p-0 bg-transparent border-none outline-none font-sans text-xl text-[var(--color-text-main)] caret-[var(--color-maple)] placeholder:text-[var(--color-mist)]"
+      placeholder="Search, or run an action"
+      aria-label="Search"
+      [value]="query()"
+      (input)="onQueryChange($any($event.target).value)"
+      autocomplete="off"
+      spellcheck="false"
+    />
+    @if (isSearching()) {
+      <span
+        class="material-symbols-rounded text-xl text-[var(--color-text-muted)] animate-spin shrink-0"
+        aria-hidden="true"
+        >progress_activity</span
       >
-        <span class="material-symbols-rounded text-lg">tune</span>
-      </button>
-      <button
-        (click)="onClose()"
-        class="text-xs text-[var(--color-text-muted)] hidden sm:flex items-center gap-1 hover:text-[var(--color-text-main)] transition-colors shrink-0"
-      >
-        <kbd class="px-1.5 py-0.5 bg-[var(--color-surface-alt)] rounded text-[10px]">esc</kbd>
-        close
-      </button>
-    </div>
+    }
+    <button
+      type="button"
+      (click)="toggleFilter()"
+      aria-label="Filters"
+      title="Filters"
+      [attr.aria-pressed]="showFilters()"
+      class="flex-none flex items-center justify-center w-8 h-8 p-0 rounded-lg border-none cursor-pointer transition-colors"
+      [class]="
+        hasActiveFilters()
+          ? 'bg-[var(--color-maple-light)] text-[var(--color-maple)]'
+          : 'bg-transparent text-[var(--color-text-muted)] hover:bg-[var(--color-surface-alt)]'
+      "
+    >
+      <span class="material-symbols-rounded text-lg" aria-hidden="true">tune</span>
+    </button>
+    <button
+      type="button"
+      (click)="onClose()"
+      aria-label="Close search"
+      class="flex-none h-6 px-2 rounded-md border-none bg-[var(--color-surface-alt)] text-[11px] text-[var(--color-text-muted)] cursor-pointer"
+    >
+      esc
+    </button>
   </div>
 
   <!-- Filters Panel -->
@@ -171,134 +166,149 @@
     </div>
   }
 
-  <!-- Results / Recent Searches -->
-  <div class="flex-1 overflow-y-auto">
+  <!-- Pages, actions and notebooks; arrows move through all of them -->
+  <div class="flex-1 overflow-y-auto pb-2.5">
     @if (error()) {
-      <div class="p-8 text-center">
-        <span class="material-symbols-rounded text-4xl text-red-500 mb-2 block">error</span>
-        <p class="text-[var(--color-text-muted)] text-sm">{{ error() }}</p>
-      </div>
-    } @else if (
-      (query().trim() || selectedTags().length > 0) && results().length === 0 && !isSearching()
-    ) {
-      <div class="p-8 text-center">
-        <span
-          class="material-symbols-rounded text-4xl text-[var(--color-text-muted)] opacity-30 mb-2 block"
-          >search_off</span
+      <p class="m-0 px-6 pt-5 pb-1 text-sm text-[var(--color-error)]">{{ error() }}</p>
+    }
+
+    @if (results().length > 0) {
+      <p [class]="groupClass">Pages</p>
+      @for (result of results(); track result.pageId; let i = $index) {
+        <button
+          type="button"
+          (click)="selectResult(result)"
+          (mousemove)="selectedIndex.set(i)"
+          [class]="i === selectedIndex() ? rowOnClass : rowClass"
         >
-        <p class="text-[var(--color-text-muted)] text-sm">No results found</p>
-        <p class="text-[var(--color-text-muted)] text-xs mt-1">
-          Try different keywords or adjust filters
-        </p>
-      </div>
-    } @else if (results().length > 0) {
-      <!-- Search Results -->
-      <div class="py-2">
-        @for (result of results(); track result.pageId; let i = $index) {
-          <button
-            (click)="selectResult(result)"
-            class="search-result-item w-full text-left px-4 py-3 hover:bg-[var(--color-surface-hover)] transition-colors flex items-start gap-3"
-            [class.selected]="i === selectedIndex()"
-            [class.bg-[var(--color-surface-hover)]]="i === selectedIndex()"
+          <span
+            class="material-symbols-rounded text-xl shrink-0"
+            [class]="
+              i === selectedIndex() ? 'text-[var(--color-maple)]' : 'text-[var(--color-text-main)]'
+            "
+            aria-hidden="true"
+            >{{ getTypeIcon(result.type) }}</span
           >
-            <span
-              class="material-symbols-rounded text-lg text-[var(--color-text-muted)] mt-0.5 shrink-0"
-              >{{ getTypeIcon(result.type) }}</span
-            >
-            <div class="flex-1 min-w-0">
-              <div class="flex items-center gap-2">
-                <span class="font-medium text-[var(--color-text-main)] truncate">
-                  {{ result.title || 'Untitled' }}
-                </span>
-                <span
-                  class="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-surface-alt)] text-[var(--color-text-muted)] shrink-0"
-                >
-                  {{ getTypeLabel(result.type) }}
-                </span>
-              </div>
-              @if (result.notebookLabel) {
-                <div class="text-xs text-[var(--color-text-muted)] flex items-center gap-1 mt-0.5">
-                  <span class="material-symbols-rounded text-xs">folder</span>
-                  {{ result.notebookLabel }}
-                </div>
-              }
-              <div
-                class="text-sm text-[var(--color-text-muted)] mt-1 line-clamp-2 search-snippet"
-                [innerHTML]="result.snippet"
-              ></div>
-            </div>
-          </button>
-        }
-      </div>
+          <span class="shrink-0 max-w-[45%] truncate font-bold text-[var(--color-text-main)]">{{
+            result.title || 'Untitled'
+          }}</span>
+          <span class="flex-1 min-w-0 truncate text-[var(--color-text-muted)]">
+            {{ getTypeLabel(result.type) }}
+            @if (result.notebookLabel) {
+              · {{ result.notebookLabel }}
+            }
+            @if (result.snippet) {
+              · <span class="search-snippet" [innerHTML]="result.snippet"></span>
+            }
+          </span>
+          @if (i === selectedIndex()) {
+            <span class="shrink-0 text-sm text-[var(--color-mist)]" aria-hidden="true">↵</span>
+          }
+        </button>
+      }
+    } @else if (query().trim() && !isSearching() && !error()) {
+      <p [class]="groupClass">Pages</p>
+      <p class="m-0 px-6 py-2.5 text-[15px] text-[var(--color-text-muted)]">
+        No pages match “{{ query().trim() }}”.
+      </p>
     } @else if (!query().trim() && recentSearches().length > 0) {
-      <!-- Recent Searches -->
-      <div class="py-2">
-        <div class="px-4 py-2 flex items-center justify-between">
-          <span class="text-xs font-medium text-[var(--color-text-muted)]">Recent searches</span>
-          <button
-            (click)="clearRecentSearches()"
-            class="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text-main)]"
+      <div class="flex items-center justify-between pr-6">
+        <p [class]="groupClass">Recent</p>
+        <button
+          type="button"
+          (click)="clearRecentSearches()"
+          class="mt-2 p-0 border-none bg-transparent text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] cursor-pointer"
+        >
+          Clear
+        </button>
+      </div>
+      @for (recent of recentSearches(); track recent) {
+        <div [class]="rowClass + ' relative'">
+          <span
+            class="material-symbols-rounded text-xl text-[var(--color-text-muted)] shrink-0"
+            aria-hidden="true"
+            >history</span
           >
-            Clear
+          <button
+            type="button"
+            (click)="selectRecentSearch(recent)"
+            class="flex-1 min-w-0 truncate p-0 border-none bg-transparent text-left font-sans text-[15px] text-[var(--color-text-main)] cursor-pointer after:absolute after:inset-0"
+          >
+            {{ recent }}
+          </button>
+          <button
+            type="button"
+            (click)="removeRecentSearch(recent, $event)"
+            [attr.aria-label]="'Remove ' + recent"
+            class="relative z-10 flex-none flex items-center justify-center w-7 h-7 p-0 rounded-full border-none bg-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] cursor-pointer"
+          >
+            <span class="material-symbols-rounded text-base" aria-hidden="true">close</span>
           </button>
         </div>
-        @for (recent of recentSearches(); track recent) {
-          <button
-            (click)="selectRecentSearch(recent)"
-            class="w-full text-left px-4 py-2 hover:bg-[var(--color-surface-hover)] transition-colors flex items-center gap-3"
-          >
-            <span class="material-symbols-rounded text-lg text-[var(--color-text-muted)]"
-              >history</span
-            >
-            <span class="flex-1 text-sm text-[var(--color-text-main)]">{{ recent }}</span>
-            <button
-              (click)="removeRecentSearch(recent, $event)"
-              class="p-1 hover:bg-[var(--color-surface-alt)] rounded text-[var(--color-text-muted)] hover:text-[var(--color-text-main)]"
-            >
-              <span class="material-symbols-rounded text-base">close</span>
-            </button>
-          </button>
-        }
-      </div>
-    } @else if (!query().trim()) {
-      <!-- Empty State -->
-      <div class="p-8 text-center">
-        <span
-          class="material-symbols-rounded text-4xl text-[var(--color-text-muted)] opacity-30 mb-2 block"
-          >search</span
+      }
+    }
+
+    @if (actions().length > 0) {
+      <p [class]="groupClass">Actions</p>
+      @for (action of actions(); track action.id; let i = $index) {
+        <button
+          type="button"
+          (click)="runAction(action)"
+          (mousemove)="selectedIndex.set(results().length + i)"
+          [class]="results().length + i === selectedIndex() ? rowOnClass : rowClass"
         >
-        <p class="text-[var(--color-text-muted)] text-sm">Search across all your notes</p>
-        <p class="text-[var(--color-text-muted)] text-xs mt-1">
-          Press
-          <kbd class="px-1.5 py-0.5 bg-[var(--color-surface-alt)] rounded text-[10px] mx-0.5">{{
-            navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'
-          }}</kbd
-          >+<kbd class="px-1.5 py-0.5 bg-[var(--color-surface-alt)] rounded text-[10px] mx-0.5"
-            >K</kbd
+          <span
+            class="material-symbols-rounded text-xl text-[var(--color-text-main)] shrink-0"
+            aria-hidden="true"
+            >{{ action.icon }}</span
           >
-          anytime
-        </p>
-      </div>
+          <span class="shrink-0 font-bold text-[var(--color-text-main)]">{{ action.label }}</span>
+          <span class="flex-1 min-w-0 truncate text-[var(--color-text-muted)]">{{
+            action.note
+          }}</span>
+          @if (results().length + i === selectedIndex()) {
+            <span class="shrink-0 text-sm text-[var(--color-mist)]" aria-hidden="true">↵</span>
+          }
+        </button>
+      }
+    }
+
+    @if (notebookMatches().length > 0) {
+      <p [class]="groupClass">Notebooks</p>
+      @for (notebook of notebookMatches(); track notebook.id; let i = $index) {
+        <button
+          type="button"
+          (click)="openNotebook(notebook.id)"
+          (mousemove)="selectedIndex.set(results().length + actions().length + i)"
+          [class]="
+            results().length + actions().length + i === selectedIndex() ? rowOnClass : rowClass
+          "
+        >
+          <span
+            class="material-symbols-rounded text-xl text-[var(--color-text-main)] shrink-0"
+            aria-hidden="true"
+            >grid_view</span
+          >
+          <span class="shrink-0 max-w-[60%] truncate font-bold text-[var(--color-text-main)]">{{
+            notebook.label
+          }}</span>
+          <span class="flex-1 min-w-0 truncate text-[var(--color-text-muted)]">{{
+            notebook.pagesLabel
+          }}</span>
+          @if (results().length + actions().length + i === selectedIndex()) {
+            <span class="shrink-0 text-sm text-[var(--color-mist)]" aria-hidden="true">↵</span>
+          }
+        </button>
+      }
     }
   </div>
 
-  <!-- Footer -->
+  <!-- Keys -->
   <div
-    class="px-4 py-2 border-t border-[var(--color-border)] flex items-center justify-between text-xs text-[var(--color-text-muted)]"
+    class="flex-none hidden sm:flex items-center gap-7 h-11 px-6 border-t border-[var(--color-border)] text-xs text-[var(--color-mist)]"
   >
-    <div class="flex items-center gap-4">
-      <span class="hidden sm:flex items-center gap-1">
-        <kbd class="px-1.5 py-0.5 bg-[var(--color-surface-alt)] rounded text-[10px]">↑</kbd>
-        <kbd class="px-1.5 py-0.5 bg-[var(--color-surface-alt)] rounded text-[10px]">↓</kbd>
-        navigate
-      </span>
-      <span class="hidden sm:flex items-center gap-1">
-        <kbd class="px-1.5 py-0.5 bg-[var(--color-surface-alt)] rounded text-[10px]">↵</kbd>
-        open
-      </span>
-    </div>
-    @if (results().length > 0) {
-      <span>{{ results().length }} result{{ results().length === 1 ? '' : 's' }}</span>
-    }
+    <span><span class="mr-2">↑ ↓</span>Move</span>
+    <span><span class="mr-2">↵</span>Open</span>
+    <span><span class="mr-2">esc</span>Close</span>
   </div>
 </div>

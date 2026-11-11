@@ -135,3 +135,27 @@ export function truncateLabel(
   if (label.length <= maxLength) return label;
   return label.slice(0, maxLength - 1) + '...';
 }
+
+/**
+ * What one page is called in the interface: "Memo", "Chat", "Data".
+ */
+export const PAGE_TYPE_NAMES: Record<string, string> = {
+  memo: 'Memo',
+  message: 'Chat',
+  whiteboard: 'Whiteboard',
+  kanban: 'Kanban',
+  json: 'JSON',
+  canvas: 'Canvas',
+  collectable: 'Collection',
+  recording: 'Recording',
+  devicedata: 'Data',
+  gmail: 'Mail',
+  graph: 'Graph',
+  activity: 'Activity',
+  followups: 'Follow-ups',
+  aboutme: 'About me',
+};
+
+export function getPageTypeName(type: string): string {
+  return PAGE_TYPE_NAMES[type] ?? 'Page';
+}

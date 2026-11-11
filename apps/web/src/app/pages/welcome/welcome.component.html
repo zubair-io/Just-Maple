@@ -1,227 +1,159 @@
 <div
-  class="min-h-full bg-[var(--color-bg)] text-[var(--color-text-main)] font-sans animate-maple-tag-in"
+  class="flex flex-col min-h-full md:h-full md:min-h-0 md:overflow-hidden bg-[var(--color-shell)] font-sans text-[var(--color-text-main)]"
 >
-  <app-header [home]="true">
-    <!-- Action items -->
-    <div headerActions class="flex items-center gap-2">
-      <a
-        routerLink="/recorder"
-        class="flex items-center gap-1.5 px-3 py-2 text-xs rounded-lg border border-[var(--color-border)] text-[var(--color-text-main)]"
-        aria-label="Open recorder"
-        ><span class="material-symbols-rounded text-lg" aria-hidden="true">mic</span
-        ><span class="hidden sm:inline">Recorder</span></a
+  <!-- Header: the list's name, and the quiet actions -->
+  <header
+    class="flex-none flex items-center gap-3 px-5 pt-7 pb-6 md:pl-[62px] md:pr-14 md:pt-[46px] md:pb-[76px]"
+  >
+    <div
+      role="heading"
+      aria-level="1"
+      class="flex-1 min-w-0 truncate font-light tracking-[-0.01em] text-[34px] leading-[42px] md:text-[54px] md:leading-[64px]"
+    >
+      Notebooks
+    </div>
+    <a routerLink="/recorder" aria-label="Open recorder" title="Recorder" [class]="circleClass">
+      <span class="material-symbols-rounded text-xl" aria-hidden="true">mic</span>
+    </a>
+    @if (isFileSystemSupported()) {
+      <button
+        type="button"
+        aria-label="Open Folder"
+        title="Open local folder"
+        [class]="circleClass"
+        (click)="openFolder()"
       >
-      <!-- Search bar -->
-      <div
-        class="relative w-9 md:w-44 lg:w-60 flex-none max-md:focus-within:absolute max-md:focus-within:inset-x-4 max-md:focus-within:top-16 max-md:focus-within:w-auto max-md:focus-within:z-30"
+        <span class="material-symbols-rounded text-xl" aria-hidden="true">folder_open</span>
+      </button>
+    }
+    <a routerLink="/settings" aria-label="Settings" title="Settings" [class]="circleClass">
+      <span class="material-symbols-rounded text-xl" aria-hidden="true">settings</span>
+    </a>
+  </header>
+
+  <div class="flex-1 md:min-h-0 flex md:pl-12">
+    <nav
+      aria-label="Notebooks"
+      class="flex-none w-full md:w-[262px] md:mr-10 md:overflow-y-auto max-md:px-3 pb-8"
+    >
+      <button
+        type="button"
+        [class]="rowIdleClass + ' text-[var(--color-text-muted)]'"
+        (click)="onCreateNotebook()"
       >
+        <span class="material-symbols-rounded text-xl" aria-hidden="true">add</span>
+        <span>New notebook</span>
+      </button>
+
+      <!-- Typing here narrows the list; ⌘K puts the cursor in it -->
+      <label
+        class="flex items-center gap-2.5 h-[50px] md:h-10 mb-1 md:mb-1.5 px-4 text-[var(--color-mist)]"
+      >
+        <span class="material-symbols-rounded text-xl" aria-hidden="true">search</span>
         <input
           #searchInput
           type="text"
           [ngModel]="searchQuery()"
           (ngModelChange)="searchQuery.set($event)"
-          placeholder="Search notebooks   ⌘K"
+          placeholder="Find a notebook"
           aria-label="Search notebooks"
-          class="w-full h-9 md:h-10 box-border px-0 md:pr-3.5 md:pl-9 focus:pl-9 max-md:placeholder:text-transparent max-md:focus:placeholder:text-[var(--color-text-muted)] font-sans text-xs text-[var(--color-text-main)] bg-[var(--color-input-bg)] border border-[var(--color-border)] rounded-lg outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] transition-all"
+          class="flex-1 min-w-0 p-0 bg-transparent border-none outline-none font-sans text-base md:text-sm text-[var(--color-text-main)] placeholder:text-[var(--color-mist)]"
         />
-        <span
-          class="material-symbols-rounded text-base text-[var(--color-text-muted)] pointer-events-none absolute left-2.5 top-2 md:left-3 md:top-2.5"
-          >search</span
-        >
-      </div>
+        <span class="hidden md:inline flex-none text-[11px] font-bold" aria-hidden="true">⌘K</span>
+      </label>
 
-      <!-- Open local folder if supported -->
-      @if (isFileSystemSupported()) {
-        <button
-          (click)="openFolder()"
-          aria-label="Open Folder"
-          class="h-9 w-9 md:h-10 md:w-auto px-0 md:px-4 font-sans font-bold text-xs text-[var(--color-text-main)] bg-[var(--color-surface)] border border-[var(--color-border)] hover:bg-[var(--color-surface-hover)] rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5"
-          title="Open local folder"
-        >
-          <span class="material-symbols-rounded text-sm">folder_open</span>
-          <span class="hidden md:inline">Open Folder</span>
-        </button>
-      }
-
-      <!-- Add notebook -->
-      <button
-        (click)="onCreateNotebook()"
-        aria-label="New notebook"
-        title="New notebook"
-        class="h-9 w-9 md:h-10 md:w-auto px-0 md:px-4.5 inline-flex items-center justify-center gap-1.5 font-sans font-bold text-sm text-white bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] border-none rounded-lg transition-all cursor-pointer shadow-sm"
-      >
-        <span class="material-symbols-rounded text-xl" aria-hidden="true">add</span>
-        <span class="hidden md:inline">Notebook</span>
-      </button>
-      <a
-        routerLink="/settings"
-        aria-label="Settings"
-        title="Settings"
-        class="flex-none h-9 w-9 md:h-10 md:w-10 flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] border border-[var(--color-border)] rounded-lg no-underline transition-colors focus-visible:outline-2 focus-visible:outline-[var(--color-primary)] focus-visible:outline-offset-2"
-      >
-        <span class="material-symbols-rounded text-xl" aria-hidden="true">settings</span>
-      </a>
-    </div>
-  </app-header>
-  <div class="max-w-5xl mx-auto px-6 py-8 md:px-12">
-    <!-- Notebook groups -->
-    <div class="space-y-9 animate-maple-content-in">
-      <!-- Helper group renderer template -->
-      <ng-container
-        *ngTemplateOutlet="
-          groupSection;
-          context: { $implicit: groupedNotebooks().pinned, label: 'PINNED' }
-        "
-      ></ng-container>
-
-      @if (groupedNotebooks().cloud.length > 0) {
-        <ng-container
-          *ngTemplateOutlet="
-            groupSection;
-            context: { $implicit: groupedNotebooks().cloud, label: 'MAPLE CLOUD' }
-          "
-        ></ng-container>
-      }
-
-      @if (groupedNotebooks().public.length > 0) {
-        <ng-container
-          *ngTemplateOutlet="
-            groupSection;
-            context: { $implicit: groupedNotebooks().public, label: 'PUBLIC' }
-          "
-        ></ng-container>
-      }
-
-      @if (groupedNotebooks().icloud.length > 0) {
-        <ng-container
-          *ngTemplateOutlet="
-            groupSection;
-            context: { $implicit: groupedNotebooks().icloud, label: 'ICLOUD' }
-          "
-        ></ng-container>
-      }
-
-      @if (groupedNotebooks().local.length > 0) {
-        <ng-container
-          *ngTemplateOutlet="
-            groupSection;
-            context: { $implicit: groupedNotebooks().local, label: 'LOCAL' }
-          "
-        ></ng-container>
-      }
-    </div>
-
-    <!-- Empty/No results state -->
-    @if (processedNotebooks().length === 0) {
-      <div class="text-center py-20 text-[var(--color-text-muted)] animate-maple-content-in">
-        <p class="m-0 mb-1.5 font-sans font-bold text-base text-[var(--color-text-main)]">
-          No notebooks match “{{ searchQuery() }}”
-        </p>
-        <p class="m-0 font-sans text-xs">Try a different search query or create a new notebook.</p>
-      </div>
-    }
-  </div>
-</div>
-
-<!-- Reusable Group Section Template -->
-<ng-template #groupSection let-notebooks let-label="label">
-  @if (notebooks && notebooks.length > 0) {
-    <div>
-      <div class="flex items-baseline gap-2.5 mb-4">
-        <span
-          class="font-sans text-[10px] font-semibold tracking-wider text-[var(--color-text-muted)]"
-          >{{ label }}</span
-        >
-        <span class="flex-1 h-[1px] bg-[var(--color-border)]"></span>
-      </div>
-
-      <div
-        role="list"
-        [attr.aria-label]="label"
-        class="grid grid-cols-[repeat(auto-fill,160px)] gap-6"
-      >
-        @for (notebook of notebooks; track notebook._id) {
-          <button
-            role="listitem"
-            (click)="openNotebook(notebook._id)"
-            [title]="notebook.label"
-            class="group relative w-[160px] h-[214px] text-left cursor-pointer bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-text-muted)] rounded flex flex-col overflow-hidden transition-all duration-150 shadow-sm outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:ring-offset-2"
-            [style.box-shadow]="
-              notebook.unreadCount > 0
-                ? '0 0 0 1.5px var(--color-maple), 0 0 14px color-mix(in srgb, var(--color-maple) 35%, transparent), var(--shadow-soft)'
-                : ''
-            "
-          >
-            <!-- Card Header: Pinned status + Unread badge -->
-            <div class="flex items-center gap-1.5 px-3 py-2.5 flex-none w-full box-border">
-              <!-- Pin Toggle Icon -->
+      @for (group of notebookGroups(); track group.label) {
+        @if (notebookGroups().length > 1) {
+          <p [class]="kickerClass + ' px-4 pt-4 pb-2'">{{ group.label }}</p>
+        }
+        <div role="list" [attr.aria-label]="group.label">
+          @for (notebook of group.notebooks; track notebook._id) {
+            <div
+              role="listitem"
+              [class]="
+                (notebook._id === previewNotebookId() ? rowActiveClass : rowIdleClass) + ' relative'
+              "
+              (mouseenter)="hoveredId.set(notebook._id)"
+            >
+              <a
+                [routerLink]="['/', notebook._id]"
+                [title]="notebook.label"
+                class="flex-1 min-w-0 flex items-center gap-2.5 no-underline after:absolute after:inset-0 after:rounded-xl focus-visible:outline-none"
+                (focus)="hoveredId.set(notebook._id)"
+              >
+                <span
+                  class="material-symbols-rounded text-xl text-[var(--color-text-main)]"
+                  aria-hidden="true"
+                  >{{ notebook.icon }}</span
+                >
+                <span class="min-w-0 truncate font-bold text-[var(--color-text-main)]">{{
+                  notebook.label
+                }}</span>
+                <span class="flex-none text-[var(--color-text-muted)]">{{
+                  notebook.pagesLabel
+                }}</span>
+              </a>
               <button
                 type="button"
+                [attr.aria-label]="notebook.pinned ? 'Unpin notebook' : 'Pin notebook'"
+                [title]="notebook.pinned ? 'Unpin notebook' : 'Pin notebook'"
+                [attr.aria-pressed]="notebook.pinned"
+                class="relative z-10 flex-none flex items-center justify-center w-7 h-7 p-0 rounded-full border-none bg-transparent cursor-pointer transition-opacity hover:bg-[var(--color-bg-hover)] focus-visible:opacity-100"
+                [class]="
+                  notebook.pinned
+                    ? 'text-[var(--color-maple)]'
+                    : 'text-[var(--color-mist)] max-md:hidden md:opacity-0 group-hover:opacity-100'
+                "
                 (click)="togglePin(notebook._id, $event)"
-                class="bg-transparent border-none p-0 cursor-pointer flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors"
-                [title]="isPinned(notebook._id) ? 'Unpin notebook' : 'Pin notebook'"
               >
-                @if (isPinned(notebook._id)) {
-                  <span class="material-symbols-rounded text-sm text-[var(--color-primary)] fill-1"
-                    >push_pin</span
-                  >
-                } @else {
-                  <span
-                    class="material-symbols-rounded text-sm opacity-0 group-hover:opacity-100 transition-opacity hover:opacity-100"
-                    >push_pin</span
-                  >
-                }
+                <span class="material-symbols-rounded text-base" aria-hidden="true">push_pin</span>
               </button>
-
-              <span class="flex-1"></span>
-
-              <!-- Unread Message Count badge -->
               @if (notebook.unreadCount > 0) {
                 <span
-                  class="flex-none min-w-[14px] text-center font-sans text-[10px] font-bold text-white bg-[var(--color-primary)] rounded-full px-1.5 py-0.5"
+                  class="flex-none w-2 h-2 rounded-full bg-[var(--color-maple)]"
+                  role="img"
                   [attr.aria-label]="notebook.unreadCount + ' unread messages'"
-                >
-                  {{ notebook.unreadCount > 99 ? '99+' : notebook.unreadCount }}
-                </span>
+                ></span>
               }
             </div>
+          }
+        </div>
+      }
 
-            <!-- Page-cover vertical border accent -->
-            <div class="flex-none h-1.5 bg-[var(--color-bg)]"></div>
+      @if (notebookGroups().length === 0) {
+        <p class="m-0 px-4 py-4 text-sm text-[var(--color-text-muted)]">
+          @if (searchQuery()) {
+            No notebooks match “{{ searchQuery() }}”.
+          } @else {
+            No notebooks yet. Start with New notebook.
+          }
+        </p>
+      }
+    </nav>
 
-            <!-- Card Body: Notebook Title -->
-            <div class="flex-1 flex items-center justify-center px-3 py-3.5 text-center">
-              <span
-                class="font-sans font-bold text-sm leading-snug overflow-hidden line-clamp-4 text-[var(--color-text-main)]"
-              >
-                {{ notebook.label }}
-              </span>
-            </div>
-
-            <!-- Card Footer: Content types + Activity -->
-            <div class="flex-none flex items-center justify-between gap-2 px-3 py-2.5">
-              <!-- Content type tag icons -->
-              <div class="flex items-center gap-1">
-                @for (type of notebook.pageTypes; track type) {
-                  <span
-                    [title]="getPageTypeLabel(type)"
-                    class="flex items-center justify-center w-5 h-5 rounded bg-[var(--color-surface-alt)] text-[var(--color-text-muted)]"
-                  >
-                    <span class="material-symbols-rounded text-xs">{{
-                      getPageTypeIcon(type)
-                    }}</span>
-                  </span>
-                }
-              </div>
-
-              <!-- Activity Timestamp -->
-              <span class="font-sans text-[9px] text-[var(--color-text-muted)] whitespace-nowrap">
-                {{ notebook.activity }}
-              </span>
-            </div>
-          </button>
-        }
-      </div>
-    </div>
-  }
-</ng-template>
+    <!-- The pages left open in the notebook under the pointer, waiting as they were -->
+    <section
+      class="hidden md:flex flex-1 min-w-0 gap-8 pr-14 pt-3 pb-12 overflow-hidden"
+      aria-hidden="true"
+    >
+      @for (page of previewPages(); track page.id) {
+        <div [class]="ghostCardClass">
+          <div [class]="bandClass">
+            <span class="material-symbols-rounded text-xl">{{ page.icon }}</span>
+            <span class="flex-1 min-w-0 truncate">
+              <span class="font-bold text-[var(--color-text-main)]">{{ page.title }}</span>
+              <span class="text-[var(--color-text-muted)]"> · {{ page.typeName }}</span>
+            </span>
+          </div>
+          <div class="flex flex-col gap-4 px-10 pt-11">
+            <span class="h-2 w-[45%] rounded-full bg-[var(--color-card-band)]"></span>
+            <span class="h-2 w-[82%] rounded-full bg-[var(--color-card-band)]"></span>
+            <span class="h-2 w-[64%] rounded-full bg-[var(--color-card-band)]"></span>
+            <span class="h-2 w-[72%] rounded-full bg-[var(--color-card-band)]"></span>
+            <span class="h-2 w-[36%] rounded-full bg-[var(--color-card-band)]"></span>
+          </div>
+        </div>
+      }
+    </section>
+  </div>
+</div>

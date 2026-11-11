@@ -1,4 +1,3 @@
-import { AppHeaderComponent } from '../../components/organisms/app-header/app-header.component';
 import {
   Component,
   inject,
@@ -20,11 +19,23 @@ import { PageService } from '../../services/page.service';
 import { MessageService } from '../../services/message.service';
 import { DialogService } from '../../components';
 import { isLocalNotebook } from '../../providers/data-provider.interface';
+import { OpenPagesService } from '../../services/open-pages.service';
+import { deviceSourceInfo } from '../../utils/device-sources';
+import { getPageTypeIcon, getPageTypeName } from '../../utils/page-types';
+import {
+  CARD_BAND_CLASS,
+  CARD_CLASS,
+  CIRCLE_BUTTON_CLASS,
+  KICKER_CLASS,
+  LIST_ROW_ACTIVE_CLASS,
+  LIST_ROW_IDLE_CLASS,
+} from '../../utils/shell-classes';
+import type { Page } from '@maple/shared';
 
 @Component({
   selector: 'app-welcome',
   standalone: true,
-  imports: [CommonModule, AppHeaderComponent, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink],
   templateUrl: './welcome.component.html',
   changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './welcome.component.scss',
@@ -40,6 +51,7 @@ export class WelcomeComponent {
   private readonly messageService = inject(MessageService);
   private readonly dialogService = inject(DialogService);
   private readonly router = inject(Router);
+  private readonly openPagesService = inject(OpenPagesService);
 
   readonly isFileSystemSupported = this.fsService.isSupported;
   readonly isAuthenticated = this.authService.isAuthenticated;
@@ -88,6 +100,16 @@ export class WelcomeComponent {
     return this.pinnedIds().has(notebookId);
   }
 
+  readonly kickerClass = KICKER_CLASS;
+  readonly circleClass = CIRCLE_BUTTON_CLASS;
+  readonly rowIdleClass = LIST_ROW_IDLE_CLASS;
+  readonly rowActiveClass = LIST_ROW_ACTIVE_CLASS;
+  readonly bandClass = CARD_BAND_CLASS;
+  readonly ghostCardClass = `${CARD_CLASS} flex-none w-[440px] max-h-[560px] opacity-55`;
+
+  /** The notebook under the pointer (or keyboard focus). */
+  readonly hoveredId = signal<string | null>(null);
+
   readonly processedNotebooks = computed(() => {
     const all = this.notebookService.notebooks();
     const pages = this.pageService.pages();
@@ -96,87 +118,61 @@ export class WelcomeComponent {
     const filtered = all.filter((nb) => !query || nb.label.toLowerCase().includes(query));
 
     return filtered.map((nb) => {
-      const nbPages = pages.filter((p) => p.notebookId === nb._id);
-      const uniqueTypes = [...new Set(nbPages.map((p) => p.type))];
-      const unreadCount = this.messageService.getUnreadCount(nb._id);
-      const pinned = this.pinnedIds().has(nb._id);
-
-      let activity = 'recently';
-      if (nb.updatedAt) {
-        activity = this.formatTimeAgo(new Date(nb.updatedAt));
-      }
-
+      const pagesCount = pages.filter((p) => p.notebookId === nb._id && !p.isTrashed).length;
+      const local = isLocalNotebook(nb._id);
+      const icloud = local && this.notebookService.isICloud(nb._id);
+      const isPublic = !local && !!nb.sharing?.['isPublic'];
       return {
         ...nb,
-        pinned,
-        unreadCount,
-        pageTypes: uniqueTypes,
-        pagesCount: nbPages.length,
-        activity,
+        pinned: this.pinnedIds().has(nb._id),
+        unreadCount: this.messageService.getUnreadCount(nb._id),
+        pagesLabel: pagesCount === 1 ? '1 page' : `${pagesCount} pages`,
+        icon: icloud ? 'cloud' : local ? 'folder' : isPublic ? 'public' : 'grid_view',
+        group: icloud ? 'iCloud' : local ? 'Local' : isPublic ? 'Public' : 'Maple Cloud',
       };
     });
   });
 
-  readonly groupedNotebooks = computed(() => {
+  /** Pinned first, then where each notebook lives; empty groups are left out. */
+  readonly notebookGroups = computed(() => {
     const all = this.processedNotebooks();
-    return {
-      pinned: all.filter((nb) => nb.pinned),
-      public: all.filter(
-        (nb) => !nb.pinned && !isLocalNotebook(nb._id) && nb.sharing?.['isPublic'],
-      ),
-      cloud: all.filter(
-        (nb) => !nb.pinned && !isLocalNotebook(nb._id) && !nb.sharing?.['isPublic'],
-      ),
-      icloud: all.filter(
-        (nb) => !nb.pinned && isLocalNotebook(nb._id) && this.notebookService.isICloud(nb._id),
-      ),
-      local: all.filter(
-        (nb) => !nb.pinned && isLocalNotebook(nb._id) && !this.notebookService.isICloud(nb._id),
-      ),
-    };
+    const groups = [
+      { label: 'Pinned', notebooks: all.filter((nb) => nb.pinned) },
+      ...['Maple Cloud', 'Public', 'iCloud', 'Local'].map((label) => ({
+        label,
+        notebooks: all.filter((nb) => !nb.pinned && nb.group === label),
+      })),
+    ];
+    return groups.filter((group) => group.notebooks.length > 0);
   });
 
-  getPageTypeIcon(type: string): string {
-    switch (type) {
-      case 'collectable':
-        return 'brick';
-      case 'memo':
-        return 'description';
-      case 'whiteboard':
-        return 'draw';
-      case 'kanban':
-        return 'view_kanban';
-      case 'message':
-        return 'chat';
-      case 'json':
-        return 'data_object';
-      case 'canvas':
-        return 'dashboard';
-      default:
-        return 'article';
-    }
-  }
+  /** The notebook whose open pages show on the right: under the pointer, else the first with any. */
+  readonly previewNotebookId = computed(() => {
+    const hovered = this.hoveredId();
+    const all = this.processedNotebooks();
+    if (hovered && all.some((nb) => nb._id === hovered)) return hovered;
+    return all.find((nb) => this.openPagesService.ids(nb._id).length > 0)?._id ?? null;
+  });
 
-  getPageTypeLabel(type: string): string {
-    switch (type) {
-      case 'collectable':
-        return 'Collectible';
-      case 'memo':
-        return 'Note';
-      case 'whiteboard':
-        return 'Whiteboard';
-      case 'kanban':
-        return 'Kanban';
-      case 'message':
-        return 'Chat';
-      case 'json':
-        return 'JSON';
-      case 'canvas':
-        return 'Canvas';
-      default:
-        return 'Page';
-    }
-  }
+  readonly previewPages = computed(() => {
+    const notebookId = this.previewNotebookId();
+    if (!notebookId) return [];
+    const byId = new Map(this.pageService.pages().map((page) => [page.id, page]));
+    return this.openPagesService
+      .ids(notebookId)
+      .map((id) => byId.get(id))
+      .filter((page): page is Page => !!page && !page.isTrashed)
+      .slice(0, 3)
+      .map((page) => ({
+        id: page.id,
+        title: page.title || 'Untitled',
+        typeName: getPageTypeName(page.type),
+        icon:
+          page.type === 'devicedata' && page.deviceSource
+            ? deviceSourceInfo(page.deviceSource).icon
+            : getPageTypeIcon(page.type),
+      }));
+  });
 
   async onCreateNotebook(): Promise<void> {
     const name = await this.dialogService.prompt({
@@ -206,19 +202,5 @@ export class WelcomeComponent {
     if (folder) {
       this.router.navigate(['/', folder.id]);
     }
-  }
-
-  private formatTimeAgo(date: Date): string {
-    const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
-    if (seconds < 60) return 'now';
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes}m ago`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
-    const days = Math.floor(hours / 24);
-    if (days === 1) return 'yesterday';
-    if (days < 30) return `${days}d ago`;
-    const months = Math.floor(days / 30);
-    return `${months}mo ago`;
   }
 }

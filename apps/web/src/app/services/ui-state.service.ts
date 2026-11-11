@@ -1,5 +1,6 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { Dialog, type DialogRef } from '@angular/cdk/dialog';
+import { Overlay } from '@angular/cdk/overlay';
 import type { TemplateGalleryDialogResult } from '../components/organisms/template-gallery-modal/template-gallery-modal.component';
 
 /**
@@ -20,6 +21,7 @@ export interface SearchModalOptions {
 @Injectable({ providedIn: 'root' })
 export class UiStateService {
   private readonly cdkDialog = inject(Dialog);
+  private readonly overlay = inject(Overlay);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private searchDialogRef: DialogRef<unknown, any> | null = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -113,6 +115,8 @@ export class UiStateService {
       hasBackdrop: true,
       backdropClass: 'cdk-dialog-backdrop',
       panelClass: 'cdk-search-modal-panel',
+      // Search sits in the upper part of the screen, over whatever is open.
+      positionStrategy: this.overlay.position().global().centerHorizontally().top('16vh'),
       autoFocus: false,
     });
     this.searchDialogRef = dialogRef;
