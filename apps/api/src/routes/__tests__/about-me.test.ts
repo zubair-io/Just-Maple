@@ -28,6 +28,28 @@ import { getMacDataToolContext } from '../../services/mac-data-tools.service';
 const now = Date.now();
 const nowSec = Math.floor(now / 1000);
 
+/**
+ * 4:00 pm in New York on the most recent Tuesdays, in seconds. Routines are read from
+ * the last 35 days, so fixed dates stop counting once they are that old; and the hour
+ * is looked up per day, since New York's offset changes with daylight saving.
+ */
+function recentTuesdaysAt4pmNewYork(count: number): number[] {
+    const inNewYork = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York',
+        weekday: 'short',
+        hour: 'numeric',
+        hourCycle: 'h23',
+    });
+    const hour = 3600e3;
+    const starts: number[] = [];
+    for (let at = Math.floor(now / hour) * hour - hour; starts.length < count; at -= hour) {
+        const parts = inNewYork.formatToParts(at);
+        const part = (type: string) => parts.find((p) => p.type === type)?.value;
+        if (part('weekday') === 'Tue' && Number(part('hour')) === 16) starts.push(at / 1000);
+    }
+    return starts;
+}
+
 function item(id: string, source: MacDataItem['source'], extra: Partial<MacDataItem> = {}) {
     return {
         id,
@@ -101,8 +123,6 @@ describe.runIf(mongoAvailable)('About me', () => {
             sources: ['contacts', 'calendar'],
             timeZone: 'America/New_York',
         });
-        const week = 7 * 24 * 3600;
-        const tuesday4pm = Date.UTC(2026, 9, 20, 20, 0, 0) / 1000; // Tue 4:00 pm New York
         await call('/api/device-data/items', 'POST', {
             deviceId: 'mac-device-1',
             removals: [],
@@ -123,12 +143,12 @@ describe.runIf(mongoAvailable)('About me', () => {
                     title: 'Emma',
                     extra: { birthday: '2015-06-01' },
                 }),
-                ...[0, 1, 2].map((n) =>
+                ...recentTuesdaysAt4pmNewYork(3).map((start, n) =>
                     item(`calendar:practice-${n}`, 'calendar', {
                         title: 'Soccer practice',
                         location: 'Riverside Park',
-                        occurredAt: tuesday4pm - n * week,
-                        endAt: tuesday4pm - n * week + 3600,
+                        occurredAt: start,
+                        endAt: start + 3600,
                     }),
                 ),
             ],
