@@ -6,8 +6,9 @@ test.describe('Notes Management', () => {
         await authenticatedPage.goto('/');
         await authenticatedPage.waitForLoadState('networkidle');
 
-        // Click create note button (button with "add" icon and "New Note" text)
-        const createButton = authenticatedPage.locator('button:has-text("New Note")');
+        // Click create note button (button with "add" icon and "New Note" text).
+        // The label is matched exactly: "New notebook" on the notebooks list is a different button.
+        const createButton = authenticatedPage.locator('button:has(:text-is("New Note"))');
 
         if (await createButton.isVisible({ timeout: 5000 }).catch(() => false)) {
             await createButton.click();
@@ -47,7 +48,7 @@ test.describe('Notes Management', () => {
 
         if (!hasExistingNote) {
             // Create a note first
-            const createButton = authenticatedPage.locator('button:has-text("New Note")');
+            const createButton = authenticatedPage.locator('button:has(:text-is("New Note"))');
             if (await createButton.isVisible({ timeout: 2000 }).catch(() => false)) {
                 await createButton.click();
                 await authenticatedPage.waitForTimeout(1000);
@@ -84,7 +85,7 @@ test.describe('Notes Management', () => {
         const hasNote = await existingNote.isVisible({ timeout: 2000 }).catch(() => false);
 
         if (!hasNote) {
-            const createButton = authenticatedPage.locator('button:has-text("New Note")');
+            const createButton = authenticatedPage.locator('button:has(:text-is("New Note"))');
             if (await createButton.isVisible({ timeout: 2000 }).catch(() => false)) {
                 await createButton.click();
                 await authenticatedPage.waitForTimeout(1000);
@@ -128,7 +129,7 @@ test.describe('Notes Management', () => {
         await authenticatedPage.waitForLoadState('networkidle');
 
         // Create a note to archive
-        const createButton = authenticatedPage.locator('button:has-text("New Note")');
+        const createButton = authenticatedPage.locator('button:has(:text-is("New Note"))');
         if (!(await createButton.isVisible({ timeout: 2000 }).catch(() => false))) {
             test.skip();
             return;
@@ -178,7 +179,7 @@ test.describe('Notes Management', () => {
         await authenticatedPage.waitForLoadState('networkidle');
 
         // Create a note to trash
-        const createButton = authenticatedPage.locator('button:has-text("New Note")');
+        const createButton = authenticatedPage.locator('button:has(:text-is("New Note"))');
         if (!(await createButton.isVisible({ timeout: 2000 }).catch(() => false))) {
             test.skip();
             return;
@@ -220,7 +221,7 @@ test.describe('Notes Management', () => {
         await authenticatedPage.waitForLoadState('networkidle');
 
         // First trash a note
-        const createButton = authenticatedPage.locator('button:has-text("New Note")');
+        const createButton = authenticatedPage.locator('button:has(:text-is("New Note"))');
         if (!(await createButton.isVisible({ timeout: 2000 }).catch(() => false))) {
             test.skip();
             return;
@@ -301,7 +302,7 @@ test.describe('Notes Management', () => {
         await authenticatedPage.waitForLoadState('networkidle');
 
         // Create and trash a note
-        const createButton = authenticatedPage.locator('button:has-text("New Note")');
+        const createButton = authenticatedPage.locator('button:has(:text-is("New Note"))');
         if (!(await createButton.isVisible({ timeout: 2000 }).catch(() => false))) {
             test.skip();
             return;
@@ -381,7 +382,7 @@ test.describe('Notes Management', () => {
         await authenticatedPage.waitForLoadState('networkidle');
 
         // Create a note
-        const createButton = authenticatedPage.locator('button:has-text("New Note")');
+        const createButton = authenticatedPage.locator('button:has(:text-is("New Note"))');
         if (!(await createButton.isVisible({ timeout: 2000 }).catch(() => false))) {
             test.skip();
             return;
@@ -425,7 +426,7 @@ test.describe('Notes Management', () => {
         await authenticatedPage.waitForLoadState('networkidle');
 
         // Create a note with unique content
-        const createButton = authenticatedPage.locator('button:has-text("New Note")');
+        const createButton = authenticatedPage.locator('button:has(:text-is("New Note"))');
         if (!(await createButton.isVisible({ timeout: 2000 }).catch(() => false))) {
             test.skip();
             return;
@@ -494,7 +495,7 @@ test.describe('Notes Management', () => {
         await authenticatedPage.goto('/');
         await authenticatedPage.waitForLoadState('networkidle');
 
-        const createButton = authenticatedPage.locator('button:has-text("New Note")');
+        const createButton = authenticatedPage.locator('button:has(:text-is("New Note"))');
         if (!(await createButton.isVisible({ timeout: 2000 }).catch(() => false))) {
             test.skip();
             return;
@@ -531,7 +532,7 @@ test.describe('Notes Management', () => {
         await authenticatedPage.goto('/');
         await authenticatedPage.waitForLoadState('networkidle');
 
-        const createButton = authenticatedPage.locator('button:has-text("New Note")');
+        const createButton = authenticatedPage.locator('button:has(:text-is("New Note"))');
         if (!(await createButton.isVisible({ timeout: 2000 }).catch(() => false))) {
             test.skip();
             return;
