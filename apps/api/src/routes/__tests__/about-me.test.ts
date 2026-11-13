@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { toEpochSeconds } from '../../utils/time-zone';
 import { createTestApp } from '../../__tests__/helpers/app';
 import {
     createAuthToken,
@@ -101,8 +102,18 @@ describe.runIf(mongoAvailable)('About me', () => {
             sources: ['contacts', 'calendar'],
             timeZone: 'America/New_York',
         });
-        const week = 7 * 24 * 3600;
-        const tuesday4pm = Date.UTC(2026, 9, 20, 20, 0, 0) / 1000; // Tue 4:00 pm New York
+        // The last three Tuesdays at 4:00 pm New York, counted back from today so the
+        // practices stay inside the routine finder's look-back window.
+        const lastTuesday = new Date(now - 86400e3);
+        lastTuesday.setUTCDate(lastTuesday.getUTCDate() - ((lastTuesday.getUTCDay() + 5) % 7));
+        const tuesday4pm = (weeksBack: number) => {
+            const day = new Date(lastTuesday.getTime() - weeksBack * 7 * 86400e3);
+            return toEpochSeconds(
+                `${day.toISOString().slice(0, 10)}T16:00`,
+                'America/New_York',
+                'start',
+            )!;
+        };
         await call('/api/device-data/items', 'POST', {
             deviceId: 'mac-device-1',
             removals: [],
@@ -127,8 +138,8 @@ describe.runIf(mongoAvailable)('About me', () => {
                     item(`calendar:practice-${n}`, 'calendar', {
                         title: 'Soccer practice',
                         location: 'Riverside Park',
-                        occurredAt: tuesday4pm - n * week,
-                        endAt: tuesday4pm - n * week + 3600,
+                        occurredAt: tuesday4pm(n),
+                        endAt: tuesday4pm(n) + 3600,
                     }),
                 ),
             ],
